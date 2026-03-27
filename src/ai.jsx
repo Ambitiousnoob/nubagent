@@ -2251,6 +2251,7 @@ export default function AgentFramework() {
         const workingMemoryMessages = buildWorkingMemoryMessages(priorMessages);
         const workingMemoryTrimmed = priorRelevantMessages.length > workingMemoryMessages.length;
         const episodicSummary = buildEpisodicSummary(priorMessages);
+        const historyMessages = workingMemoryMessages;
 
         setRunning(true);
         setExpandedSteps({});
