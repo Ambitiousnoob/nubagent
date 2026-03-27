@@ -6,9 +6,8 @@
     "build": "vite build"
   },
   "dependencies": {
-    "@google/genai": "^0.3.0",
     "dotenv": "^16.4.5",
-    "js-tiktoken": "^1.0.21",
+    "googlethis": "^1.8.0",
     "mysql2": "^3.11.4",
     "react": "^17.0.0",
     "react-dom": "^17.0.0",

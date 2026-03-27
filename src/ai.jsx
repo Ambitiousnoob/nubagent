@@ -2,7 +2,12 @@ import React, { useState, useRef, useEffect } from "react";
 
 const HOSTED_CHAT_API_PATH = "/api/chat";
 const AVAILABLE_MODELS = [
-    { id: "gemini-1.5-flash", label: "nub-agent (ambitiousnoob)", icon: "⚡" },
+    {
+        id: "polly",
+        label: "Polly (Agentic • tools + vision)",
+        icon: "🦜",
+        capabilities: ["agentic", "tools", "vision", "web"],
+    },
 ];
 const MAX_ITERATIONS = 20;
 const MAX_RETRIES = 0;
@@ -83,43 +88,14 @@ const FASTEST_INFERENCE_PROFILE = Object.freeze({
     label: "1X",
     provider: undefined,
 });
-
-let tokenizerInstance = null;
-let tokenizerPromise = null;
-
-const ensureTokenizer = async () => {
-    if (tokenizerInstance) return tokenizerInstance;
-    if (!tokenizerPromise) {
-        tokenizerPromise = Promise.all([
-            import("js-tiktoken/lite"),
-            import("js-tiktoken/ranks/o200k_base"),
-        ]).then(([{ Tiktoken }, { default: o200kBase }]) => {
-            tokenizerInstance = new Tiktoken(o200kBase);
-            return tokenizerInstance;
-        }).catch((error) => {
-            tokenizerPromise = null;
-            throw error;
-        });
-    }
-    return tokenizerPromise;
-};
-
 const roughTokenEstimate = (value) => {
     const text = String(value ?? "");
     if (!text) return 0;
     return Math.max(1, Math.ceil(text.length / 4));
 };
 
-const countTextTokens = async (value) => {
-    const text = String(value ?? "");
-    if (!text) return 0;
-    try {
-        const tokenizer = await ensureTokenizer();
-        return tokenizer.encode(text).length;
-    } catch {
-        return roughTokenEstimate(text);
-    }
-};
+// Lightweight token estimation only; avoids multi‑MB tokenizer chunk.
+const countTextTokens = async (value) => roughTokenEstimate(value);
 
 const countContentTokens = async (content) => {
     if (typeof content === "string") return countTextTokens(content);
@@ -1425,355 +1401,7 @@ const parseRouterResponse = (text) => {
     return { analysis, primary, secondary, reason };
 };
 
-function createTools(memoryStore, updateMemory) {
-    const timerStore = {};
-    return {
-        calculator: {
-            icon: "🔢", category: "Math",
-            description: "Evaluate math expressions including complex arithmetic, percentages, powers",
-            params: "{ expression: string }",
-            example: '{ "expression": "2 ** 10 + 500 * 0.15" }',
-            execute: async ({ expression }) => {
-                try {
-                    const safe = expression.replace(/[^0-9+\-*/().,\s%^eE]/g, "");
-                    return `= ${Function('"use strict"; return (' + safe + ")")()}`;
-                } catch (e) { return `Math error: ${e.message}`; }
-            },
-        },
-        unit_convert: {
-            icon: "📐", category: "Math",
-            description: "Convert between units: length, weight, temperature, volume, speed",
-            params: "{ value: number, from: string, to: string }",
-            example: '{ "value": 100, "from": "km", "to": "miles" }',
-            execute: async ({ value, from, to }) => {
-                const c = { km_miles:.621371, miles_km:1.60934, kg_lbs:2.20462, lbs_kg:.453592, m_ft:3.28084, ft_m:.3048, cm_inches:.393701, inches_cm:2.54, l_gal:.264172, gal_l:3.78541, ms_kmh:3.6, kmh_ms:.277778 };
-                const k = `${from.toLowerCase()}_${to.toLowerCase()}`;
-                if (k === "celsius_fahrenheit") return `${value}°C = ${(value*9/5+32).toFixed(2)}°F`;
-                if (k === "fahrenheit_celsius") return `${value}°F = ${((value-32)*5/9).toFixed(2)}°C`;
-                return c[k] ? `${value} ${from} = ${(value*c[k]).toFixed(4)} ${to}` : `Unknown: ${from} → ${to}`;
-            },
-        },
-        datetime: {
-            icon: "🕒", category: "Utility",
-            description: "Get current date/time (optionally in a timezone) or calculate date differences",
-            params: "{ action?: 'now'|'diff', date1?: string, date2?: string, tz?: string }",
-            example: '{ "action": "now", "tz": "America/New_York" }',
-            execute: async ({ action = "now", date1, date2, tz = "UTC" } = {}) => {
-                if (action === "diff" && date1 && date2) {
-                    const days = Math.floor(Math.abs(new Date(date2) - new Date(date1)) / 86400000);
-                    return `Difference: ${days} days / ${Math.floor(days/7)} weeks / ${Math.floor(days/30.44)} months`;
-                }
-                const now = new Date();
-                const fmt = (zone) => new Intl.DateTimeFormat("en-US", {
-                    timeZone: zone,
-                    hour12: false,
-                    year: "numeric", month: "2-digit", day: "2-digit",
-                    hour: "2-digit", minute: "2-digit", second: "2-digit"
-                }).format(now);
-                let result;
-                try {
-                    result = fmt(tz);
-                } catch {
-                    result = fmt("UTC");
-                    tz = "UTC (fallback)";
-                }
-                return `Now (${tz}): ${result}\nISO (UTC): ${now.toISOString()}`;
-            },
-        },
-        text_analysis: {
-            icon: "📊", category: "Text",
-            description: "Analyze text: word count, readability, frequency, sentiment signals",
-            params: "{ text: string }",
-            example: '{ "text": "Your text here" }',
-            execute: async ({ text }) => {
-                if (!text) return "No text provided";
-                const words = text.trim().split(/\s+/).filter(Boolean);
-                const sentences = text.split(/[.!?]+/).filter(Boolean);
-                const freq = {};
-                words.forEach(w => { const k = w.toLowerCase().replace(/[^a-z]/g,""); if(k.length>3) freq[k]=(freq[k]||0)+1; });
-                const top = Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([w,c])=>`${w}(${c})`).join(", ");
-                const fl = Math.max(0,Math.min(100,206.835-1.015*(words.length/sentences.length)-84.6*(words.reduce((a,w)=>a+w.length,0)/words.length/4)));
-                return JSON.stringify({ words:words.length, sentences:sentences.length, chars:text.length, readability:fl>70?"Easy":fl>50?"Standard":"Complex", topWords:top }, null, 2);
-            },
-        },
-        memory_write: {
-            icon: "💾", category: "Memory",
-            description: "Store information persistently across the conversation",
-            params: "{ key: string, value: string }",
-            example: '{ "key": "user_name", "value": "Alice" }',
-            execute: async ({ key, value }) => { updateMemory(p=>({...p,[key]:{value,timestamp:new Date().toISOString()}})); return `Stored "${key}".`; },
-        },
-        memory_read: {
-            icon: "🧠", category: "Memory",
-            description: "Retrieve stored memory by key, or list all stored keys",
-            params: "{ key?: string }",
-            example: '{ "key": "user_name" }',
-            execute: async ({ key } = {}) => {
-                if (key) { const e=memoryStore[key]; return e?`"${key}": "${e.value}"`:`Key "${key}" not found.`; }
-                return Object.keys(memoryStore).length ? JSON.stringify(Object.fromEntries(Object.entries(memoryStore).map(([k,v])=>[k,v.value])),null,2) : "Memory empty.";
-            },
-        },
-        memory_clear: {
-            icon: "🗑", category: "Memory",
-            description: "Clear specific memory key or all stored memory",
-            params: "{ key?: string }",
-            example: '{ "key": "user_name" }',
-            execute: async ({ key } = {}) => {
-                if (key) { updateMemory(p=>{const n={...p};delete n[key];return n;}); return `Deleted "${key}".`; }
-                updateMemory(()=>({})); return "Cleared all memory.";
-            },
-        },
-        code_run: {
-            icon: "⚡", category: "Dev",
-            description: "Execute Python, Javascript, C++, or Node code securely via Piston",
-            params: "{ language: string, code: string }",
-            example: '{ "language": "python", "code": "print(1+1)" }',
-            execute: async ({ language, code }) => {
-                if(!language || !code) return "Missing language or code";
-                try {
-                    const r = await fetch("https://emkc.org/api/v2/piston/execute", {
-                        method: "POST", headers: {"Content-Type":"application/json"},
-                        body: JSON.stringify({ language, version: "*", files: [{content: code}] })
-                    });
-                    const d = await r.json();
-                    if(d.message) return `Piston API Error: ${d.message}`;
-                    const out = d.run?.output || d.compile?.output || "No output";
-                    const codeStatus = d.run?.code !== undefined ? d.run.code : (d.compile?.code !== undefined ? d.compile.code : -1);
-                    return `Exit code: ${codeStatus}\nOutput:\n${out}`;
-                } catch(e) { return `Execution error: ${e.message}`; }
-            },
-        },
-        base64: {
-            icon: "🔐", category: "Dev",
-            description: "Encode or decode base64 strings",
-            params: "{ action: 'encode'|'decode', text: string }",
-            example: '{ "action": "encode", "text": "Hello World" }',
-            execute: async ({ action, text }) => {
-                try { return action==="encode"?btoa(unescape(encodeURIComponent(text))):action==="decode"?decodeURIComponent(escape(atob(text))):"action must be encode/decode"; }
-                catch(e){ return `Error: ${e.message}`; }
-            },
-        },
-        json_format: {
-            icon: "📋", category: "Dev",
-            description: "Parse, validate, format, or query JSON data",
-            params: '{ action: "format"|"validate"|"keys"|"query", json: string, path?: string }',
-            example: '{ "action": "format", "json": "{\\"a\\":1}" }',
-            execute: async ({ action, json, path }) => {
-                try {
-                    const p=JSON.parse(json);
-                    if(action==="validate") return "Valid JSON ✓";
-                    if(action==="keys") return `Keys: ${Object.keys(p).join(", ")}`;
-                    if(action==="query"&&path){ const v=path.split(".").reduce((o,k)=>o?.[k],p); return v!==undefined?JSON.stringify(v,null,2):`Path "${path}" not found`; }
-                    return JSON.stringify(p,null,2);
-                } catch(e){ return `Invalid JSON: ${e.message}`; }
-            },
-        },
-        random: {
-            icon: "🎲", category: "Utility",
-            description: "Generate random numbers, UUIDs, or pick from a list",
-            params: "{ type?: 'number'|'uuid'|'pick', min?: number, max?: number, choices?: string[], count?: number }",
-            example: '{ "type": "pick", "choices": ["Alice","Bob","Carol"], "count": 2 }',
-            execute: async ({ type="number", min=1, max=100, choices, count=1 } = {}) => {
-                if(type==="uuid") return Array.from({length:count},()=>"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c==="x"?r:r&0x3|0x8).toString(16)})).join("\n");
-                if(type==="pick"&&choices?.length) return `Picked: ${[...choices].sort(()=>Math.random()-.5).slice(0,count).join(", ")}`;
-                return `Random (${min}-${max}): ${Array.from({length:count},()=>Math.floor(Math.random()*(max-min+1))+min).join(", ")}`;
-            },
-        },
-        weather: {
-            icon: "🌤", category: "Data",
-            description: "Get current weather for any city (no API key needed)",
-            params: "{ city: string, lat?: number, lon?: number }",
-            example: '{ "city": "Tokyo" }',
-            execute: async ({ city, lat, lon }) => {
-                try {
-                    let la=lat,lo=lon;
-                    if(!la||!lo){ const g=await(await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1`)).json(); if(!g.results?.length) return `City "${city}" not found`; la=g.results[0].latitude;lo=g.results[0].longitude; }
-                    const d=await(await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weathercode&temperature_unit=celsius`)).json();
-                    const c=d.current, codes={0:"Clear",1:"Mainly clear",2:"Partly cloudy",3:"Overcast",45:"Fog",51:"Drizzle",61:"Rain",71:"Snow",80:"Showers",95:"Thunderstorm"};
-                    return `${city}: ${c.temperature_2m}°C, ${codes[c.weathercode]||"Code "+c.weathercode}\nHumidity: ${c.relative_humidity_2m}%\nWind: ${c.wind_speed_10m} km/h`;
-                } catch(e){ return `Weather error: ${e.message}`; }
-            },
-        },
-        deal_finder: {
-            icon: "💸", category: "Data",
-            description: "Find current discount/deal lines from Slickdeals, DealNews, Offers.com, CouponCabin (lightweight scrape via proxy)",
-            params: "{ query?: string, limit?: number }",
-            example: '{ "query": "laptop", "limit": 4 }',
-            execute: async ({ query = "", limit = 5 } = {}) => {
-                const safeLimit = Math.max(1, Math.min(10, Number(limit) || 5));
-                const q = query.trim().toLowerCase();
-                const sources = [
-                    { name: "Slickdeals", url: "https://slickdeals.net/deals/" },
-                    { name: "DealNews", url: "https://dealnews.com/" },
-                    { name: "Offers.com", url: "https://www.offers.com/" },
-                    { name: "CouponCabin", url: "https://www.couponcabin.com/coupons/" },
-                ];
-                const results = [];
-                const proxyFetch = async (url) => {
-                    const res = await fetch(`https://r.jina.ai/${url}`);
-                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                    return res.text();
-                };
-                for (const src of sources) {
-                    try {
-                        const text = await proxyFetch(src.url);
-                        const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
-                        const matches = [];
-                        for (const line of lines) {
-                            const lineLower = line.toLowerCase();
-                            if (q && !lineLower.includes(q)) continue;
-                            if (!(/\$[0-9]/.test(line) || /\d+%/.test(line) || /(coupon|code|deal|off)/i.test(line))) continue;
-                            if (line.length < 8 || line.length > 180) continue;
-                            if (matches.includes(line)) continue;
-                            matches.push(line);
-                            if (matches.length >= safeLimit) break;
-                        }
-                        if (matches.length === 0) results.push(`${src.name}: no visible deals matched${q ? ` \"${query}\"` : ""}.`);
-                        else results.push(...matches.map(m => `${src.name}: ${m}`));
-                    } catch (e) {
-                        results.push(`${src.name}: error (${e.message})`);
-                    }
-                }
-                return results.length ? results.slice(0, safeLimit * sources.length).join("\n") : "No deals found. Try a broader query.";
-            },
-        },
-        wikipedia: {
-            icon: "📖", category: "Knowledge",
-            description: "Search Wikipedia for factual information on any topic",
-            params: "{ query: string }",
-            example: '{ "query": "quantum computing" }',
-            execute: async ({ query }) => {
-                try {
-                    const r=await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(query.replace(/ /g,"_"))}`);
-                    if(!r.ok){ const s=await(await fetch(`https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(query)}&limit=3&format=json&origin=*`)).json(); return s[1]?.length?`Suggestions: ${s[1].join(", ")}`:`No results for "${query}"`; }
-                    const d=await r.json(); return `**${d.title}**\n${d.extract}\n${d.content_urls?.desktop?.page||""}`;
-                } catch(e){ return `Wikipedia error: ${e.message}`; }
-            },
-        },
-        summarize: {
-            icon: "✂", category: "Text",
-            description: "Summarize long text into key bullet points",
-            params: "{ text: string, bullets?: number }",
-            example: '{ "text": "Long text...", "bullets": 5 }',
-            execute: async ({ text, bullets=5 }) => {
-                if(!text) return "No text provided";
-                const s=text.match(/[^.!?]+[.!?]+/g)||[text];
-                return s.filter((_,i)=>i%Math.max(1,Math.floor(s.length/bullets))===0).slice(0,bullets).map(x=>`• ${x.trim()}`).join("\n");
-            },
-        },
-        color: {
-            icon: "🎨", category: "Dev",
-            description: "Convert between color formats: hex, rgb, hsl",
-            params: "{ color: string, to?: 'hex'|'rgb'|'hsl' }",
-            example: '{ "color": "#FF6B6B", "to": "rgb" }',
-            execute: async ({ color, to="rgb" }) => {
-                try {
-                    let r,g,b;
-                    if(color.startsWith("#")){const h=color.slice(1);r=parseInt(h.slice(0,2),16);g=parseInt(h.slice(2,4),16);b=parseInt(h.slice(4,6),16);}
-                    else if(color.startsWith("rgb")){[r,g,b]=color.match(/\d+/g).map(Number);}
-                    else return "Provide hex (#RRGGBB) or rgb(r,g,b)";
-                    if(to==="rgb") return `rgb(${r}, ${g}, ${b})`;
-                    if(to==="hex") return `#${[r,g,b].map(x=>x.toString(16).padStart(2,"0")).join("").toUpperCase()}`;
-                    if(to==="hsl"){r/=255;g/=255;b/=255;const mx=Math.max(r,g,b),mn=Math.min(r,g,b),l=(mx+mn)/2,d=mx-mn;let h=0,s=d?d/(1-Math.abs(2*l-1)):0;if(d){if(mx===r)h=((g-b)/d%6);else if(mx===g)h=(b-r)/d+2;else h=(r-g)/d+4;h/=6;}return `hsl(${Math.round(h*360)}, ${Math.round(s*100)}%, ${Math.round(l*100)}%)`;}
-                } catch(e){ return `Color error: ${e.message}`; }
-            },
-        },
-        web_fetch: {
-            icon: "🌐", category: "Data",
-            description: "Read a single URL server-side and return cleaned text content",
-            params: "{ url: string, maxLength?: number, mode?: 'article'|'full'|'outline' }",
-            example: '{ "url": "https://example.com", "maxLength": 2000 }',
-            execute: async ({ url, maxLength=3000, mode="article" }) => {
-                try {
-                    const payload = await callWebReader({ url, mode, maxChars: maxLength, includeLinks: false });
-                    return `${payload.title || payload.finalUrl}\n${payload.finalUrl}\n\n${payload.content || "No readable content extracted."}${payload.contentTruncated ? "\n\n[Content truncated]" : ""}`;
-                } catch(e){ return `Fetch error: ${e.message}`; }
-            },
-        },
-        web_read: {
-            icon: "📄", category: "Data",
-            description: "Read a web page, article, or text endpoint with metadata, headings, cleaned content, and optional links",
-            params: "{ url: string, maxChars?: number, mode?: 'article'|'full'|'outline', includeLinks?: boolean }",
-            example: '{ "url": "https://example.com/blog/post", "mode": "article", "maxChars": 3500, "includeLinks": true }',
-            execute: async ({ url, maxChars=3200, mode="article", includeLinks=true }) => {
-                try {
-                    const payload = await callWebReader({ url, mode, maxChars, includeLinks });
-                    return formatReadReport(payload, { includeLinks });
-                } catch (e) {
-                    return `Read error: ${e.message}`;
-                }
-            },
-        },
-        web_crawl: {
-            icon: "🕸", category: "Data",
-            description: "Server-side crawl a website or docs section across multiple linked pages and return structured text",
-            params: "{ url: string, maxPages?: number, maxDepth?: number, sameOrigin?: boolean, maxCharsPerPage?: number, includePatterns?: string[], excludePatterns?: string[] }",
-            example: '{ "url": "https://example.com/docs", "maxPages": 6, "maxDepth": 2, "sameOrigin": true, "includePatterns": ["/docs", "/guide"] }',
-            execute: async ({ url, maxPages=6, maxDepth=1, sameOrigin=true, maxCharsPerPage=1800, includePatterns=[], excludePatterns=[] }) => {
-                if (!url) return "Missing url";
-                try {
-                    const d = await callToolApi("/api/crawl.js", { url, maxPages, maxDepth, sameOrigin, maxCharsPerPage, includePatterns, excludePatterns });
-                    return formatCrawlReport(d);
-                } catch (e) {
-                    return `Crawler error: ${e.message}`;
-                }
-            },
-        },
-        regex: {
-            icon: "🔍", category: "Text",
-            description: "Test, match, or replace text using regex patterns",
-            params: "{ action: 'test'|'match'|'replace', text: string, pattern: string, flags?: string, replacement?: string }",
-            example: '{ "action": "match", "text": "hello world 123", "pattern": "\\\\d+", "flags": "g" }',
-            execute: async ({ action, text, pattern, flags="g", replacement="" }) => {
-                try {
-                    const re=new RegExp(pattern,flags);
-                    if(action==="test") return re.test(text)?"Match found ✓":"No match ✗";
-                    if(action==="match") return JSON.stringify(text.match(re),null,2)||"No matches";
-                    if(action==="replace") return text.replace(re,replacement);
-                    return "action must be test/match/replace";
-                } catch(e){ return `Regex error: ${e.message}`; }
-            },
-        },
-        hash: {
-            icon: "🔒", category: "Dev",
-            description: "Generate SHA-256 hash of text",
-            params: "{ text: string }",
-            example: '{ "text": "hello world" }',
-            execute: async ({ text }) => {
-                try {
-                    const buf=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(text));
-                    return `SHA-256: ${Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("")}`;
-                } catch(e){ return `Hash error: ${e.message}`; }
-            },
-        },
-        string_transform: {
-            icon: "🔄", category: "Text",
-            description: "Transform strings: reverse, slugify, camelCase, uppercase, lowercase, count",
-            params: "{ text: string, action: 'reverse'|'slug'|'camel'|'upper'|'lower'|'count' }",
-            example: '{ "text": "Hello World", "action": "slug" }',
-            execute: async ({ text, action }) => {
-                if(action==="reverse") return text.split("").reverse().join("");
-                if(action==="slug") return text.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
-                if(action==="camel") return text.toLowerCase().replace(/[^a-z0-9]+(.)/g,(_,c)=>c.toUpperCase());
-                if(action==="upper") return text.toUpperCase();
-                if(action==="lower") return text.toLowerCase();
-                if(action==="count") return `Length: ${text.length} chars, ${text.split(/\s+/).filter(Boolean).length} words`;
-                return "action must be reverse/slug/camel/upper/lower/count";
-            },
-        },
-        timer: {
-            icon: "⏱", category: "Utility",
-            description: "Start or stop a named timer to measure elapsed time",
-            params: "{ action: 'start'|'stop', name?: string }",
-            example: '{ "action": "start", "name": "task1" }',
-            execute: async ({ action, name="default" }) => {
-                if(action==="start"){ timerStore[name]=Date.now(); return `Timer "${name}" started.`; }
-                if(action==="stop"){ if(!timerStore[name]) return `Timer "${name}" not started.`; const ms=Date.now()-timerStore[name]; delete timerStore[name]; return `Timer "${name}": ${ms}ms (${(ms/1000).toFixed(2)}s)`; }
-                return "action must be start/stop";
-            },
-        },
-    };
-}
+function createTools() { return {}; }
 
 const buildSystemPrompt = (n, desc) => `You are an exceptionally capable autonomous AI agent.
 
@@ -1824,6 +1452,10 @@ async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MA
         try {
             log?.(`Dispatching to ${model} (attempt ${attempt + 1}/${maxAttempts})`);
             const controller = new AbortController();
+            if (signal) {
+                if (signal.aborted) controller.abort(signal.reason);
+                else signal.addEventListener("abort", () => controller.abort(signal.reason), { once: true });
+            }
             const timeoutId = setTimeout(() => controller.abort(), clientTimeoutMs);
             const res = await fetch(getToolApiUrl(HOSTED_CHAT_API_PATH), {
                 method: "POST",
@@ -1836,7 +1468,7 @@ async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MA
                 })),
                 credentials: "include",
                 cache: "no-store",
-                signal: signal || controller.signal,
+                signal: controller.signal,
             });
             clearTimeout(timeoutId);
 
@@ -2264,7 +1896,9 @@ export default function AgentFramework() {
     useEffect(() => localStorage.setItem("primary_model", primaryModel.id), [primaryModel]);
     useEffect(() => localStorage.setItem("fallback_models", JSON.stringify(fallbackModels.map(m => m.id))), [fallbackModels]);
     useEffect(() => localStorage.setItem("agent_convos_v4", JSON.stringify(conversations.map(serializeConversation))), [conversations]);
-    useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); });
+    useEffect(() => {
+        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [currentConversationId, conversations.length, running, activeTab]);
     useEffect(() => {
         setFallbackModels(prev => {
             const next = prev.filter((model, index, models) => (
@@ -2651,426 +2285,32 @@ export default function AgentFramework() {
             pushRunLog("Memory", `Semantic recall injected ${semanticRecall.hits.length} indexed chunk(s) into the latest prompt.`, "var(--text-dim)");
         }
 
-        const toolRequested = preparedQuery.trim().toLowerCase().startsWith("!tool ");
-        // FAST PATH: completion-only unless user explicitly requests tools
-        if (!toolRequested) {
-            const fastMessages = [{ role: "user", content: preparedQuery }];
-            try {
-            const logFn = (msg) => pushRunLog("System", msg, "var(--text-dim)");
-            const fastText = await callLLMStream(fastMessages, primaryModel.id, signal, (text) => {
-                updateRunConversation(c => ({ ...c, activeStream: text }));
-            }, { maxTokens: MAX_COMPLETION_TOKENS, log: logFn });
-
-                updateRunConversation(c => ({
-                    ...c,
-                    messages: [...c.messages, { role: "assistant", content: fastText }],
-                    activeStream: "",
-                    pendingSteps: [],
-                }));
-                setRunning(false);
-                abortRef.current = null;
-                return;
-            } catch (error) {
-                pushRunLog("System", `Fast path failed: ${error?.message || error}`, "var(--danger)");
-                setRunning(false);
-                abortRef.current = null;
-                return;
-            }
-        }
-
-        const toolDesc = toolList.map(([n, t]) => `• ${n}\n  Params: ${t.params}\n  Desc: ${t.description}`).join("\n\n");
-        const chain = [primaryModel, ...fallbackModels];
-        const memoryContext = formatMemoryContext(memoryStore);
-        const historyMessages = workingMemoryMessages;
-        const steps = [];
-        let totalToolCalls = 0;
-        let verificationCycles = 0;
-        let completed = false;
-        let liveCompactionLogged = false;
-        let contextRecoveryAttempts = 0;
-        let liveContextBudget = MAX_CONTEXT_CHARS;
-        let liveLatestUserBudget = MAX_CURRENT_QUERY_CHARS;
-        let lastPromptLog = "";
-        const syncMetrics = (patch = {}) => updateRunStrategy(state => ({
-            metrics: {
-                ...state.metrics,
-                ...patch,
-                updatedAt: new Date().toISOString(),
-            },
-        }));
+        pushRunLog("System", "Agentic tools disabled; completion-only mode.", "var(--text-dim)");
 
         try {
-            let routerDecision = { primary: "none", secondary: [], reason: "" };
-            try {
-                let routerCompactionLogged = false;
-                const routerMsgs = [{ role: "system", content: buildRouterPrompt(toolDesc) }];
-                if (memoryContext) routerMsgs.push({ role: "system", content: memoryContext });
-                if (episodicSummary) routerMsgs.push({ role: "system", content: episodicSummary });
-                if (semanticRecall.text) routerMsgs.push({ role: "system", content: semanticRecall.text });
-                for (const m of historyMessages.slice(-6)) {
-                    routerMsgs.push({ role: m.role, content: m.content });
-                }
-                routerMsgs.push({ role: "user", content: preparedQuery });
-                const routerText = await callLLMText(routerMsgs, chain, signal, {
-                    maxTokens: MAX_SUBAGENT_TOKENS,
-                    maxContextChars: Math.min(MAX_CONTEXT_CHARS, 70000),
-                    latestUserMaxChars: MAX_CURRENT_QUERY_CHARS,
-                    onCompacted: () => {
-                        if (!routerCompactionLogged) {
-                            pushRunLog("Router", "Router context was compacted before routing.", "var(--text-dim)");
-                            routerCompactionLogged = true;
-                        }
-                    },
-                });
-                routerDecision = { ...parseRouterResponse(routerText), updatedAt: new Date().toISOString() };
-                updateRunStrategy({ router: routerDecision });
-                const routerSummary = routerDecision.primary && routerDecision.primary !== "none"
-                    ? `Primary: ${routerDecision.primary}${routerDecision.secondary.length ? ` | Backup: ${routerDecision.secondary.join(", ")}` : ""}${routerDecision.reason ? ` | ${routerDecision.reason}` : ""}`
-                    : `No strong tool preference${routerDecision.reason ? ` | ${routerDecision.reason}` : ""}`;
-                pushRunLog("Router", routerSummary, routerDecision.primary !== "none" ? "var(--success)" : "var(--text-dim)");
-            } catch (e) {
-                pushRunLog("Router", `Router unavailable, continuing without guidance (${e.message}).`, "var(--danger)");
-            }
+            const chatMessages = [...historyMessages, { role: "user", content: preparedQuery }];
+            const fastText = await callLLMStream(chatMessages, primaryModel.id, signal, (text) => {
+                updateRunConversation(c => ({ ...c, activeStream: text }));
+            }, { maxTokens: MAX_COMPLETION_TOKENS, log: (msg) => pushRunLog("System", msg, "var(--text-dim)") });
 
-            let managerPlan = null;
-            try {
-                let plannerCompactionLogged = false;
-                const plannerMsgs = [{ role: "system", content: buildPlannerPrompt(toolDesc) }];
-                if (memoryContext) plannerMsgs.push({ role: "system", content: memoryContext });
-                if (episodicSummary) plannerMsgs.push({ role: "system", content: episodicSummary });
-                if (semanticRecall.text) plannerMsgs.push({ role: "system", content: semanticRecall.text });
-                if (routerDecision.primary && routerDecision.primary !== "none") {
-                    plannerMsgs.push({
-                        role: "system",
-                        content: `Router preference:
-Primary tool: ${routerDecision.primary}
-Backup tools: ${routerDecision.secondary.join(", ") || "none"}
-Reason: ${routerDecision.reason || "No reason provided."}`,
-                    });
-                }
-                for (const m of historyMessages.slice(-6)) {
-                    plannerMsgs.push({ role: m.role, content: m.content });
-                }
-                plannerMsgs.push({ role: "user", content: preparedQuery });
-                const plannerText = await callLLMText(plannerMsgs, chain, signal, {
-                    maxTokens: MAX_SUBAGENT_TOKENS,
-                    maxContextChars: Math.min(MAX_CONTEXT_CHARS, 80000),
-                    latestUserMaxChars: MAX_CURRENT_QUERY_CHARS,
-                    onCompacted: () => {
-                        if (!plannerCompactionLogged) {
-                            pushRunLog("Planner", "Planner context was compacted before planning.", "var(--text-dim)");
-                            plannerCompactionLogged = true;
-                        }
-                    },
-                });
-                managerPlan = { ...parsePlannerResponse(plannerText), updatedAt: new Date().toISOString() };
-                updateRunStrategy({ plan: managerPlan });
-                pushRunLog(
-                    "Planner",
-                    `${managerPlan.goal || managerPlan.notes || "Execution blueprint ready."}${managerPlan.objectives?.length ? ` | Objectives: ${managerPlan.objectives.length}` : ""}${managerPlan.complexity ? ` | Complexity: ${managerPlan.complexity}` : ""}`,
-                    "var(--success)"
-                );
-            } catch (e) {
-                pushRunLog("Planner", `Planner unavailable, continuing without blueprint (${e.message}).`, "var(--danger)");
-            }
-
-            const llmMsgs = [{ role: "system", content: buildSystemPrompt(toolList.length, toolDesc) }];
-            if (memoryContext) {
-                llmMsgs.push({ role: "system", content: memoryContext });
-            }
-            if (episodicSummary) {
-                llmMsgs.push({ role: "system", content: episodicSummary });
-            }
-            if (routerDecision.primary && routerDecision.primary !== "none") {
-                llmMsgs.push({
-                    role: "system",
-                    content: `Tool Router guidance:
-Primary tool: ${routerDecision.primary}
-Backup tools: ${routerDecision.secondary.join(", ") || "none"}
-Reason: ${routerDecision.reason || "No reason provided."}
-Start by considering the router's primary tool unless the evidence clearly points elsewhere.`,
-                });
-            }
-            if (managerPlan) {
-                llmMsgs.push({ role: "system", content: formatPlanForSystem(managerPlan) });
-            }
-            if (queryWasTrimmed || workingMemoryTrimmed || episodicSummary || semanticRecall.text) {
-                const notes = [];
-                if (queryWasTrimmed) notes.push("- The latest user input was trimmed to fit the provider context window.");
-                if (workingMemoryTrimmed || episodicSummary) notes.push("- Older conversation turns were compiled into a rolling episodic summary plus a sliding working window.");
-                if (semanticRecall.text) notes.push(`- Semantic recall injected ${semanticRecall.hits.length} indexed chunk(s) from attachments and prior tool outputs.`);
-                llmMsgs.push({
-                    role: "system",
-                    content: `Context management notes:
-${notes.join("\n")}`,
-                });
-            }
-            for (const m of historyMessages) {
-                llmMsgs.push({ role: m.role, content: m.content });
-            }
-            llmMsgs.push({ role: "user", content: modelUserContent });
-
-            for (let i = 0; i < MAX_ITERATIONS; i++) {
-                if (signal.aborted) throw new Error("aborted");
-                syncMetrics({ iterations: i + 1, toolCalls: totalToolCalls });
-                let fullResponseText = "";
-                let lastErr = null;
-                let retryWithReducedContext = false;
-                let runtimeMessages = llmMsgs;
-
-                if (i > 0 && runMemoryEngine.semanticChunks.length) {
-                    const runtimeRecall = buildSemanticContext(semanticSearchText, runMemoryEngine.semanticChunks);
-                    if (runtimeRecall.text && runtimeRecall.text !== semanticRecall.text) {
-                        const insertAt = llmMsgs.findIndex(message => message.role !== "system");
-                        runtimeMessages = [...llmMsgs];
-                        runtimeMessages.splice(insertAt === -1 ? runtimeMessages.length : insertAt, 0, {
-                            role: "system",
-                            content: runtimeRecall.text,
-                        });
-                    }
-                }
-
-                const preparedLlm = await prepareMessagesForDispatch(runtimeMessages, {
-                    chain,
-                    maxTokens: MAX_COMPLETION_TOKENS,
-                    maxContextChars: liveContextBudget,
-                    latestUserMaxChars: liveLatestUserBudget,
-                });
-
-                if (preparedLlm.trimmed && !liveCompactionLogged) {
-                    pushRunLog("Tokens", "Prompt exceeded token budget. Compaction pipeline engaged.", "var(--danger)");
-                    liveCompactionLogged = true;
-                }
-
-                const promptLog = `Prompt ${preparedLlm.tokenCount}/${preparedLlm.promptBudget} tokens before dispatch${preparedLlm.trimmed ? " after compaction" : ""}.`;
-                if (promptLog !== lastPromptLog) {
-                    pushRunLog("Tokens", promptLog, preparedLlm.trimmed ? "var(--danger)" : "var(--text-dim)");
-                    lastPromptLog = promptLog;
-                }
-                persistRunMemoryEngine({
-                    lastPromptStats: {
-                        tokenCount: preparedLlm.tokenCount,
-                        promptBudget: preparedLlm.promptBudget,
-                        promptLimit: preparedLlm.promptLimit,
-                        completionReserve: preparedLlm.completionReserve,
-                        trimmed: preparedLlm.trimmed,
-                        iteration: i + 1,
-                        updatedAt: new Date().toISOString(),
-                    },
-                });
-
-                modelLoop:
-                for (const model of chain) {
-                    if (signal.aborted) throw new Error("aborted");
-                    try {
-                        fullResponseText = await callLLMStream(preparedLlm.messages, model, signal, (partialText) => {
-                            updateRunConversation(c => ({ ...c, activeStream: partialText }));
-                        }, { maxTokens: MAX_COMPLETION_TOKENS });
-                        break;
-                    } catch (e) {
-                        lastErr = e;
-                        if (isContextLengthError(e)) {
-                            retryWithReducedContext = true;
-                            break modelLoop;
-                        }
-                        if (e.message.includes("402") || e.message.includes("429") || e.message === "rate_limited") {
-                            pushRunLog(
-                                "System",
-                                `${HOSTED_API_LABEL} failed (${e.message}). Falling back to the next model...`,
-                                "var(--danger)"
-                            );
-                            continue;
-                        }
-                        throw e;
-                    }
-                    if (fullResponseText) break;
-                }
-
-                if (retryWithReducedContext) {
-                    contextRecoveryAttempts += 1;
-                    if (contextRecoveryAttempts > 2) {
-                        throw new Error("The request is still too large after context compaction. Shorten the prompt or attach smaller files.");
-                    }
-                    liveContextBudget = contextRecoveryAttempts === 1
-                        ? Math.max(MIN_CONTEXT_CHARS, Math.floor(liveContextBudget * 0.55))
-                        : Math.max(MIN_CONTEXT_CHARS, Math.floor(liveContextBudget * 0.4));
-                    liveLatestUserBudget = Math.max(1200, Math.min(liveLatestUserBudget, liveContextBudget));
-                    pushRunLog("System", "Model context limit was exceeded. Retrying with tighter history retention.", "var(--danger)");
-                    i -= 1;
-                    continue;
-                }
-
-                contextRecoveryAttempts = 0;
-
-                if (!fullResponseText) throw new Error(lastErr?.message || "All models failed");
-                updateRunConversation(c => ({ ...c, activeStream: null }));
-
-                const parsed = parseXMLAgentResponse(fullResponseText);
-                const assistantHistoryText = sanitizeAssistantHistoryText(fullResponseText, parsed);
-                const sc = { iteration: i + 1, ts: new Date().toISOString() };
-                const parsedActions = parsed.actions?.length
-                    ? parsed.actions
-                    : (parsed.action ? [{ name: parsed.action, input: parsed.action_input || {} }] : []);
-
-                if (parsed.final_answer && parsedActions.length === 0) {
-                    pushRunLog("Synthesizer", "Synthesizer is combining results...", "var(--text-dim)");
-                    let verificationReport = null;
-                    let shouldRevise = false;
-                    pushRunLog("Verifier", "Verifier is reviewing the draft answer...", "var(--text-dim)");
-                    try {
-                        const verifierText = await callLLMText([
-                            { role: "system", content: buildVerifierPrompt({ query: preparedQuery, plan: managerPlan, steps, answer: parsed.final_answer }) },
-                            { role: "user", content: preparedQuery },
-                            { role: "assistant", content: parsed.final_answer },
-                        ], chain, signal, {
-                            maxTokens: MAX_VERIFIER_TOKENS,
-                            maxContextChars: Math.min(MAX_CONTEXT_CHARS, 80000),
-                            latestUserMaxChars: MAX_CURRENT_QUERY_CHARS,
-                        });
-                        verificationReport = { ...parseVerifierResponse(verifierText), updatedAt: new Date().toISOString() };
-                        updateRunStrategy(state => ({
-                            verification: verificationReport,
-                            metrics: {
-                                ...state.metrics,
-                                verificationPasses: state.metrics.verificationPasses + (verificationReport.status === "pass" ? 1 : 0),
-                                verificationRevisions: state.metrics.verificationRevisions + (verificationReport.status === "revise" ? 1 : 0),
-                                updatedAt: new Date().toISOString(),
-                            },
-                        }));
-                        steps.push({ type: "verification", verdict: verificationReport.status, feedback: verificationReport, ...sc });
-                        if (verificationReport.status === "revise" && verificationCycles < MAX_VERIFICATION_CYCLES) {
-                            verificationCycles += 1;
-                            shouldRevise = true;
-                            pushRunLog("Verifier", verificationReport.summary || "Verifier requested another pass.", "var(--danger)");
-                            llmMsgs.push({ role: "assistant", content: assistantHistoryText });
-                            llmMsgs.push({ role: "user", content: `Verifier feedback:
-${formatVerifierFeedback(verificationReport)}
-
-Revise the answer. Use more tools if needed before finalizing.` });
-                        } else {
-                            pushRunLog(
-                                "Verifier",
-                                verificationReport.summary || (verificationReport.status === "pass" ? "Verifier approved the answer." : "Returning best effort answer."),
-                                verificationReport.status === "pass" ? "var(--success)" : "var(--danger)"
-                            );
-                        }
-                    } catch (e) {
-                        pushRunLog("Verifier", `Verifier unavailable, returning draft (${e.message}).`, "var(--danger)");
-                    }
-
-                    if (shouldRevise) continue;
-
-                    steps.push({ type: "final", thought: parsed.thought, answer: assistantHistoryText, ...sc });
-                    const persistedSteps = sanitizeStepsForHistory(steps);
-                    persistAssistantMessage({ role: "assistant", content: assistantHistoryText, steps: persistedSteps });
-                    pushRunLog("System", "All processes completed successfully.", "var(--success)");
-                    completed = true;
-                    break;
-                }
-
-                if (parsedActions.length > 0) {
-                    const actions = parsedActions.slice(0, MAX_TOOL_CALLS_PER_ITERATION);
-                    const wasTrimmed = parsedActions.length > actions.length;
-                    pushRunLog(
-                        "Agent",
-                        `Delegating ${actions.length} tool call${actions.length > 1 ? "s" : ""}${wasTrimmed ? ` (trimmed from ${parsedActions.length})` : ""}.`,
-                        "var(--accent-solid)"
-                    );
-                    const observations = [];
-
-                    for (let actionIndex = 0; actionIndex < actions.length; actionIndex++) {
-                        const actionCall = actions[actionIndex];
-                        const tool = tools[actionCall.name];
-                        let obs;
-                        const t0 = performance.now();
-                        try {
-                            obs = tool ? await tool.execute(actionCall.input || {}) : `Unknown tool: "${actionCall.name}"`;
-                        } catch (e) {
-                            obs = `Tool error: ${e.message}`;
-                        }
-                        const durationMs = Math.round(performance.now() - t0);
-                        const firewall = firewallToolOutput(actionCall.name, obs);
-
-                        if (firewall.wasJson || firewall.wasHtml || firewall.chunkCount > 1) {
-                            const notes = [];
-                            if (firewall.wasJson) notes.push("pruned JSON");
-                            if (firewall.wasHtml) notes.push("cleaned HTML");
-                            if (firewall.chunkCount > 1) notes.push(`chunked to ${firewall.chunkCount}`);
-                            pushRunLog("Firewall", `[${actionCall.name}] ${notes.join(" | ")}.`, "var(--text-dim)");
-                        }
-                        pushRunLog("Agent", `[${actionCall.name}] finished in ${durationMs}ms.`, tool ? "var(--success)" : "var(--danger)");
-
-                        const toolChunks = buildSemanticChunks(buildToolSemanticDocs(actionCall.name, firewall, sc.ts), { sourceType: "tool" });
-                        if (toolChunks.length) {
-                            persistRunMemoryEngine((current) => ({
-                                semanticChunks: mergeSemanticChunks(current.semanticChunks, toolChunks),
-                            }));
-                        }
-
-                        totalToolCalls += 1;
-                        syncMetrics({ iterations: i + 1, toolCalls: totalToolCalls });
-                        steps.push({
-                            type: "action",
-                            thought: actionIndex === 0 ? parsed.thought : "",
-                            action: actionCall.name,
-                            input: actionCall.input,
-                            observation: firewall.agentText,
-                            firewallMeta: {
-                                chunkCount: firewall.chunkCount,
-                                tokenEstimate: firewall.tokenEstimate,
-                                wasJson: firewall.wasJson,
-                                wasHtml: firewall.wasHtml,
-                            },
-                            batchIndex: actionIndex + 1,
-                            batchSize: actions.length,
-                            durationMs,
-                            ...sc,
-                        });
-                        updateRunConversation(c => ({ ...c, pendingSteps: [...steps] }));
-                        observations.push({
-                            action: actionCall.name,
-                            input: actionCall.input || {},
-                            observation: firewall.agentText,
-                            durationMs,
-                            firewallMeta: {
-                                chunkCount: firewall.chunkCount,
-                                tokenEstimate: firewall.tokenEstimate,
-                                wasJson: firewall.wasJson,
-                                wasHtml: firewall.wasHtml,
-                            },
-                        });
-                    }
-
-                    llmMsgs.push({ role: "assistant", content: assistantHistoryText });
-                    llmMsgs.push({ role: "user", content: formatObservationBundle(observations, wasTrimmed) });
-                } else {
-                    const ans = assistantHistoryText || parsed.thought || "Execution ended without a final answer.";
-                    steps.push({ type: "final", thought: "Execution ended without final answer.", answer: ans, ...sc });
-                    const persistedSteps = sanitizeStepsForHistory(steps);
-                    persistAssistantMessage({ role: "assistant", content: ans, steps: persistedSteps });
-                    completed = true;
-                    break;
-                }
-            }
-
-            if (!completed && !signal.aborted) {
-                const persistedSteps = sanitizeStepsForHistory(steps);
-                persistAssistantMessage({
-                    role: "assistant",
-                    content: null,
-                    error: "Iteration limit reached before a verified final answer was produced.",
-                    steps: persistedSteps,
-                });
-            }
+            updateRunConversation(c => ({
+                ...c,
+                messages: [...c.messages, { role: "assistant", content: fastText }],
+                activeStream: "",
+                pendingSteps: [],
+            }));
         } catch (e) {
-            const persistedSteps = sanitizeStepsForHistory(steps);
-            persistAssistantMessage({
-                role: "assistant",
-                content: null,
-                error: e.message === "aborted" ? "Stopped by user." : e.message,
-                steps: persistedSteps,
-            });
-        } finally { setRunning(false); abortRef.current = null; inputRef.current?.focus(); }
+            updateRunConversation(c => ({
+                ...c,
+                messages: [...c.messages, { role: "assistant", content: null, error: e.message === "aborted" ? "Stopped by user." : e.message, steps: [] }],
+                activeStream: "",
+                pendingSteps: [],
+            }));
+        } finally {
+            setRunning(false);
+            abortRef.current = null;
+            inputRef.current?.focus();
+        }
     };
 
     const handleKey = (e) => {
@@ -3195,9 +2435,6 @@ Revise the answer. Use more tools if needed before finalizing.` });
     const tabConfig = [
         { id: "chat", label: "💬 Chat" },
         { id: "docs", label: "📘 Docs" },
-        { id: "strategy", label: "🧭 Strategy" },
-        { id: "tools", label: `🔧 Tools (${toolList.length})` },
-        { id: "memory", label: `🧠 Memory (${Object.keys(memoryStore).length})` },
         { id: "logs", label: `📜 Logs (${systemLogs.length})` },
     ];
 
@@ -4007,9 +3244,6 @@ Revise the answer. Use more tools if needed before finalizing.` });
                                 <div className="agent-buttons" style={{ marginBottom: 8 }}>
                                     <button className={`btn ${activeTab === "chat" ? "primary" : ""}`} onClick={() => setActiveTab("chat")}>💬 Chat</button>
                                     <button className={`btn ${activeTab === "docs" ? "primary" : ""}`} onClick={() => setActiveTab("docs")}>📘 Docs</button>
-                                    <button className={`btn ${activeTab === "strategy" ? "primary" : ""}`} onClick={() => setActiveTab("strategy")}>🧭 Strategy</button>
-                                    <button className={`btn ${activeTab === "tools" ? "primary" : ""}`} onClick={() => setActiveTab("tools")}>🔧 Tools ({toolList.length})</button>
-                                    <button className={`btn ${activeTab === "memory" ? "primary" : ""}`} onClick={() => setActiveTab("memory")}>🧠 Memory ({Object.keys(memoryStore).length})</button>
                                     <button className={`btn ${activeTab === "logs" ? "primary" : ""}`} onClick={() => setActiveTab("logs")}>📜 Logs ({systemLogs.length})</button>
                                     <button className="btn" onClick={newConv}>New</button>
                                     <button className="btn" onClick={exportConv} disabled={!allMessages.length}>Export</button>

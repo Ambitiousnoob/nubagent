@@ -1,0 +1,16 @@
+Retrieving project…
+> Running Dev Command “vite --port $PORT”
+
+  [32m[1mVITE[22m v4.5.14[39m  [2mready in [0m[1m493[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m3001[22m/[39m
+[2m  [32m➜[39m  [1mNetwork[22m[2m: use [22m[1m--host[22m[2m to expose[22m
+[2m[32m  ➜[39m[22m[2m  press [22m[1mh[22m[2m to show help[22m
+> Ready! Available at http://localhost:3001
+
+[User] hi
+[System] AI Client ready. Pool: 3 API keys.
+[Gemini Error] Error: Timed out after 60000ms
+    at Timeout._onTimeout (/root/.bot/.downloads/dpl_4zt6md8TW8JtbGdQztFNV91EeZXn/src/api/chat.js:320:64)
+    at listOnTimeout (node:internal/timers:605:17)
+    at process.processTimers (node:internal/timers:541:7)
