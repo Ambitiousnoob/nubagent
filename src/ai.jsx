@@ -1519,6 +1519,33 @@ async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MA
                 }
             }
             log?.(`Stream complete after ${chunkCount} chunk(s).`);
+
+            // Fallback: some providers may not stream deltas; fetch non-stream if we got nothing.
+            if (!fullText && chunkCount === 0) {
+                log?.("No stream chunks received; retrying as non-stream.");
+                const nonStreamRes = await fetch(getToolApiUrl(HOSTED_CHAT_API_PATH), {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(buildOpenRouterRequestBody({
+                        model,
+                        maxTokens,
+                        messages,
+                        stream: false,
+                    })),
+                    credentials: "include",
+                    cache: "no-store",
+                    signal: controller.signal,
+                });
+                if (!nonStreamRes.ok) {
+                    const errText = await readApiErrorText(nonStreamRes);
+                    throw new Error(`${HOSTED_API_LABEL} fallback HTTP ${nonStreamRes.status}: ${errText}`);
+                }
+                const json = await nonStreamRes.json();
+                const text = json?.choices?.[0]?.message?.content || json?.output_text || "";
+                onUpdate(text);
+                return text;
+            }
+
             return fullText;
         } catch (e) {
             if (e.name === "AbortError") throw e;
