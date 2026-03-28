@@ -1448,8 +1448,8 @@ function createTools() {
         view_image: {
             category: "Search",
             icon: "",
-            description: "Inspect an image URL for metadata (content type, size) to verify a link.",
-            example: "view_image: https://example.com/pic.jpg",
+            description: "Analyze an image URL and describe what is visible, including text when available.",
+            example: "view_image: https://example.com/screenshot.png",
         },
     };
 }
