@@ -21,6 +21,8 @@ const MAX_OBSERVATION_CHARS = 2400;
 const MAX_COMPLETION_TOKENS = 4096;
 const MAX_SUBAGENT_TOKENS = 900;
 const MAX_VERIFIER_TOKENS = 1200;
+const MAX_RENDER_CHARS = 12000;
+const STREAM_RENDER_CAP = 12000;
 const MAX_UPLOAD_FILES = 6;
 const MAX_FILE_INSERT_CHARS = 18000;
 const MAX_TOTAL_UPLOAD_CHARS = 60000;
@@ -1691,6 +1693,24 @@ function DocCodeBlock({ code, language = "text" }) {
     );
 }
 
+function MessageContent({ text }) {
+    if (!text) return null;
+    const isLong = typeof text === "string" && text.length > MAX_RENDER_CHARS;
+    if (!isLong) {
+        return <div className="af-msg-answer text" dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }} />;
+    }
+    const preview = text.slice(0, MAX_RENDER_CHARS);
+    return (
+        <div className="af-msg-answer text">
+            <div dangerouslySetInnerHTML={{ __html: renderMarkdown(preview + " …") }} />
+            <details className="af-long-msg">
+                <summary>Show full message ({text.length.toLocaleString()} chars)</summary>
+                <div dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }} />
+            </details>
+        </div>
+    );
+}
+
 // ====================== MAIN COMPONENT ======================
 export default function AgentFramework() {
     const initialConversationRef = useRef(null);
@@ -2582,6 +2602,9 @@ export default function AgentFramework() {
 .af-msg-answer .md-inline{background:rgba(139,92,246,0.15);padding:2px 6px;border-radius:4px;font-family:var(--mono);font-size:12px;color:#c4b5fd;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;}
 .af-msg-answer .md-h1{font-size:18px;font-weight:700;margin:12px 0 6px;color:#e2e8f0;} .af-msg-answer .md-h2{font-size:16px;font-weight:600;margin:10px 0 4px;color:#e2e8f0;} .af-msg-answer .md-h3{font-size:14px;font-weight:600;margin:8px 0 4px;color:#cbd5e1;}
 .af-msg-answer .md-li{padding-left:16px;position:relative;margin:2px 0;}
+.af-long-msg{margin-top:10px;border:1px solid var(--border);border-radius:12px;padding:10px 12px;background:rgba(255,255,255,0.03);}
+.af-long-msg summary{cursor:pointer;font-weight:700;color:var(--text-muted);}
+.af-long-msg[open]{border-color:var(--border-focus);}
 .af-msg-error{background:var(--danger-bg);border:1px solid rgba(248,113,113,0.2);border-radius:8px;padding:12px 16px;color:var(--danger);font-size:13px;margin-top:8px;}
 .af-steps{margin-bottom:8px;}
 .af-step{border:1px solid var(--border);border-radius:8px;margin-bottom:6px;overflow:hidden;transition:all .2s;}
@@ -3182,9 +3205,9 @@ export default function AgentFramework() {
                                     )}
                                     {msg.error ? (
                                         <div className="af-msg-error text">⚠ {msg.error}</div>
-                                    ) : msg.content ? (
-                                        <div className="af-msg-answer text" dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
-                                    ) : null}
+                                    ) : (
+                                        <MessageContent text={msg.content} />
+                                    )}
                                 </div>
                             ))}
 
@@ -3210,7 +3233,10 @@ export default function AgentFramework() {
                                     <div className="af-msg-answer">
                                         {/* A simple inline parser for streaming XML */}
                                         {(() => {
-                                            const parts = conv.activeStream.split(/(<thought>[\s\S]*?(?:<\/thought>|$))/);
+                                            const streamText = conv.activeStream.length > STREAM_RENDER_CAP
+                                                ? conv.activeStream.slice(-STREAM_RENDER_CAP)
+                                                : conv.activeStream;
+                                            const parts = streamText.split(/(<thought>[\s\S]*?(?:<\/thought>|$))/);
                                             return parts.map((part, i) => {
                                                 if (part.startsWith("<thought>")) {
                                                     const thoughtText = part.replace(/^<thought>\n?/, "").replace(/\n?<\/thought>$/, "");
