@@ -1757,6 +1757,7 @@ export default function AgentFramework() {
         initialConversationRef.current = createConversation();
     }
     const [settingsOpen, setSettingsOpen] = useState(false);
+    const [multiThink, setMultiThink] = useState(false);
     const [headerOpen, setHeaderOpen] = useState(false);
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [uploadStatus, setUploadStatus] = useState("");
@@ -2415,26 +2416,64 @@ export default function AgentFramework() {
 
         try {
             const chatMessages = [...historyMessages, { role: "user", content: preparedQuery }];
-            const { text: fastText, toolsUsed = [] } = await callLLMStream(chatMessages, primaryModel.id, signal, (text) => {
-                updateRunConversation(c => ({ ...c, activeStream: text }));
-            }, {
-                maxTokens: MAX_COMPLETION_TOKENS,
-                log: (msg) => pushRunLog("System", msg, "var(--text-dim)"),
-                onToolCall: (name, args) => pushRunLog("Tool", `Called ${name} with ${JSON.stringify(args)}`, "var(--accent)"),
-            });
 
-            if (Array.isArray(toolsUsed) && toolsUsed.length) {
-                toolsUsed.forEach((entry) => {
-                    pushRunLog("Tool", `Called ${entry?.name || "tool"} with ${entry?.args || "{}"}`, "var(--accent)");
+            if (!multiThink) {
+                const { text: fastText, toolsUsed = [] } = await callLLMStream(chatMessages, primaryModel.id, signal, (text) => {
+                    updateRunConversation(c => ({ ...c, activeStream: text }));
+                }, {
+                    maxTokens: MAX_COMPLETION_TOKENS,
+                    log: (msg) => pushRunLog("System", msg, "var(--text-dim)"),
+                    onToolCall: (name, args) => pushRunLog("Tool", `Called ${name} with ${JSON.stringify(args)}`, "var(--accent)"),
                 });
-            }
 
-            updateRunConversation(c => ({
-                ...c,
-                messages: [...c.messages, { role: "assistant", content: fastText }],
-                activeStream: "",
-                pendingSteps: [],
-            }));
+                if (Array.isArray(toolsUsed) && toolsUsed.length) {
+                    toolsUsed.forEach((entry) => {
+                        pushRunLog("Tool", `Called ${entry?.name || "tool"} with ${entry?.args || "{}"}`, "var(--accent)");
+                    });
+                }
+
+                updateRunConversation(c => ({
+                    ...c,
+                    messages: [...c.messages, { role: "assistant", content: fastText }],
+                    activeStream: "",
+                    pendingSteps: [],
+                }));
+            } else {
+                pushRunLog("System", "Multi-process thinking enabled: launching two parallel drafts.", "var(--text-dim)");
+                const thinkerLabels = ["Alpha", "Beta"];
+                const thinkerPromises = thinkerLabels.map(label => {
+                    const thinkerMessages = [
+                        BRAND_SYSTEM_MESSAGE,
+                        { role: "system", content: `You are thinker ${label}. Produce an independent best-possible answer. Do not mention other thinkers.` },
+                        ...chatMessages,
+                    ];
+                    return callLLMStream(thinkerMessages, primaryModel.id, signal, () => {}, {
+                        maxTokens: MAX_COMPLETION_TOKENS,
+                        log: (msg) => pushRunLog(`System`, `[${label}] ${msg}`, "var(--text-dim)"),
+                        onToolCall: (name, args) => pushRunLog("Tool", `[${label}] Called ${name} with ${JSON.stringify(args)}`, "var(--accent)"),
+                    }).then(res => ({ label, ...res }));
+                });
+
+                const drafts = await Promise.all(thinkerPromises);
+                const combined = drafts
+                    .map(draft => `## ${draft.label}\n${draft.text || draft.content || ""}`.trim())
+                    .join("\n\n");
+
+                drafts.forEach(draft => {
+                    if (Array.isArray(draft.toolsUsed) && draft.toolsUsed.length) {
+                        draft.toolsUsed.forEach(entry => {
+                            pushRunLog("Tool", `[${draft.label}] Called ${entry?.name || "tool"} with ${entry?.args || "{}"}`, "var(--accent)");
+                        });
+                    }
+                });
+
+                updateRunConversation(c => ({
+                    ...c,
+                    messages: [...c.messages, { role: "assistant", content: combined }],
+                    activeStream: "",
+                    pendingSteps: [],
+                }));
+            }
         } catch (e) {
             updateRunConversation(c => ({
                 ...c,
@@ -2853,6 +2892,13 @@ export default function AgentFramework() {
                                         <span>{model.icon} {model.label}</span>
                                     </label>
                                 ))}
+                            </div>
+                            <div style={{ display: "grid", gap: 6, marginTop: 6, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-input)", fontSize: 13 }}>
+                                <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                    <input type="checkbox" checked={multiThink} onChange={e => setMultiThink(e.target.checked)} />
+                                    <span>Multi-process thinking (run 2 parallel drafts and merge)</span>
+                                </label>
+                                <small style={{ color: "var(--text-muted)" }}>Runs two independent drafts (Alpha/Beta) in parallel and combines them for a more reliable answer.</small>
                             </div>
                             <div className="af-api-actions">
                                 <span>{HOSTED_API_ENABLED ? `${HOSTED_API_LABEL} active` : "Server API offline"}</span>
