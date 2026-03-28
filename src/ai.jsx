@@ -2573,7 +2573,7 @@ export default function AgentFramework() {
 
         try {
             const thinkPrompt = thinkAloud ? [{ role: "system", content: "Think step by step. Show a concise <thought> plan before answering." }] : [];
-            const chatMessages = [...historyMessages, ...thinkPrompt, { role: "user", content: preparedQuery }];
+            const chatMessages = [...historyMessages, ...thinkPrompt, { role: "user", content: modelUserContent }];
 
             if (!multiThink) {
                 const { text: fastText, toolsUsed = [] } = await callLLMStream(chatMessages, primaryModel.id, signal, (text) => {

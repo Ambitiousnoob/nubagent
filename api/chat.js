@@ -60,7 +60,75 @@ const wantsStream = (body = {}) => {
 
 const TOOL_DEFINITIONS = [calcDef, searchDef, fetchDef, imageSearchDef, viewImageDef];
 
-const executeTool = async (toolCall) => {
+const getMessageText = (content) => {
+    if (typeof content === "string") return content;
+    if (!Array.isArray(content)) return "";
+    return content
+        .filter((part) => part?.type === "text" && typeof part.text === "string")
+        .map((part) => part.text)
+        .join("\n\n");
+};
+
+const extractAttachmentOcrEntries = (messages = []) => {
+    const latestUserMessage = [...(Array.isArray(messages) ? messages : [])]
+        .reverse()
+        .find((message) => message?.role === "user");
+    const source = getMessageText(latestUserMessage?.content || latestUserMessage) || "";
+    if (!source) return [];
+
+    const entries = [];
+    const pattern = /--- OCR:\s*(.+?) ---\n([\s\S]*?)(?=\n{2}--- (?:OCR|File):|\n{2}Relevant retrieved context:|$)/g;
+    let match;
+    while ((match = pattern.exec(source)) !== null) {
+        const name = String(match[1] || "").trim();
+        const text = String(match[2] || "").trim();
+        if (!name || !text) continue;
+        entries.push({ name, text });
+    }
+    return entries;
+};
+
+const resolveAttachmentViewImage = (args, messages = []) => {
+    const url = String(args?.url || "").trim();
+    if (!/^https?:\/\//i.test(url)) return null;
+
+    let parsed;
+    try {
+        parsed = new URL(url);
+    } catch {
+        return null;
+    }
+
+    const ocrEntries = extractAttachmentOcrEntries(messages);
+    if (!ocrEntries.length) return null;
+
+    const fileName = decodeURIComponent(parsed.pathname.split("/").pop() || "").toLowerCase();
+    const matched = ocrEntries.find((entry) => entry.name.toLowerCase() === fileName)
+        || ocrEntries.find((entry) => fileName && entry.name.toLowerCase().includes(fileName))
+        || (parsed.hostname.toLowerCase() === "example.com" && ocrEntries.length === 1 ? ocrEntries[0] : null);
+
+    if (!matched && parsed.hostname.toLowerCase() !== "example.com") return null;
+
+    if (!matched) {
+        return JSON.stringify({
+            url,
+            source: "attachment_context",
+            note: "This URL appears to be a placeholder for an uploaded attachment that is already present in the conversation. Do not fetch it remotely. Use the attachment OCR/context already provided in the prompt.",
+        });
+    }
+
+    const ocrText = matched.text.length > 5000 ? `${matched.text.slice(0, 5000)}...` : matched.text;
+    return JSON.stringify({
+        url,
+        source: "attachment_ocr",
+        attachmentName: matched.name,
+        summary: ocrText.slice(0, 1200),
+        ocrText,
+        note: "This URL maps to an uploaded attachment already present in the conversation. Use this OCR/context instead of attempting a remote fetch.",
+    });
+};
+
+const executeTool = async (toolCall, context = {}) => {
     const name = toolCall?.function?.name;
     const argsRaw = toolCall?.function?.arguments || "{}";
     let args = {};
@@ -74,7 +142,11 @@ const executeTool = async (toolCall) => {
     if (name === "web_search") return searchHandler(args);
     if (name === "web_fetch") return fetchHandler(args);
     if (name === "search_images") return imageSearchHandler(args);
-    if (name === "view_image") return viewImageHandler(args);
+    if (name === "view_image") {
+        const attachmentProxy = resolveAttachmentViewImage(args, context.messages);
+        if (attachmentProxy) return attachmentProxy;
+        return viewImageHandler(args);
+    }
     return `Error: unknown tool ${name}`;
 };
 
@@ -267,7 +339,7 @@ const runChatWithTools = async (body) => {
         }
 
         for (const call of toolCalls) {
-            const toolResult = await executeTool(call);
+            const toolResult = await executeTool(call, { messages });
             toolsUsed.push({ name: call.function?.name || call.id, args: call.function?.arguments || "{}" });
             messages.push({
                 role: "tool",
