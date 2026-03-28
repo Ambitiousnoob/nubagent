@@ -1421,6 +1421,12 @@ function createTools() {
             description: "Search the web for recent information and return top snippets.",
             example: "web_search: latest cerebras tool calling docs",
         },
+        web_fetch: {
+            category: "Search",
+            icon: "",
+            description: "Fetch a URL (text/html) and return up to ~3000 characters.",
+            example: "web_fetch: https://example.com/page",
+        },
     };
 }
 
