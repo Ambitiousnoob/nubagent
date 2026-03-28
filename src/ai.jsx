@@ -1758,6 +1758,7 @@ export default function AgentFramework() {
     }
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [multiThink, setMultiThink] = useState(false);
+    const [doublePass, setDoublePass] = useState(false);
     const [headerOpen, setHeaderOpen] = useState(false);
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [uploadStatus, setUploadStatus] = useState("");
@@ -2432,12 +2433,38 @@ export default function AgentFramework() {
                     });
                 }
 
-                updateRunConversation(c => ({
-                    ...c,
-                    messages: [...c.messages, { role: "assistant", content: fastText }],
-                    activeStream: "",
-                    pendingSteps: [],
-                }));
+                if (!doublePass) {
+                    updateRunConversation(c => ({
+                        ...c,
+                        messages: [...c.messages, { role: "assistant", content: fastText }],
+                        activeStream: "",
+                        pendingSteps: [],
+                    }));
+                } else {
+                    // Second pass refinement
+                    pushRunLog("System", "Two-pass reasoning: generating refinement draft.", "var(--text-dim)");
+                    const reviewMessages = [
+                        ...chatMessages,
+                        { role: "assistant", content: fastText },
+                        { role: "system", content: "You are a meticulous reviewer. Improve the assistant's previous answer. Fix mistakes, add missing details, and keep it concise." },
+                        { role: "user", content: "Refine the previous assistant reply. Return the improved final answer only." },
+                    ];
+                    const { text: refinedText, toolsUsed: refineTools = [] } = await callLLMStream(reviewMessages, primaryModel.id, signal, () => {}, {
+                        maxTokens: MAX_COMPLETION_TOKENS,
+                        log: (msg) => pushRunLog("System", `[Refine] ${msg}`, "var(--text-dim)"),
+                        onToolCall: (name, args) => pushRunLog("Tool", `[Refine] Called ${name} with ${JSON.stringify(args)}`, "var(--accent)"),
+                    });
+                    if (Array.isArray(refineTools) && refineTools.length) {
+                        refineTools.forEach(entry => pushRunLog("Tool", `[Refine] Called ${entry?.name || "tool"} with ${entry?.args || "{}"}`, "var(--accent)"));
+                    }
+                    const combined = `### Pass 1\n${fastText}\n\n### Pass 2 (refined)\n${refinedText || ""}`;
+                    updateRunConversation(c => ({
+                        ...c,
+                        messages: [...c.messages, { role: "assistant", content: combined }],
+                        activeStream: "",
+                        pendingSteps: [],
+                    }));
+                }
             } else {
                 pushRunLog("System", "Multi-process thinking enabled: launching two parallel drafts.", "var(--text-dim)");
                 const thinkerLabels = ["Alpha", "Beta"];
@@ -2899,6 +2926,13 @@ export default function AgentFramework() {
                                     <span>Multi-process thinking (run 2 parallel drafts and merge)</span>
                                 </label>
                                 <small style={{ color: "var(--text-muted)" }}>Runs two independent drafts (Alpha/Beta) in parallel and combines them for a more reliable answer.</small>
+                            </div>
+                            <div style={{ display: "grid", gap: 6, marginTop: 6, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-input)", fontSize: 13 }}>
+                                <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                    <input type="checkbox" checked={doublePass} onChange={e => setDoublePass(e.target.checked)} />
+                                    <span>Two-pass refinement (draft then self-review)</span>
+                                </label>
+                                <small style={{ color: "var(--text-muted)" }}>First pass writes an answer; second pass critiques and improves it. Skips refinement when multi-process is on.</small>
                             </div>
                             <div className="af-api-actions">
                                 <span>{HOSTED_API_ENABLED ? `${HOSTED_API_LABEL} active` : "Server API offline"}</span>
