@@ -2347,6 +2347,21 @@ export default function AgentFramework() {
         if (step.observation) details.push(`obs=${step.observation}`);
         return `${step.action || "step"}${details.length ? " " + details.join(" | ") : ""}`;
     };
+    const getLogTerminalStatus = (entry = {}) => {
+        const module = String(entry.module || "").toLowerCase();
+        const msg = String(entry.msg || "").toLowerCase();
+        if (module.includes("thought")) return "think";
+        if (module.includes("tool")) return "fetch";
+        if (msg.includes("error") || msg.includes("failed") || msg.includes("timeout")) return "error";
+        if (msg.includes("retry") || msg.includes("backoff") || msg.includes("fallback")) return "warn";
+        if (msg.includes("complete") || msg.includes("finished") || msg.includes("done")) return "success";
+        return "info";
+    };
+    const formatTerminalLogText = (entry = {}) => {
+        const module = normalizeTextBlock(entry.module || "") || "System";
+        const msg = normalizeTextBlock(entry.msg || "");
+        return msg ? `${module}: ${msg}` : module;
+    };
     useEffect(() => {
         if (!conv) return;
         const nextSummary = buildEpisodicSummary(conv.messages || []);
@@ -2763,6 +2778,14 @@ export default function AgentFramework() {
     const latestAssistantConsoleMessage = [...allMessages].reverse().find(message => (
         message?.role === "assistant" && Boolean(message.error)
     ));
+    const liveProcessSteps = Array.isArray(pendingSteps) ? pendingSteps : [];
+    const liveProcessLogs = running ? systemLogs.slice(-4) : [];
+    const liveProcessStream = typeof conv?.activeStream === "string" ? conv.activeStream : "";
+    const liveProcessLabel = liveProcessStream
+        ? "Generating response"
+        : liveProcessSteps.length
+            ? "Processing request"
+            : "Starting run";
     const drawerCards = conv?.activeStream ? [{
         key: "drawer-live-stream",
         label: running ? "Live response" : "Last streamed response",
@@ -2935,6 +2958,18 @@ export default function AgentFramework() {
 .af-long-msg summary{cursor:pointer;font-weight:700;color:var(--text-muted);}
 .af-long-msg[open]{border-color:var(--border-focus);}
 .af-msg-error{background:var(--danger-bg);border:1px solid rgba(248,113,113,0.2);border-radius:8px;padding:12px 16px;color:var(--danger);font-size:13px;margin-top:8px;}
+.af-live-process{position:sticky;top:0;z-index:4;display:grid;gap:12px;padding:14px;border:1px solid rgba(96,165,250,0.2);border-radius:18px;background:linear-gradient(180deg,rgba(9,15,27,0.94),rgba(8,12,22,0.92));backdrop-filter:blur(18px);box-shadow:0 18px 40px rgba(0,0,0,0.24);}
+.af-live-process__header{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+.af-live-process__title{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;color:#dbeafe;letter-spacing:.03em;}
+.af-live-process__dot{display:inline-flex;width:10px;height:10px;border-radius:999px;background:#34d399;box-shadow:0 0 0 6px rgba(52,211,153,0.12);}
+.af-live-process__meta{display:flex;gap:8px;flex-wrap:wrap;}
+.af-live-process__pill{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);color:#b9c4e6;font-size:11px;font-weight:600;letter-spacing:.03em;}
+.af-live-process__grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:12px;}
+.af-live-process__section{display:grid;gap:8px;min-width:0;}
+.af-live-process__label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#8ea0d1;}
+.af-live-process__stream{border:1px solid rgba(255,255,255,0.08);border-radius:16px;background:rgba(17,22,38,0.82);padding:12px;}
+.af-live-process__stream .af-msg-answer{background:transparent;border:none;padding:0;box-shadow:none;border-radius:0;}
+.af-live-process__empty{padding:10px 12px;border-radius:12px;border:1px dashed rgba(255,255,255,0.08);color:var(--text-muted);font-size:12px;line-height:1.6;background:rgba(255,255,255,0.02);}
 .af-steps{margin-bottom:8px;padding:10px 12px;border:1px solid rgba(106,122,167,0.18);border-radius:16px;background:rgba(6,10,19,0.72);backdrop-filter:blur(12px);}
 .tm-row{display:flex;align-items:flex-start;gap:12px;padding:7px 8px;border-radius:10px;background:rgba(10,17,29,0.92);border:1px solid rgba(133,149,187,0.12);font-family:var(--mono);font-size:12px;line-height:1.55;box-shadow:inset 0 1px 0 rgba(255,255,255,0.03);}
 .tm-row + .tm-row{margin-top:6px;}
@@ -3025,6 +3060,8 @@ export default function AgentFramework() {
     .af-btn{min-height:42px;padding:9px 14px;}
     .af-content{padding:16px;min-height:0;}
     .af-content-chat{padding-bottom:260px;}
+    .af-live-process{top:8px;padding:12px;}
+    .af-live-process__grid{grid-template-columns:1fr;}
     .af-input-wrap{position:sticky;bottom:calc(68px + env(safe-area-inset-bottom));z-index:50;align-self:stretch;width:calc(100% - 24px);max-width:none;border-radius:16px;margin:0 auto;padding:9px calc(14px + env(safe-area-inset-right)) 11px calc(14px + env(safe-area-inset-left));padding-bottom:calc(12px + env(safe-area-inset-bottom));box-shadow:0 -14px 34px rgba(0,0,0,0.42);}
     .af-btn-attach{width:44px;height:44px;border-radius:13px;background:rgba(255,255,255,0.04);}
     .af-send{min-width:54px;min-height:44px;border-radius:13px;padding:0 15px;}
@@ -3507,6 +3544,88 @@ export default function AgentFramework() {
                                     <div className="af-empty-text">Plan research, calculations, or file analysis from one place.<br/>This workspace can chain <strong>{toolList.length} tools</strong>, batch tool calls, verify drafts, and keep session memory.</div>
                                 </div>
                             )}
+                            {running && (
+                                <div className="af-live-process">
+                                    <div className="af-live-process__header">
+                                        <div className="af-live-process__title">
+                                            <span className="af-live-process__dot" aria-hidden="true" />
+                                            <span>Live Agent Activity</span>
+                                        </div>
+                                        <div className="af-live-process__meta">
+                                            <span className="af-live-process__pill">{liveProcessLabel}</span>
+                                            <span className="af-live-process__pill">{liveProcessSteps.length} step{liveProcessSteps.length === 1 ? "" : "s"}</span>
+                                            <span className="af-live-process__pill">{systemLogs.length} event{systemLogs.length === 1 ? "" : "s"}</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="af-live-process__grid">
+                                        <div className="af-live-process__section">
+                                            <div className="af-live-process__label">Current Process</div>
+                                            {liveProcessSteps.length > 0 ? (
+                                                liveProcessSteps.map((step, si) => (
+                                                    <TerminalMessage
+                                                        key={`live-pending-${si}`}
+                                                        status={step.status || (step.type === "thought" ? "think" : "info")}
+                                                        isRunning={si === liveProcessSteps.length - 1}
+                                                        text={formatTerminalStepText(step)}
+                                                    />
+                                                ))
+                                            ) : (
+                                                <div className="af-live-process__empty">The request is being prepared. Live steps will appear here as soon as the backend starts returning activity.</div>
+                                            )}
+                                        </div>
+
+                                        <div className="af-live-process__section">
+                                            <div className="af-live-process__label">Recent Events</div>
+                                            {liveProcessLogs.length > 0 ? (
+                                                liveProcessLogs.map((entry, index) => (
+                                                    <TerminalMessage
+                                                        key={`live-log-${entry.ts}-${index}`}
+                                                        status={getLogTerminalStatus(entry)}
+                                                        isRunning={index === liveProcessLogs.length - 1 && !liveProcessStream}
+                                                        text={formatTerminalLogText(entry)}
+                                                    />
+                                                ))
+                                            ) : (
+                                                <div className="af-live-process__empty">Runtime events will appear here once dispatch starts.</div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="af-live-process__section">
+                                        <div className="af-live-process__label">Live Output</div>
+                                        {liveProcessStream ? (
+                                            <div className="af-live-process__stream">
+                                                <div className="af-msg-answer">
+                                                    {(() => {
+                                                        const streamText = liveProcessStream.length > STREAM_RENDER_CAP
+                                                            ? liveProcessStream.slice(-STREAM_RENDER_CAP)
+                                                            : liveProcessStream;
+                                                        const parts = streamText.split(/(<thought>[\s\S]*?(?:<\/thought>|$))/);
+                                                        return parts.map((part, i) => {
+                                                            if (part.startsWith("<thought>")) {
+                                                                const thoughtText = part.replace(/^<thought>\n?/, "").replace(/\n?<\/thought>$/, "");
+                                                                return (
+                                                                    <details open key={`live-stream-thought-${i}`} className="af-thought-details" style={{ margin:0, border:"none", padding:0 }}>
+                                                                        <summary>Thinking...</summary>
+                                                                        <div className="af-thought-inner">{thoughtText}</div>
+                                                                    </details>
+                                                                );
+                                                            }
+                                                            return <div key={`live-stream-text-${i}`} dangerouslySetInnerHTML={{ __html: renderMarkdown(part) }} />;
+                                                        });
+                                                    })()}
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="af-thinking" style={{ padding: 0 }}>
+                                                <div className="af-dots"><div className="af-dot" /><div className="af-dot" /><div className="af-dot" /></div>
+                                                <span>{primaryModel.icon} {primaryModel.label} is generating. Partial output will appear here as soon as the first chunks arrive.</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
                             {allMessages.map((msg, idx) => msg.role === "user" ? (
                                 <div key={idx} className="af-msg-user text">
                                     {(() => {
@@ -3558,52 +3677,6 @@ export default function AgentFramework() {
                                     )}
                                 </div>
                             ))}
-
-                            {running && pendingSteps?.length > 0 && (
-                                <div className="af-steps">
-                                    {pendingSteps.map((step, si) => (
-                                        <TerminalMessage
-                                            key={`pending-${si}`}
-                                            status={step.status || (step.type === "thought" ? "think" : "info")}
-                                            isRunning={si === pendingSteps.length - 1}
-                                            text={formatTerminalStepText(step)}
-                                        />
-                                    ))}
-                                </div>
-                            )}
-
-                            {running && conv.activeStream && (
-                                <div className="af-msg-bot">
-                                    <div className="af-msg-answer">
-                                        {/* A simple inline parser for streaming XML */}
-                                        {(() => {
-                                            const streamText = conv.activeStream.length > STREAM_RENDER_CAP
-                                                ? conv.activeStream.slice(-STREAM_RENDER_CAP)
-                                                : conv.activeStream;
-                                            const parts = streamText.split(/(<thought>[\s\S]*?(?:<\/thought>|$))/);
-                                            return parts.map((part, i) => {
-                                                if (part.startsWith("<thought>")) {
-                                                    const thoughtText = part.replace(/^<thought>\n?/, "").replace(/\n?<\/thought>$/, "");
-                                                    return (
-                                                        <details open key={i} className="af-thought-details" style={{ margin:0, border:"none", padding:0 }}>
-                                                            <summary>Thinking...</summary>
-                                                            <div className="af-thought-inner">{thoughtText}</div>
-                                                        </details>
-                                                    );
-                                                }
-                                                return <div key={i} dangerouslySetInnerHTML={{ __html: renderMarkdown(part) }} />;
-                                            });
-                                        })()}
-                                    </div>
-                                </div>
-                            )}
-
-                            {running && !conv.activeStream && (
-                                <div className="af-thinking">
-                                    <div className="af-dots"><div className="af-dot" /><div className="af-dot" /><div className="af-dot" /></div>
-                                    <span>{primaryModel.icon} {primaryModel.label} starting...</span>
-                                </div>
-                            )}
                             <div ref={bottomRef} />
                         </div>
                     )}
