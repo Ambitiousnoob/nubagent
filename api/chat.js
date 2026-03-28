@@ -8,6 +8,7 @@ require("dotenv/config");
 
 const DEFAULT_MODEL = "qwen-3-235b-a22b-instruct-2507";
 const API_URL = "https://api.cerebras.ai/v1/chat/completions";
+const ALLOWED_MODELS = new Set([DEFAULT_MODEL]);
 
 const writeCorsHeaders = (res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -28,9 +29,23 @@ const wantsStream = (body = {}) => {
     return body.stream === true;
 };
 
+const normalizeModel = (model) => {
+    const id = typeof model === "string" ? model.trim() : "";
+    const lowered = id.toLowerCase();
+
+    // Map any legacy "polly" selections or unknown models to the current default.
+    if (!id || lowered === "polly" || lowered.startsWith("polly-")) return DEFAULT_MODEL;
+
+    if (ALLOWED_MODELS.has(id)) return id;
+    if (ALLOWED_MODELS.has(lowered)) return lowered;
+
+    return DEFAULT_MODEL;
+};
+
 const askAgent = async (body, streamCallback) => {
+    const model = normalizeModel(body.model);
     const payload = {
-        model: body.model || DEFAULT_MODEL,
+        model,
         messages: Array.isArray(body.messages) ? body.messages : [],
         stream: wantsStream(body),
     };
@@ -96,6 +111,7 @@ const metadataPayload = () => ({
     provider: "Cerebras Inference",
     models: {
         default: DEFAULT_MODEL,
+        available: Array.from(ALLOWED_MODELS),
     },
     default_execution_mode: "completion",
     agentic: false,
@@ -143,6 +159,9 @@ module.exports = async (req, res) => {
         return;
     }
 
+    const normalizedModel = normalizeModel(body.model);
+    body.model = normalizedModel;
+
     const HARD_TIMEOUT_MS = 60000;
     try {
         if (wantsStream(body)) {
@@ -170,7 +189,7 @@ module.exports = async (req, res) => {
 
             sendJson(res, 200, {
                 ok: true,
-                model: DEFAULT_MODEL,
+                model: normalizedModel,
                 output_text: reply,
                 choices: [{ message: { content: reply }, finish_reason: "stop" }],
                 finish_reason: "stop",

@@ -3,10 +3,10 @@ import React, { useState, useRef, useEffect } from "react";
 const HOSTED_CHAT_API_PATH = "/api/chat";
 const AVAILABLE_MODELS = [
     {
-        id: "polly",
-        label: "Polly (Agentic • tools + vision)",
-        icon: "🦜",
-        capabilities: ["agentic", "tools", "vision", "web"],
+        id: "qwen-3-235b-a22b-instruct-2507",
+        label: "Cerebras Qwen 3 235B",
+        icon: "🧠",
+        capabilities: ["text", "streaming"],
     },
 ];
 const MAX_ITERATIONS = 20;
