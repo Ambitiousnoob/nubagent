@@ -19,12 +19,12 @@ require("dotenv/config");
 
 const { GoogleGenAI } = require("@google/genai");
 
-const DEFAULT_MODEL = "gemini-3-flash-preview";
+const DEFAULT_MODEL = "gemini-2.5-flash-lite";
 const PUBLIC_MODEL_NAME = "nub-agent";
 const FALLBACK_MODELS = [
     DEFAULT_MODEL,
     "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
+    "gemini-3-flash-preview",
 ];
 const MAX_TOOL_TURNS = 6;
 const SAFE_MAX_COMPLETION_TOKENS = clampCompletionTokens(process.env.GEMINI_MAX_COMPLETION_TOKENS || 4096);
@@ -270,6 +270,22 @@ const getFallbackModelChain = (requestedModel) => {
     return [...new Set([normalizeModel(requestedModel), ...configured])];
 };
 
+const getThinkingConfigForModel = (modelId, body = {}) => {
+    const explicitBudget = body.thinking_budget ?? body.thinkingBudget;
+    if (Number.isFinite(Number(explicitBudget))) {
+        return { thinkingBudget: Number(explicitBudget) };
+    }
+
+    const normalized = normalizeModel(modelId);
+    if (normalized === "gemini-2.5-flash" || normalized === "gemini-2.5-flash-lite") {
+        return { thinkingBudget: 0 };
+    }
+    if (normalized === "gemini-3-flash-preview") {
+        return { thinkingLevel: "minimal" };
+    }
+    return undefined;
+};
+
 const parseInlineDataUrl = (value) => {
     const match = String(value || "").match(/^data:([^;,]+);base64,(.+)$/i);
     if (!match) return null;
@@ -396,10 +412,12 @@ const runGeminiWithModel = async (body, modelId, streamCallback) => {
     const client = new GoogleGenAI({ apiKey });
     const messages = mapOpenAiToGeminiMessages(body.messages);
     const systemInstruction = getSystemInstruction(body.messages);
+    const thinkingConfig = getThinkingConfigForModel(modelId, body);
     const config = {
         maxOutputTokens: resolveMaxTokens(body.max_tokens ?? body.maxTokens),
         ...(typeof body.temperature === "number" ? { temperature: body.temperature } : {}),
         ...(systemInstruction ? { systemInstruction } : {}),
+        ...(thinkingConfig ? { thinkingConfig } : {}),
         ...(body.use_tools !== false ? { tools: mapOpenAiToolsToGemini(TOOL_DEFINITIONS) } : {}),
     };
 

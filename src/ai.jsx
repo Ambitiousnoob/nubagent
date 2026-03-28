@@ -18,6 +18,7 @@ const AVAILABLE_MODELS = [
 ];
 const MAX_ITERATIONS = 20;
 const MAX_RETRIES = 0;
+const FAST_MODE_LOCKED = true;
 const MAX_TOOL_CALLS_PER_ITERATION = 3;
 const MAX_VERIFICATION_CYCLES = 1;
 const MAX_OBSERVATION_CHARS = 2400;
@@ -2589,10 +2590,16 @@ export default function AgentFramework() {
         pushRunLog("System", "Agentic tools enabled; backend may call calculate/web_search/web_fetch.", "var(--text-dim)");
 
         try {
-            const thinkPrompt = thinkAloud ? [{ role: "system", content: "Think step by step. Show a concise <thought> plan before answering." }] : [];
+            const effectiveMultiThink = FAST_MODE_LOCKED ? false : multiThink;
+            const effectiveDoublePass = FAST_MODE_LOCKED ? false : doublePass;
+            const effectiveThinkAloud = FAST_MODE_LOCKED ? false : thinkAloud;
+            if (FAST_MODE_LOCKED) {
+                pushRunLog("System", "Fast mode enabled: using the low-latency model path with thinking disabled.", "var(--text-dim)");
+            }
+            const thinkPrompt = effectiveThinkAloud ? [{ role: "system", content: "Think step by step. Show a concise <thought> plan before answering." }] : [];
             const chatMessages = [...historyMessages, ...thinkPrompt, { role: "user", content: modelUserContent }];
 
-            if (!multiThink) {
+            if (!effectiveMultiThink) {
                 const { text: fastText, toolsUsed = [] } = await callLLMStream(chatMessages, primaryModel.id, signal, (text) => {
                     updateRunConversation(c => ({ ...c, activeStream: text }));
                 }, {
@@ -2624,7 +2631,7 @@ export default function AgentFramework() {
                     });
                 }
 
-                if (!doublePass) {
+                if (!effectiveDoublePass) {
                     updateRunConversation(c => ({
                         ...c,
                         messages: [...c.messages, { role: "assistant", content: fastText, steps: buildTraceSteps(fastText, toolsUsed) }],
@@ -3192,24 +3199,24 @@ export default function AgentFramework() {
                             </div>
                             <div style={{ display: "grid", gap: 6, marginTop: 6, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-input)", fontSize: 13 }}>
                                 <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                    <input type="checkbox" checked={multiThink} onChange={e => setMultiThink(e.target.checked)} />
+                                    <input type="checkbox" checked={multiThink} onChange={e => setMultiThink(e.target.checked)} disabled={FAST_MODE_LOCKED} />
                                     <span>Multi-process thinking (run 2 parallel drafts and merge)</span>
                                 </label>
-                                <small style={{ color: "var(--text-muted)" }}>Runs two independent drafts (Alpha/Beta) in parallel and combines them for a more reliable answer.</small>
+                                <small style={{ color: "var(--text-muted)" }}>{FAST_MODE_LOCKED ? "Disabled in fast mode." : "Runs two independent drafts (Alpha/Beta) in parallel and combines them for a more reliable answer."}</small>
                             </div>
                             <div style={{ display: "grid", gap: 6, marginTop: 6, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-input)", fontSize: 13 }}>
                                 <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                    <input type="checkbox" checked={doublePass} onChange={e => setDoublePass(e.target.checked)} />
+                                    <input type="checkbox" checked={doublePass} onChange={e => setDoublePass(e.target.checked)} disabled={FAST_MODE_LOCKED} />
                                     <span>Two-pass refinement (draft then self-review)</span>
                                 </label>
-                                <small style={{ color: "var(--text-muted)" }}>First pass writes an answer; second pass critiques and improves it. Skips refinement when multi-process is on.</small>
+                                <small style={{ color: "var(--text-muted)" }}>{FAST_MODE_LOCKED ? "Disabled in fast mode." : "First pass writes an answer; second pass critiques and improves it. Skips refinement when multi-process is on."}</small>
                             </div>
                             <div style={{ display: "grid", gap: 6, marginTop: 6, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-input)", fontSize: 13 }}>
                                 <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                    <input type="checkbox" checked={thinkAloud} onChange={e => setThinkAloud(e.target.checked)} />
+                                    <input type="checkbox" checked={thinkAloud} onChange={e => setThinkAloud(e.target.checked)} disabled={FAST_MODE_LOCKED} />
                                     <span>Think-aloud plan (injects a &lt;thought&gt; plan before answers)</span>
                                 </label>
-                                <small style={{ color: "var(--text-muted)" }}>Adds a brief step-by-step plan before the final answer so you can see reasoning.</small>
+                                <small style={{ color: "var(--text-muted)" }}>{FAST_MODE_LOCKED ? "Disabled in fast mode." : "Adds a brief step-by-step plan before the final answer so you can see reasoning."}</small>
                             </div>
                             <div className="af-api-actions">
                                 <span>{HOSTED_API_ENABLED ? `${HOSTED_API_LABEL} active` : "Server API offline"}</span>
