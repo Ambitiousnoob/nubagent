@@ -3032,7 +3032,7 @@ export default function AgentFramework() {
                                 <div className="af-strategy-card">
                                     <div className="af-strategy-label">Authentication</div>
                                     <div className="af-strategy-kpi" style={{ fontSize: 18, lineHeight: 1.3 }}>Server-side</div>
-                                    <div className="af-strategy-muted">Clients do not send Gemini keys. The server keeps authentication in GEMINI_API_KEY.</div>
+                                    <div className="af-strategy-muted">Clients do not send model keys. The server keeps authentication in CEREBRAS_API_KEY.</div>
                                 </div>
                                 <div className="af-strategy-card">
                                     <div className="af-strategy-label">Default Mode</div>
