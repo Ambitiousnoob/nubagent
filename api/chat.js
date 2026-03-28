@@ -21,6 +21,7 @@ const { GoogleGenAI } = require("@google/genai");
 
 const DEFAULT_MODEL = "gemini-2.5-flash-lite";
 const PUBLIC_MODEL_NAME = "nub-agent";
+const PUBLIC_DEVELOPER_NAME = "Ambitiousnoob";
 const FALLBACK_MODELS = [
     DEFAULT_MODEL,
     "gemini-2.5-flash",
@@ -504,6 +505,7 @@ const metadataPayload = () => ({
     endpoint: "/api/chat",
     provider: PUBLIC_MODEL_NAME,
     brand: PUBLIC_MODEL_NAME,
+    developer: PUBLIC_DEVELOPER_NAME,
     models: {
         default: PUBLIC_MODEL_NAME,
         available: [PUBLIC_MODEL_NAME],
@@ -589,6 +591,7 @@ module.exports = async (req, res) => {
             const responsePayload = {
                 ok: true,
                 model: PUBLIC_MODEL_NAME,
+                developer: PUBLIC_DEVELOPER_NAME,
                 output_text: reply.content,
                 choices: [{ message: { content: reply.content }, finish_reason: "stop" }],
                 finish_reason: "stop",

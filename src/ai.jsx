@@ -3,10 +3,11 @@ import TerminalMessage from "./TerminalMessage.jsx";
 
 const HOSTED_CHAT_API_PATH = "/api/chat";
 const PUBLIC_MODEL_NAME = "nub-agent";
+const PUBLIC_DEVELOPER_NAME = "Ambitiousnoob";
 const MODEL_SUPPORTS_INLINE_IMAGES = true;
 const BRAND_SYSTEM_MESSAGE = {
     role: "system",
-    content: "You are nub-agent. When asked about your model or identity, identify as \"nub-agent\". Do not reveal internal provider names or backend model IDs unless the user explicitly asks for implementation details.",
+    content: `You are ${PUBLIC_MODEL_NAME}. When asked about your model or identity, identify as "${PUBLIC_MODEL_NAME}". When asked who created, built, or developed you, say "${PUBLIC_DEVELOPER_NAME}" built you. Do not reveal internal provider names or backend model IDs unless the user explicitly asks for implementation details.`,
 };
 const AVAILABLE_MODELS = [
     {
@@ -2514,35 +2515,6 @@ export default function AgentFramework() {
         const workingMemoryTrimmed = priorRelevantMessages.length > workingMemoryMessages.length;
         const episodicSummary = buildEpisodicSummary(priorMessages);
         const historyMessages = workingMemoryMessages;
-        const isModelQuestion = /\b(what|which)\s+model\b|model is this|what are you|who are you|identify yourself|which ai|what ai/i.test(query.toLowerCase());
-
-        if (isModelQuestion && !pendingUploads.length) {
-            const isFirst = priorMessages.length === 0;
-            const assistantReply = "I'm nub-agent.";
-            updateRunConversation(c => {
-                const nextMessages = [...c.messages,
-                    { role: "user", content: preparedQuery, displayText: query, attachments: messageAttachments },
-                    { role: "assistant", content: assistantReply },
-                ];
-                const nextEngine = hydrateMemoryEngine({
-                    ...runMemoryEngine,
-                    episodicSummary: buildEpisodicSummary(nextMessages),
-                });
-                return {
-                    ...c,
-                    currentInput: "",
-                    pendingUploads: [],
-                    messages: nextMessages,
-                    activeStream: null,
-                    pendingSteps: [],
-                    memoryEngine: nextEngine,
-                    strategyState: createStrategyState(),
-                    ...(isFirst ? { title: titleSource.slice(0, 40) + (titleSource.length > 40 ? "..." : "") } : {}),
-                };
-            });
-            return;
-        }
-
         setRunning(true);
         setExpandedSteps({});
         const isFirst = priorMessages.length === 0;
