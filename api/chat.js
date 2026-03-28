@@ -261,11 +261,22 @@ const mapOpenAiToGeminiMessages = (messages = []) => {
 };
 
 const mapOpenAiToolsToGemini = (tools = []) => {
+    const scrub = (obj) => {
+        if (!obj || typeof obj !== "object") return obj;
+        if (Array.isArray(obj)) return obj.map(scrub);
+        const result = {};
+        for (const [key, value] of Object.entries(obj)) {
+            if (key === "additionalProperties") continue;
+            result[key] = scrub(value);
+        }
+        return result;
+    };
+
     return [{
         functionDeclarations: tools.map(t => ({
             name: t.function.name,
             description: t.function.description,
-            parameters: t.function.parameters
+            parameters: scrub(t.function.parameters)
         }))
     }];
 };
