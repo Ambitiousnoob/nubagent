@@ -2252,6 +2252,14 @@ export default function AgentFramework() {
     };
 
     const updateConv = (fn) => updateConversationById(currentConversationId, fn);
+    const getToolStatus = (name = "") => {
+        const normalized = String(name).toLowerCase();
+        if (normalized.includes("error")) return "error";
+        if (normalized.startsWith("web_") || normalized.startsWith("search_") || normalized.startsWith("view_")) return "fetch";
+        if (normalized.startsWith("refine:")) return "warn";
+        if (normalized.startsWith("calculate")) return "info";
+        return "info";
+    };
     const buildToolSteps = (items = [], prefix = "") => (
         (Array.isArray(items) ? items : []).map((entry, index) => {
             let input = entry?.args;
@@ -2264,6 +2272,7 @@ export default function AgentFramework() {
                 input: input || {},
                 iteration: index + 1,
                 batchSize: items.length,
+                status: getToolStatus(`${prefix}${entry?.name || "tool"}`),
             };
         })
     );
@@ -2323,6 +2332,10 @@ export default function AgentFramework() {
             const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
             updateRunConversation(c => ({ ...c, systemLogs: [...(c.systemLogs || []), { ts, module, msg, color }] }));
         };
+        const pushPendingStep = (step) => updateRunConversation((c) => ({
+            ...c,
+            pendingSteps: [...(Array.isArray(c.pendingSteps) ? c.pendingSteps : []), step],
+        }));
         const updateRunStrategy = (patch) => updateRunConversation(c => {
             const current = hydrateStrategyState(c.strategyState);
             const nextPatch = typeof patch === "function" ? patch(current) : patch;
@@ -2455,7 +2468,17 @@ export default function AgentFramework() {
                 displayText: query,
                 attachments: messageAttachments,
             }],
-            pendingSteps: [],
+            pendingSteps: [{
+                type: "action",
+                action: "dispatch",
+                input: {
+                    model: primaryModel.id,
+                    tools: toolList.length,
+                },
+                iteration: 1,
+                batchSize: 1,
+                status: "info",
+            }],
             activeStream: "",
             memoryEngine: runMemoryEngine,
             strategyState: createStrategyState(),
@@ -2488,7 +2511,14 @@ export default function AgentFramework() {
                 }, {
                     maxTokens: MAX_COMPLETION_TOKENS,
                     log: (msg) => pushRunLog("System", msg, "var(--text-dim)"),
-                    onToolCall: (name, args) => pushRunLog("Tool", `Called ${name} with ${JSON.stringify(args)}`, "var(--accent)"),
+                    onToolCall: (name, args) => {
+                        pushRunLog("Tool", `Called ${name} with ${JSON.stringify(args)}`, "var(--accent)");
+                        const [step] = buildToolSteps([{ name, args }]);
+                        if (step) {
+                            step.iteration = (Array.isArray(getConversationById(conversationId)?.pendingSteps) ? getConversationById(conversationId).pendingSteps.length : 0) + 1;
+                            pushPendingStep(step);
+                        }
+                    },
                 });
 
                 if (Array.isArray(toolsUsed) && toolsUsed.length) {
@@ -2516,7 +2546,14 @@ export default function AgentFramework() {
                     const { text: refinedText, toolsUsed: refineTools = [] } = await callLLMStream(reviewMessages, primaryModel.id, signal, () => {}, {
                         maxTokens: MAX_COMPLETION_TOKENS,
                         log: (msg) => pushRunLog("System", `[Refine] ${msg}`, "var(--text-dim)"),
-                        onToolCall: (name, args) => pushRunLog("Tool", `[Refine] Called ${name} with ${JSON.stringify(args)}`, "var(--accent)"),
+                        onToolCall: (name, args) => {
+                            pushRunLog("Tool", `[Refine] Called ${name} with ${JSON.stringify(args)}`, "var(--accent)");
+                            const [step] = buildToolSteps([{ name, args }], "refine: ");
+                            if (step) {
+                                step.iteration = (Array.isArray(getConversationById(conversationId)?.pendingSteps) ? getConversationById(conversationId).pendingSteps.length : 0) + 1;
+                                pushPendingStep(step);
+                            }
+                        },
                     });
                     if (Array.isArray(refineTools) && refineTools.length) {
                         refineTools.forEach(entry => pushRunLog("Tool", `[Refine] Called ${entry?.name || "tool"} with ${entry?.args || "{}"}`, "var(--accent)"));
@@ -2545,7 +2582,14 @@ export default function AgentFramework() {
                     return callLLMStream(thinkerMessages, primaryModel.id, signal, () => {}, {
                         maxTokens: MAX_COMPLETION_TOKENS,
                         log: (msg) => pushRunLog(`System`, `[${label}] ${msg}`, "var(--text-dim)"),
-                        onToolCall: (name, args) => pushRunLog("Tool", `[${label}] Called ${name} with ${JSON.stringify(args)}`, "var(--accent)"),
+                        onToolCall: (name, args) => {
+                            pushRunLog("Tool", `[${label}] Called ${name} with ${JSON.stringify(args)}`, "var(--accent)");
+                            const [step] = buildToolSteps([{ name, args }], `${label}: `);
+                            if (step) {
+                                step.iteration = (Array.isArray(getConversationById(conversationId)?.pendingSteps) ? getConversationById(conversationId).pendingSteps.length : 0) + 1;
+                                pushPendingStep(step);
+                            }
+                        },
                     }).then(res => ({ label, ...res }));
                 });
 
@@ -2791,7 +2835,24 @@ export default function AgentFramework() {
 .af-long-msg summary{cursor:pointer;font-weight:700;color:var(--text-muted);}
 .af-long-msg[open]{border-color:var(--border-focus);}
 .af-msg-error{background:var(--danger-bg);border:1px solid rgba(248,113,113,0.2);border-radius:8px;padding:12px 16px;color:var(--danger);font-size:13px;margin-top:8px;}
-.af-steps{margin-bottom:8px;}
+.af-steps{margin-bottom:8px;padding:10px 12px;border:1px solid rgba(106,122,167,0.18);border-radius:16px;background:rgba(6,10,19,0.72);backdrop-filter:blur(12px);}
+.tm-row{display:flex;align-items:flex-start;gap:12px;padding:7px 8px;border-radius:10px;background:rgba(10,17,29,0.92);border:1px solid rgba(133,149,187,0.12);font-family:var(--mono);font-size:12px;line-height:1.55;box-shadow:inset 0 1px 0 rgba(255,255,255,0.03);}
+.tm-row + .tm-row{margin-top:6px;}
+.tm-prefix{flex:0 0 108px;white-space:pre;font-weight:700;letter-spacing:.04em;user-select:none;}
+.tm-text{flex:1;min-width:0;color:#d8deef;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;}
+.tm-prefix--active{color:#52e1ff;text-shadow:0 0 14px rgba(82,225,255,0.28);}
+.tm-prefix--success{color:#35d399;}
+.tm-prefix--error{color:#fb7185;}
+.tm-prefix--warn{color:#fbbf24;}
+.tm-prefix--info{color:#60a5fa;}
+.tm-prefix--fetch{color:#c084fc;}
+.tm-prefix--default{color:#8b96b8;}
+.tm-text--error{color:#fda4af;}
+.tm-row--active{border-color:rgba(82,225,255,0.24);background:linear-gradient(180deg,rgba(8,20,30,0.96),rgba(8,14,24,0.96));}
+.tm-row--success{border-color:rgba(53,211,153,0.16);}
+.tm-row--error{border-color:rgba(251,113,133,0.2);}
+.tm-row--warn{border-color:rgba(251,191,36,0.18);}
+.tm-row--fetch{border-color:rgba(192,132,252,0.18);}
 .af-step{border:1px solid var(--border);border-radius:8px;margin-bottom:6px;overflow:hidden;transition:all .2s;}
 .af-step-hdr{padding:10px 14px;display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;background:var(--bg-card);transition:background .2s;} .af-step-hdr:hover{background:var(--bg-card-hover);}
 .af-step-body{padding:14px;font-size:13px;border-top:1px solid var(--border);animation:fadeIn .3s ease;}

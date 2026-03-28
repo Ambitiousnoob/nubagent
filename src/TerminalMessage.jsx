@@ -13,24 +13,26 @@ export default function TerminalMessage({ status = "default", text, isRunning = 
         return () => clearInterval(interval);
     }, [isRunning]);
 
+    const statusClass = isRunning ? "active" : status;
+
     const getPrefix = () => {
-        if (isRunning) return <span className="text-cyan-400">[{spinnerFrames[frame]} ACTIVE]</span>;
+        if (isRunning) return `[${spinnerFrames[frame]} ACTIVE]`;
         switch (status) {
-            case "success": return <span className="text-green-400">[   OK   ]</span>;
-            case "error":   return <span className="text-red-500">[ FATAL  ]</span>;
-            case "warn":    return <span className="text-yellow-400">[  WARN  ]</span>;
-            case "info":    return <span className="text-blue-400">[  INFO  ]</span>;
-            case "fetch":   return <span className="text-purple-400">[  CURL  ]</span>;
-            default:        return <span className="text-gray-500">❯</span>;
+            case "success": return "[   OK   ]";
+            case "error": return "[ FATAL  ]";
+            case "warn": return "[  WARN  ]";
+            case "info": return "[  INFO  ]";
+            case "fetch": return "[  CURL  ]";
+            default: return ">";
         }
     };
 
     return (
-        <div className="font-mono text-sm mb-1 flex items-start space-x-3 bg-[#0d1117] p-1 rounded">
-            <div className="flex-shrink-0 w-28 whitespace-pre font-bold select-none">
+        <div className={`tm-row tm-row--${statusClass}`}>
+            <div className={`tm-prefix tm-prefix--${statusClass}`}>
                 {getPrefix()}
             </div>
-            <div className={`break-words ${status === "error" ? "text-red-400" : "text-gray-300"}`}>
+            <div className={`tm-text tm-text--${statusClass}`}>
                 {text}
             </div>
         </div>
