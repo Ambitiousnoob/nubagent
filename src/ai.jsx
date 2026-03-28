@@ -9,7 +9,7 @@ const AVAILABLE_MODELS = [
     {
         id: "qwen-3-235b-a22b-instruct-2507",
         label: "nub-agent (ambitiousnoob) · Cerebras Qwen 3 235B",
-        icon: "🧠",
+        icon: "",
         capabilities: ["text", "streaming"],
     },
 ];
@@ -1411,13 +1411,13 @@ function createTools() {
     return {
         calculate: {
             category: "Core",
-            icon: "🧮",
+            icon: "",
             description: "Evaluate arithmetic expressions (use when math is required).",
             example: "calculate: 15*7+(2/3)",
         },
         web_search: {
             category: "Search",
-            icon: "🌐",
+            icon: "",
             description: "Search the web for recent information and return top snippets.",
             example: "web_search: latest cerebras tool calling docs",
         },
@@ -3105,7 +3105,7 @@ export default function AgentFramework() {
                             </div>
                             {systemLogs.length === 0 ? (
                                 <div className="af-empty">
-                                    <span className="af-empty-icon">📜</span>
+                                    <span className="af-empty-icon">–</span>
                                     <div className="af-empty-text">Execution events appear here when the agent plans, retries, falls back, and calls tools.</div>
                                 </div>
                             ) : (
@@ -3150,7 +3150,7 @@ export default function AgentFramework() {
                         <div className="af-chat-thread">
                             {allMessages.length === 0 && !running && (
                                 <div className="af-empty">
-                                    <span className="af-empty-icon">✨</span>
+                                    <span className="af-empty-icon">–</span>
                                     <div className="af-empty-text">Plan research, calculations, or file analysis from one place.<br/>This workspace can chain <strong>{toolList.length} tools</strong>, batch tool calls, verify drafts, and keep session memory.</div>
                                 </div>
                             )}
@@ -3169,7 +3169,7 @@ export default function AgentFramework() {
                                                                 {attachment.kind === "image" && attachment.previewUrl ? (
                                                                     <img className="af-attachment-thumb" src={attachment.previewUrl} alt={attachment.name} />
                                                                 ) : (
-                                                                    <div className="af-attachment-thumb af-attachment-thumb-fallback">{attachment.kind === "image" ? "🖼" : "📄"}</div>
+                                                                    <div className="af-attachment-thumb af-attachment-thumb-fallback">{attachment.kind === "image" ? "IMG" : "FILE"}</div>
                                                                 )}
                                                                 <div className="af-attachment-copy">
                                                                     <div className="af-attachment-name">{attachment.name}</div>
@@ -3194,17 +3194,17 @@ export default function AgentFramework() {
                                                 return (
                                                     <div key={si} className="af-step">
                                                         <div className="af-step-hdr" onClick={() => setExpandedSteps(p => ({ ...p, [key]: !open }))}>
-                                                            <span>{tools[step.action]?.icon || "🔧"}</span>
+                                                            <span>{tools[step.action]?.icon || ""}</span>
                                                             <code style={{ fontFamily: "var(--mono)", fontWeight: 600, fontSize: 12 }}>{step.action}</code>
                                                             <span style={{ flex: 1, color: "var(--text-muted)", marginLeft: 8, fontSize: 11 }}>
-                                                                {step.batchSize > 1 ? `Step ${step.iteration}.${step.batchIndex}/${step.batchSize} ✓` : `Step ${step.iteration} ✓`}
+                                                                {step.batchSize > 1 ? `Step ${step.iteration}.${step.batchIndex}/${step.batchSize}` : `Step ${step.iteration}`}
                                                                 {step.durationMs ? ` · ${step.durationMs}ms` : ""}
                                                             </span>
-                                                            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{open ? "▲" : "▼"}</span>
+                                                            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{open ? "▴" : "▾"}</span>
                                                         </div>
                                                         {open && (
                                                             <div className="af-step-body">
-                                                                {step.thought && <div className="af-step-thought">💭 {step.thought}</div>}
+                                                                {step.thought && <div className="af-step-thought">Note: {step.thought}</div>}
                                                                 {step.input && Object.keys(step.input).length > 0 && <div className="af-step-input" style={{position:"relative"}}><button onClick={(e)=>{navigator.clipboard.writeText(JSON.stringify(step.input,null,2)); e.target.innerText="Copied!"; setTimeout(()=>e.target.innerText="Copy",2000)}} style={{position:"absolute",top:4,right:4,fontSize:10,background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",borderRadius:4,padding:"2px 6px",cursor:"pointer"}}>Copy</button>{JSON.stringify(step.input, null, 2)}</div>}
                                                                 {step.observation && (
                                                                     <div className="af-step-obs" style={{position:"relative"}}>
@@ -3221,7 +3221,7 @@ export default function AgentFramework() {
                                         </div>
                                     )}
                                     {msg.error ? (
-                                        <div className="af-msg-error text">⚠ {msg.error}</div>
+                                        <div className="af-msg-error text">Error: {msg.error}</div>
                                     ) : (
                                         <MessageContent text={msg.content} />
                                     )}
@@ -3259,7 +3259,7 @@ export default function AgentFramework() {
                                                     const thoughtText = part.replace(/^<thought>\n?/, "").replace(/\n?<\/thought>$/, "");
                                                     return (
                                                         <details open key={i} className="af-thought-details" style={{ margin:0, border:"none", padding:0 }}>
-                                                            <summary>💭 Brainstorming...</summary>
+                                                            <summary>Thinking...</summary>
                                                             <div className="af-thought-inner">{thoughtText}</div>
                                                         </details>
                                                     );
@@ -3267,7 +3267,6 @@ export default function AgentFramework() {
                                                 return <div key={i} dangerouslySetInnerHTML={{ __html: renderMarkdown(part) }} />;
                                             });
                                         })()}
-                                        <span className="af-dot" style={{ display: "inline-block", width: "8px", height: "16px", background: "var(--accent-solid)", marginLeft: "4px", verticalAlign: "middle", animation: "pulse .8s infinite" }}></span>
                                     </div>
                                 </div>
                             )}
@@ -3291,11 +3290,11 @@ export default function AgentFramework() {
                             <div className="af-attachment-strip">
                                 {pendingUploadsView.map((attachment, attachmentIndex) => (
                                     <div key={attachment.id || `${attachment.name}-${attachmentIndex}`} className="af-attachment-chip">
-                                        {attachment.kind === "image" && attachment.dataUrl ? (
-                                            <img className="af-attachment-thumb" src={attachment.dataUrl} alt={attachment.name} />
-                                        ) : (
-                                            <div className="af-attachment-thumb af-attachment-thumb-fallback">{attachment.kind === "image" ? "🖼" : "📄"}</div>
-                                        )}
+                                            {attachment.kind === "image" && attachment.dataUrl ? (
+                                                <img className="af-attachment-thumb" src={attachment.dataUrl} alt={attachment.name} />
+                                            ) : (
+                                                <div className="af-attachment-thumb af-attachment-thumb-fallback">{attachment.kind === "image" ? "IMG" : "FILE"}</div>
+                                            )}
                                         <div className="af-attachment-copy">
                                             <div className="af-attachment-name">{attachment.name}</div>
                                             <div className="af-attachment-sub">{buildAttachmentBadge(attachment)}</div>
@@ -3306,12 +3305,12 @@ export default function AgentFramework() {
                             </div>
                         )}
                         <div className="af-input-row">
-                            <button className="af-btn-attach" disabled={running || preparingSend} onClick={() => fileInputRef.current?.click()}>📎</button>
+                            <button className="af-btn-attach" disabled={running || preparingSend} onClick={() => fileInputRef.current?.click()}>Attach</button>
                             <textarea ref={inputRef} className="af-textarea" value={conv.currentInput || ""} onChange={e => updateConv(c => ({ ...c, currentInput: e.target.value }))} onKeyDown={handleKey} onFocus={() => { if (isCompactUi) setSidebarOpen(false); }} disabled={running || preparingSend} enterKeyHint="send" placeholder={"Ask for research, calculations, code, or attached-file analysis..."} />
                             {running ? (
                                 <button className="af-btn af-btn-danger af-send" onClick={() => abortRef.current?.abort()}>■</button>
                             ) : (
-                                <button className="af-btn af-btn-accent af-send" disabled={!canSend || preparingSend} onClick={runAgent}>↗</button>
+                                <button className="af-btn af-btn-accent af-send" disabled={!canSend || preparingSend} onClick={runAgent}>Send</button>
                             )}
                         </div>
                         {uploadStatus && <div className="af-upload-status">{uploadStatus}</div>}
@@ -3351,9 +3350,9 @@ export default function AgentFramework() {
 
                             <div className="agent-drawer__body">
                                 <div className="agent-buttons" style={{ marginBottom: 8 }}>
-                                    <button className={`btn ${activeTab === "chat" ? "primary" : ""}`} onClick={() => setActiveTab("chat")}>💬 Chat</button>
-                                    <button className={`btn ${activeTab === "docs" ? "primary" : ""}`} onClick={() => setActiveTab("docs")}>📘 Docs</button>
-                                    <button className={`btn ${activeTab === "logs" ? "primary" : ""}`} onClick={() => setActiveTab("logs")}>📜 Logs ({systemLogs.length})</button>
+                                    <button className={`btn ${activeTab === "chat" ? "primary" : ""}`} onClick={() => setActiveTab("chat")}>Chat</button>
+                                    <button className={`btn ${activeTab === "docs" ? "primary" : ""}`} onClick={() => setActiveTab("docs")}>Docs</button>
+                                    <button className={`btn ${activeTab === "logs" ? "primary" : ""}`} onClick={() => setActiveTab("logs")}>Logs ({systemLogs.length})</button>
                                     <button className="btn" onClick={newConv}>New</button>
                                     <button className="btn" onClick={exportConv} disabled={!allMessages.length}>Export</button>
                                     <button className="btn danger" onClick={() => { setExpandedSteps({}); clearConv(); }} disabled={running || !allMessages.length}>Reset</button>
@@ -3364,7 +3363,7 @@ export default function AgentFramework() {
                                             setSettingsOpen(v => !v);
                                         }}
                                     >
-                                        ⚙️ Models
+                                        Models
                                     </button>
                                 </div>
 
