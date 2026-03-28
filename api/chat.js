@@ -17,7 +17,7 @@ const {
 } = require("../lib/ai-control");
 require("dotenv/config");
 
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { GoogleGenAI } = require("@google/genai");
 
 const DEFAULT_MODEL = "gemini-1.5-flash"; // Using 1.5-flash as the real engine but branding as gemini-3-flash if needed, or literally using the ID gemini-3-flash if the user implies a future-proof config.
 const PUBLIC_MODEL_NAME = "gemini-3-flash";
@@ -285,25 +285,25 @@ const runGeminiChat = async (body, streamCallback) => {
     const apiKey = getGeminiApiKey();
     if (!apiKey) throw new Error("GEMINI_API_KEYS is not configured.");
 
-    const genAI = new GoogleGenerativeAI(apiKey);
+    const client = new GoogleGenAI({ apiKey });
     const modelId = normalizeModel(body.model);
-    const model = genAI.getGenerativeModel({
+    
+    const config = {
         model: modelId === "gemini-3-flash" ? "gemini-1.5-flash" : modelId,
         generationConfig: {
             temperature: body.temperature ?? 0.2,
             maxOutputTokens: resolveMaxTokens(body.max_tokens ?? body.maxTokens),
         },
         tools: body.use_tools !== false ? mapOpenAiToolsToGemini(TOOL_DEFINITIONS) : undefined,
-    });
+    };
 
-    const geminiMessages = mapOpenAiToGeminiMessages(body.messages);
-    const lastMessage = geminiMessages.pop();
-    const history = geminiMessages;
+    const messages = mapOpenAiToGeminiMessages(body.messages);
 
-    const chat = model.startChat({ history });
-
-    if (body.stream && !body.use_tools) {
-        const result = await chat.sendMessageStream(lastMessage.parts);
+    if (body.stream && body.use_tools === false) {
+        const result = await client.models.generateContentStream({
+            ...config,
+            contents: messages,
+        });
         let fullText = "";
         for await (const chunk of result.stream) {
             const chunkText = chunk.text();
@@ -312,19 +312,32 @@ const runGeminiChat = async (body, streamCallback) => {
         }
         return { content: fullText, usage: null };
     } else {
-        const result = await chat.sendMessage(lastMessage.parts);
-        const response = await result.response;
+        const result = await client.models.generateContent({
+            ...config,
+            contents: messages,
+        });
+        const response = result.response;
         const call = response.functionCalls()?.[0];
 
         if (call) {
             const toolResult = await executeTool(call, { messages: body.messages });
-            const secondResult = await chat.sendMessage([{
-                functionResponse: {
-                    name: call.name,
-                    response: { content: toolResult.content }
-                }
-            }]);
-            const secondResponse = await secondResult.response;
+            const secondResult = await client.models.generateContent({
+                ...config,
+                contents: [
+                    ...messages,
+                    response.candidates[0].content,
+                    {
+                        role: "user",
+                        parts: [{
+                            functionResponse: {
+                                name: call.name,
+                                response: { content: toolResult.content }
+                            }
+                        }]
+                    }
+                ],
+            });
+            const secondResponse = secondResult.response;
             return {
                 content: secondResponse.text(),
                 toolsUsed: [{
