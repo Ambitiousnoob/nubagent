@@ -1540,10 +1540,10 @@ async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MA
                     }
                 }
             }
-            log?.(`Stream complete after ${chunkCount} chunk(s).`);
+            log?.(`Stream finished with ${chunkCount} chunk(s).`);
 
             if (!fullText && chunkCount === 0) {
-                log?.("No stream chunks received; retrying as non-stream.");
+                log?.("Stream returned no chunks; retrying once as non-stream.");
                 const fallbackRes = await fetch(getToolApiUrl(HOSTED_CHAT_API_PATH), {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -1563,7 +1563,8 @@ async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MA
                 }
                 const json = await fallbackRes.json();
                 const text = json?.choices?.[0]?.message?.content || json?.output_text || "";
-                onUpdate(text);
+                onUpdate(text || "");
+                log?.("Non-stream retry completed.");
                 return text;
             }
 
@@ -2369,7 +2370,8 @@ export default function AgentFramework() {
         abortRef.current = new AbortController();
         const signal = abortRef.current.signal;
 
-        pushRunLog("Manager", "nub-agent is processing (single-call mode)", "var(--text-dim)");
+        const logPrefix = priorMessages.length === 0 ? "Starting" : "Continuing";
+        pushRunLog("Manager", `${logPrefix} — nub-agent single-call mode`, "var(--text-dim)");
         if (queryWasTrimmed) {
             pushRunLog("Tokens", "Current input or attachment context was compacted before dispatch.", "var(--danger)");
         }
@@ -2380,7 +2382,7 @@ export default function AgentFramework() {
             pushRunLog("Memory", `Semantic recall injected ${semanticRecall.hits.length} indexed chunk(s) into the latest prompt.`, "var(--text-dim)");
         }
 
-        pushRunLog("System", "Agentic tools disabled; completion-only mode.", "var(--text-dim)");
+        pushRunLog("System", "Agentic tools disabled; running completion-only request.", "var(--text-dim)");
 
         try {
             const chatMessages = [...historyMessages, { role: "user", content: preparedQuery }];
