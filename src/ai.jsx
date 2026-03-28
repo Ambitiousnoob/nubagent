@@ -2570,7 +2570,7 @@ export default function AgentFramework() {
 .af-api-fly small{color:var(--text-muted);}
 .af-api-actions{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--text-dim);}
 .af-content{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:24px;overscroll-behavior:contain;}
-.af-content-chat{padding-bottom:220px;}
+.af-content-chat{padding-bottom:260px;}
 .af-chat-thread{display:flex;flex-direction:column;gap:16px;max-width:860px;margin:0 auto;width:100%;min-height:100%;padding-right:8px;}
 .af-msg-user{align-self:flex-end;max-width:75%;min-width:0;background:linear-gradient(135deg, rgba(125,211,252,0.2), rgba(168,85,247,0.18));border:1px solid var(--border-focus);border-radius:18px;padding:12px 18px;font-size:14px;line-height:1.6;animation:msgIn .3s ease;box-shadow:0 10px 30px rgba(0,0,0,0.25);display:flex;flex-direction:column;gap:10px;}
 .af-msg-user-text{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;}
@@ -2652,7 +2652,7 @@ export default function AgentFramework() {
     .af-header-slider{padding-bottom:6px;padding-right:calc(4px + env(safe-area-inset-right));}
     .af-btn{min-height:42px;padding:9px 14px;}
     .af-content{padding:16px;min-height:0;}
-    .af-content-chat{padding-bottom:220px;}
+    .af-content-chat{padding-bottom:260px;}
     .af-input-wrap{position:sticky;bottom:calc(68px + env(safe-area-inset-bottom));z-index:50;align-self:stretch;width:calc(100% - 24px);max-width:none;border-radius:16px;margin:0 auto;padding:9px calc(14px + env(safe-area-inset-right)) 11px calc(14px + env(safe-area-inset-left));padding-bottom:calc(12px + env(safe-area-inset-bottom));box-shadow:0 -14px 34px rgba(0,0,0,0.42);}
     .af-btn-attach{width:44px;height:44px;border-radius:13px;background:rgba(255,255,255,0.04);}
     .af-send{min-width:54px;min-height:44px;border-radius:13px;padding:0 15px;}
@@ -2668,7 +2668,7 @@ export default function AgentFramework() {
 }
 @media(max-width:480px){
     .af-content{padding:14px;}
-    .af-content-chat{padding-bottom:20px;}
+    .af-content-chat{padding-bottom:220px;}
     .af-header-slider{gap:6px;}
     .af-btn{padding:9px 12px;}
 }
