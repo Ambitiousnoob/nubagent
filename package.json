@@ -3,7 +3,8 @@
   "version": "0.0.0",
   "scripts": {
     "dev": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "lint:regex": "node scripts/regex-lint.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
@@ -14,6 +15,9 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^3.1.0",
+    "acorn": "^8.16.0",
+    "acorn-jsx": "^5.3.2",
+    "acorn-walk": "^8.3.5",
     "vite": "^4.5.14"
   }
 }
