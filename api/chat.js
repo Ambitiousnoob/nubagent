@@ -134,6 +134,7 @@ const runChatWithTools = async (body) => {
     };
 
     let lastContent = "";
+    const toolsUsed = [];
     for (let i = 0; i < MAX_TOOL_TURNS; i += 1) {
         const payload = { ...base, messages };
         const result = await callCerebras(payload);
@@ -148,6 +149,7 @@ const runChatWithTools = async (body) => {
 
         for (const call of toolCalls) {
             const toolResult = await executeTool(call);
+            toolsUsed.push({ name: call.function?.name || call.id, args: call.function?.arguments || "{}" });
             messages.push({
                 role: "tool",
                 tool_call_id: call.id || call?.function?.name || "tool-call",
@@ -156,7 +158,7 @@ const runChatWithTools = async (body) => {
         }
     }
 
-    return lastContent;
+    return { content: lastContent, toolsUsed };
 };
 
 const metadataPayload = () => ({
@@ -257,17 +259,25 @@ module.exports = async (req, res) => {
                         stream: false,
                         temperature: body.temperature,
                         max_tokens: body.max_tokens,
-                    }).then((r) => r.content),
+                    }),
                 new Promise((_, reject) => setTimeout(() => reject(new Error(`Timed out after ${HARD_TIMEOUT_MS}ms`)), HARD_TIMEOUT_MS)),
             ]);
+
+            const outputContent = reply && typeof reply === "object" && reply.content !== undefined
+                ? reply.content
+                : reply?.content || reply;
+            const toolsUsed = reply && typeof reply === "object" && Array.isArray(reply.toolsUsed)
+                ? reply.toolsUsed
+                : [];
 
             sendJson(res, 200, {
                 ok: true,
                 model: normalizedModel,
-                output_text: reply,
-                choices: [{ message: { content: reply }, finish_reason: "stop" }],
+                output_text: outputContent,
+                choices: [{ message: { content: outputContent }, finish_reason: "stop" }],
                 finish_reason: "stop",
                 agentic: allowTools,
+                tools_used: toolsUsed,
             });
         }
     } catch (error) {

@@ -1473,7 +1473,7 @@ RULES:
 5. Final answers should be complete, structured, and use markdown.
 6. Do NOT use JSON for tool calls, ONLY use the exact <tool_call> XML format.`;
 
-async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MAX_COMPLETION_TOKENS, log, clientTimeoutMs = 70000 } = {}) {
+async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MAX_COMPLETION_TOKENS, log, clientTimeoutMs = 70000, onToolCall } = {}) {
     const ensureBrandedMessages = (msgs = []) => (
         Array.isArray(msgs) && msgs.some(m => m?.role === "system")
             ? msgs
@@ -1575,6 +1575,20 @@ async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MA
                 }
                 const json = await fallbackRes.json();
                 const text = json?.choices?.[0]?.message?.content || json?.output_text || "";
+                const toolsUsed = json?.tools_used || json?.toolsUsed;
+                const logTool = typeof onToolCall === "function" ? onToolCall : () => {};
+                if (Array.isArray(toolsUsed)) {
+                    toolsUsed.forEach((entry) => {
+                        const name = entry?.name || "tool";
+                        let args = entry?.args;
+                        try {
+                            if (typeof args === "string") args = JSON.parse(args);
+                        } catch {
+                            /* ignore JSON parse errors */
+                        }
+                        logTool(name, args);
+                    });
+                }
                 onUpdate(text || "");
                 log?.("Non-stream retry completed.");
                 return text;
@@ -1670,7 +1684,7 @@ function renderMarkdown(text) {
     if (!text) return "";
     return text
         .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
-        .replace(/&lt;thought&gt;([\s\S]*?)&lt;\/thought&gt;/g, '<details class="af-thought-details"><summary>💭 Thinking Process...</summary><div class="af-thought-inner">$1</div></details>')
+        .replace(/&lt;thought&gt;([\s\S]*?)&lt;\/thought&gt;/g, '<details class="af-thought-details"><summary>Thinking process</summary><div class="af-thought-inner">$1</div></details>')
         .replace(/(https?:\/\/[^\s&<"']+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:#a78bfa;text-decoration:underline;">$1</a>')
         .replace(/```(\w*)\n([\s\S]*?)```/g, '<div style="position:relative"><button onclick="navigator.clipboard.writeText(this.nextElementSibling.innerText)" style="position:absolute;top:8px;right:8px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:4px;padding:4px 8px;font-size:10px;cursor:pointer;z-index:10;transition:all 0.2s" onmousedown="this.innerText=\'Copied!\';setTimeout(()=>this.innerText=\'Copy\',2000)">Copy</button><pre class="md-code" style="margin-top:0;"><code>$2</code></pre></div>')
         .replace(/`([^`]+)`/g, '<code class="md-inline">$1</code>')
@@ -2394,13 +2408,17 @@ export default function AgentFramework() {
             pushRunLog("Memory", `Semantic recall injected ${semanticRecall.hits.length} indexed chunk(s) into the latest prompt.`, "var(--text-dim)");
         }
 
-        pushRunLog("System", "Agentic tools disabled; running completion-only request.", "var(--text-dim)");
+        pushRunLog("System", "Agentic tools enabled; backend may call calculate/web_search/web_fetch.", "var(--text-dim)");
 
         try {
             const chatMessages = [...historyMessages, { role: "user", content: preparedQuery }];
             const fastText = await callLLMStream(chatMessages, primaryModel.id, signal, (text) => {
                 updateRunConversation(c => ({ ...c, activeStream: text }));
-            }, { maxTokens: MAX_COMPLETION_TOKENS, log: (msg) => pushRunLog("System", msg, "var(--text-dim)") });
+            }, {
+                maxTokens: MAX_COMPLETION_TOKENS,
+                log: (msg) => pushRunLog("System", msg, "var(--text-dim)"),
+                onToolCall: (name, args) => pushRunLog("Tool", `Called ${name} with ${JSON.stringify(args)}`, "var(--accent)"),
+            });
 
             updateRunConversation(c => ({
                 ...c,

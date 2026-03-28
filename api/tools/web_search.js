@@ -1,3 +1,5 @@
+const google = require("googlethis");
+
 module.exports = {
     definition: {
         type: "function",
@@ -29,6 +31,21 @@ module.exports = {
         const count = Math.min(Math.max(parseInt(args.count, 10) || 3, 1), 5);
 
         if (!query) return "Error: query is required";
+
+        // Try legacy Google search first, then fall back to SearxNG.
+        try {
+            const results = await google.search(query, { page: 0, safe: false, additional_params: { hl: "en" } });
+            const items = Array.isArray(results?.results) ? results.results : Array.isArray(results) ? results : [];
+            const top = items.slice(0, count).map((item, idx) => ({
+                rank: idx + 1,
+                title: item.title,
+                url: item.url,
+                description: item.description || item.snippet || "No description available",
+            }));
+            if (top.length) return JSON.stringify(top);
+        } catch (err) {
+            // Fall through to SearxNG fallback.
+        }
 
         try {
             const searchUrl = new URL("https://opnxng.com/search");
