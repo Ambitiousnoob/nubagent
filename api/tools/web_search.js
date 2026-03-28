@@ -1,13 +1,3 @@
-const requireSafeGoogleThis = () => {
-    try {
-        // eslint-disable-next-line global-require
-        return require("googlethis");
-    } catch (e) {
-        console.error("googlethis load failed:", e);
-        return null;
-    }
-};
-
 module.exports = {
     definition: {
         type: "function",
@@ -22,7 +12,12 @@ module.exports = {
                         type: "string",
                         description: "The specific search query. If checking the date or time, include the timezone or location.",
                     },
-                    count: { type: "integer", minimum: 1, maximum: 5, description: "Results to return (1-5)" },
+                    count: {
+                        type: "integer",
+                        minimum: 1,
+                        maximum: 5,
+                        description: "Results to return (1-5)",
+                    },
                 },
                 required: ["query"],
                 additionalProperties: false,
@@ -32,17 +27,39 @@ module.exports = {
     handler: async (args) => {
         const query = String(args.query || "").trim();
         const count = Math.min(Math.max(parseInt(args.count, 10) || 3, 1), 5);
+
         if (!query) return "Error: query is required";
+
         try {
-            const googleThis = requireSafeGoogleThis();
-            if (!googleThis) return "Error: web search library unavailable";
-            const results = await googleThis.search(query, { page: 0, safe: false, parse_ads: false });
-            const top = (results?.results || []).slice(0, count).map((item, idx) => ({
+            const searchUrl = new URL("https://opnxng.com/search");
+            searchUrl.searchParams.append("q", query);
+            searchUrl.searchParams.append("format", "json");
+
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 8000);
+
+            const response = await fetch(searchUrl.toString(), {
+                signal: controller.signal,
+                headers: {
+                    "Accept": "application/json",
+                    "User-Agent": "NubAgent/1.0",
+                },
+            });
+
+            clearTimeout(timer);
+
+            if (!response.ok) {
+                return `Error: Search engine returned status ${response.status}`;
+            }
+
+            const data = await response.json();
+            const top = (data.results || []).slice(0, count).map((item, idx) => ({
                 rank: idx + 1,
                 title: item.title,
                 url: item.url,
-                description: item.description,
+                description: item.content || item.snippet || "No description available",
             }));
+
             if (!top.length) return `No results for "${query}"`;
             return JSON.stringify(top);
         } catch (e) {
