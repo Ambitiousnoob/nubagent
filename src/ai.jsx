@@ -646,6 +646,7 @@ const buildUserHistoryText = (prompt, attachments = [], {
     extraContext = "",
 } = {}) => {
     const normalizedPrompt = normalizeTextBlock(prompt);
+    const hasImageAttachments = attachments.some(attachment => attachment?.kind === "image");
     const sections = [];
     if (normalizedPrompt) {
         sections.push(normalizedPrompt);
@@ -656,6 +657,10 @@ const buildUserHistoryText = (prompt, attachments = [], {
     const manifest = includeManifest ? buildAttachmentManifest(attachments) : "";
     if (manifest) {
         sections.push(`Attached files:\n${manifest}`);
+    }
+
+    if (hasImageAttachments) {
+        sections.push("Image attachments are already included in this message. Do not invent placeholder or public URLs for them. Use the attached image content and OCR context directly. Only use view_image when the user provides a real http(s) image URL.");
     }
 
     if (includeTextBlocks) {
@@ -1448,8 +1453,8 @@ function createTools() {
         view_image: {
             category: "Search",
             icon: "",
-            description: "Analyze an image URL and describe what is visible, including text when available.",
-            example: "view_image: https://example.com/screenshot.png",
+            description: "Analyze a real external image URL and describe what is visible, including text when available. Do not use this for uploaded attachments already present in the chat.",
+            example: "view_image: <user-provided-image-url>",
         },
     };
 }
@@ -1492,10 +1497,11 @@ The answer is 100.
 RULES:
 1. ALWAYS write a <thought> before taking an action or answering.
 2. Use tools for any factual, computational, or data-retrieval need.
-3. If a tool errors, adapt: try different params or tools.
-4. Before finalizing, make sure the critical objectives are satisfied or explicitly state what is still missing.
-5. Final answers should be complete, structured, and use markdown.
-6. Do NOT use JSON for tool calls, ONLY use the exact <tool_call> XML format.`;
+3. Uploaded attachments are already in the conversation context. Never invent placeholder URLs like example.com for uploaded files. Use view_image only for real http(s) image URLs explicitly provided by the user.
+4. If a tool errors, adapt: try different params or tools.
+5. Before finalizing, make sure the critical objectives are satisfied or explicitly state what is still missing.
+6. Final answers should be complete, structured, and use markdown.
+7. Do NOT use JSON for tool calls, ONLY use the exact <tool_call> XML format.`;
 
 async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MAX_COMPLETION_TOKENS, log, clientTimeoutMs = 70000, onToolCall, onThought } = {}) {
     const ensureBrandedMessages = (msgs = []) => (
@@ -2465,16 +2471,17 @@ export default function AgentFramework() {
 
         const semanticSearchText = query || pendingUploads.map(upload => upload.name).filter(Boolean).join(" ") || "attached files";
         const semanticRecall = buildSemanticContext(semanticSearchText, runMemoryEngine.semanticChunks);
+        const includeCurrentImageOcr = pendingUploads.some(upload => upload?.kind === "image");
         const rawUserHistoryText = buildUserHistoryText(query, pendingUploads, {
             includeTextBlocks: false,
-            includeImageOcr: false,
+            includeImageOcr: includeCurrentImageOcr,
             extraContext: semanticRecall.text,
         });
         const preparedQuery = truncateText(rawUserHistoryText, MAX_CURRENT_QUERY_CHARS);
         const queryWasTrimmed = preparedQuery !== rawUserHistoryText;
         const modelUserContent = buildUserModelContent(query, pendingUploads, {
             includeTextBlocks: false,
-            includeImageOcr: false,
+            includeImageOcr: includeCurrentImageOcr,
             extraContext: semanticRecall.text,
         });
         const messageAttachments = pendingUploads.map(createMessageAttachment);
