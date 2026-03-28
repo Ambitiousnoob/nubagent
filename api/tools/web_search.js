@@ -22,8 +22,8 @@ module.exports = {
         const query = String(args.query || "").trim();
         if (!query) return "Error: query is required";
 
-        const apiKey = process.env.TAVILY_API_KEY || "tvly-YOUR_FREE_API_KEY_HERE";
-        if (!apiKey || apiKey.includes("YOUR_FREE_API_KEY_HERE")) {
+        const apiKey = process.env.TAVILY_API_KEY;
+        if (!apiKey || /YOUR_FREE_API_KEY_HERE/.test(apiKey)) {
             return "Error: Tavily API key missing. Set TAVILY_API_KEY on the server.";
         }
 
