@@ -3377,14 +3377,20 @@ export default function AgentFramework() {
                                 <div key={idx} className="af-msg-bot">
                                     {msg.steps?.length > 0 && (
                                         <div className="af-steps">
-                                            {msg.steps.filter(s => s.type === "action").map((step, si) => (
-                                                <TerminalMessage
-                                                    key={`${idx}-${si}`}
-                                                    status={step.status || "info"}
-                                                    isRunning={false}
-                                                    text={`${step.action}${step.input && Object.keys(step.input).length ? ` ${JSON.stringify(step.input)}` : ""}`}
-                                                />
-                                            ))}
+                                            {msg.steps.filter(s => s.type === "action").map((step, si) => {
+                                                const details = [];
+                                                if (step.input && Object.keys(step.input).length) details.push(`input=${JSON.stringify(step.input)}`);
+                                                if (step.observation) details.push(`obs=${step.observation}`);
+                                                const text = `${step.action}${details.length ? " " + details.join(" | ") : ""}`;
+                                                return (
+                                                    <TerminalMessage
+                                                        key={`${idx}-${si}`}
+                                                        status={step.status || "info"}
+                                                        isRunning={false}
+                                                        text={text}
+                                                    />
+                                                );
+                                            })}
                                         </div>
                                     )}
                                     {msg.error ? (
@@ -3397,18 +3403,19 @@ export default function AgentFramework() {
 
                             {running && pendingSteps?.length > 0 && (
                                 <div className="af-steps">
-                                    {pendingSteps.filter(s => s.type === "action").map((step, si) => (
-                                        <div key={si} className="af-step">
-                                            <div className="af-step-hdr">
-                                                <span>{tools[step.action]?.icon || "🔧"}</span>
-                                                <code style={{ fontFamily: "var(--mono)", fontWeight: 600, fontSize: 12 }}>{step.action}</code>
-                                                <span style={{ flex: 1, color: "var(--text-muted)", marginLeft: 8, fontSize: 11 }}>
-                                                    {step.batchSize > 1 ? `Step ${step.iteration}.${step.batchIndex}/${step.batchSize} ✓` : `Step ${step.iteration} ✓`}
-                                                    {step.durationMs ? ` · ${step.durationMs}ms` : ""}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    ))}
+                                    {pendingSteps.filter(s => s.type === "action").map((step, si) => {
+                                        const details = [];
+                                        if (step.input && Object.keys(step.input).length) details.push(`input=${JSON.stringify(step.input)}`);
+                                        const text = `${step.action}${details.length ? " " + details.join(" | ") : ""}`;
+                                        return (
+                                            <TerminalMessage
+                                                key={`pending-${si}`}
+                                                status={step.status || "info"}
+                                                isRunning
+                                                text={text}
+                                            />
+                                        );
+                                    })}
                                 </div>
                             )}
 
