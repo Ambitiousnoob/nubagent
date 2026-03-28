@@ -4,7 +4,7 @@ module.exports = {
         function: {
             name: "web_search",
             strict: true,
-            description: "CRITICAL: You MUST use this tool whenever you need real-time data, the current date or time, current events, or information beyond your training cutoff. Never reply saying you 'don't have access to real-time data'—use this tool instead.",
+            description: "Searches the entire web using queries (supports operators like site:reddit.com). Returns up to 30 results with titles, links, and snippets. Use for latest news, facts, product info, or anything not in training data.",
             parameters: {
                 type: "object",
                 properties: {
@@ -38,7 +38,7 @@ module.exports = {
                     query,
                     search_depth: "basic",
                     include_answer: false,
-                    max_results: 5,
+                    max_results: 30,
                 }),
                 signal: controller.signal,
             });
@@ -50,7 +50,7 @@ module.exports = {
             }
 
             const data = await response.json();
-            const top = (data.results || []).map((item, idx) => ({
+            const top = (data.results || []).slice(0, 30).map((item, idx) => ({
                 rank: idx + 1,
                 title: item.title,
                 url: item.url,
