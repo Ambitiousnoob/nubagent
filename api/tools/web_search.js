@@ -26,6 +26,7 @@ module.exports = {
     },
     handler: async (args) => {
         const query = String(args.query || "").trim();
+        const count = Math.min(Math.max(parseInt(args.count, 10) || 5, 1), 5);
         if (!query) return "Error: query is required";
 
         const apiKey = process.env.TAVILY_API_KEY || "tvly-YOUR_FREE_API_KEY_HERE";
@@ -47,7 +48,7 @@ module.exports = {
                     query,
                     search_depth: "basic",
                     include_answer: false,
-                    max_results: 5,
+                    max_results: count,
                 }),
                 signal: controller.signal,
             });
@@ -59,7 +60,7 @@ module.exports = {
             }
 
             const data = await response.json();
-            const top = (data.results || []).slice(0, 5).map((item, idx) => ({
+            const top = (data.results || []).slice(0, count).map((item, idx) => ({
                 rank: idx + 1,
                 title: item.title,
                 url: item.url,
