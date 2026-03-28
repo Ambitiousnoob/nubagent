@@ -1415,6 +1415,12 @@ function createTools() {
             description: "Evaluate arithmetic expressions (use when math is required).",
             example: "calculate: 15*7+(2/3)",
         },
+        web_search: {
+            category: "Search",
+            icon: "🌐",
+            description: "Search the web for recent information and return top snippets.",
+            example: "web_search: latest cerebras tool calling docs",
+        },
     };
 }
 
