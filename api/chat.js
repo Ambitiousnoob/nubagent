@@ -64,7 +64,7 @@ const executeTool = async (toolCall) => {
 
     if (name === "calculate") {
         const expr = String(args.expression || "");
-        const safeExpr = expr.replace(/[^0-9+\\-*/().\\s]/g, "");
+        const safeExpr = expr.replace(/[^0-9+*/().\s-]/g, "");
         try {
             // eslint-disable-next-line no-eval
             const result = eval(safeExpr);
