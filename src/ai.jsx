@@ -830,6 +830,15 @@ const stripAgentArtifacts = (value) => {
 
 const sanitizeStepForHistory = (step = {}) => {
     if (!step || typeof step !== "object") return step;
+    if (step.type === "thought") {
+        return {
+            type: "thought",
+            thought: typeof step.thought === "string" ? step.thought : "",
+            iteration: step.iteration,
+            batchSize: step.batchSize,
+            status: step.status || "think",
+        };
+    }
     const { thought, ...rest } = step;
     if (rest.feedback && typeof rest.feedback === "object") {
         rest.feedback = {
@@ -1488,7 +1497,7 @@ RULES:
 5. Final answers should be complete, structured, and use markdown.
 6. Do NOT use JSON for tool calls, ONLY use the exact <tool_call> XML format.`;
 
-async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MAX_COMPLETION_TOKENS, log, clientTimeoutMs = 70000, onToolCall } = {}) {
+async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MAX_COMPLETION_TOKENS, log, clientTimeoutMs = 70000, onToolCall, onThought } = {}) {
     const ensureBrandedMessages = (msgs = []) => (
         Array.isArray(msgs) && msgs.some(m => m?.role === "system")
             ? msgs
@@ -1499,6 +1508,17 @@ async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MA
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
         try {
             const brandedMessages = ensureBrandedMessages(messages);
+            const emittedThoughtKeys = new Set();
+            const emitThoughts = (value, { includePartial = false } = {}) => {
+                if (typeof onThought !== "function") return;
+                const thoughts = extractThoughtBlocks(value, { includePartial });
+                thoughts.forEach((thought, index) => {
+                    const key = `${index}:${thought}`;
+                    if (emittedThoughtKeys.has(key)) return;
+                    emittedThoughtKeys.add(key);
+                    onThought(thought, { index, total: thoughts.length });
+                });
+            };
             log?.(`Dispatching to ${getPublicModelName()} (attempt ${attempt + 1}/${maxAttempts})`);
             const controller = new AbortController();
             if (signal) {
@@ -1563,6 +1583,7 @@ async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MA
                                 chunkCount += 1;
                                 fullText += chunk;
                                 onUpdate(fullText);
+                                emitThoughts(fullText, { includePartial: false });
                             }
                         } catch (e) { /* ignore parse error on partial chunks */ }
                     }
@@ -1606,11 +1627,13 @@ async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MA
                         logTool(name, args);
                     });
                 }
+                emitThoughts(text, { includePartial: true });
                 onUpdate(text || "");
                 log?.("Non-stream retry completed.");
                 return { text, toolsUsed: collectedTools };
             }
 
+            emitThoughts(fullText, { includePartial: true });
             return { text: fullText, toolsUsed: collectedTools };
         } catch (e) {
             if (e.name === "AbortError") throw e;
@@ -1697,6 +1720,22 @@ function parseXMLAgentResponse(text) {
 
     return res;
 }
+
+const extractThoughtBlocks = (text, { includePartial = false } = {}) => {
+    const source = typeof text === "string" ? text : "";
+    if (!source) return [];
+
+    const pattern = includePartial
+        ? /<thought>([\s\S]*?)(?:<\/thought>|$)/gi
+        : /<thought>([\s\S]*?)<\/thought>/gi;
+    const thoughts = [];
+    let match;
+    while ((match = pattern.exec(source)) !== null) {
+        const thought = normalizeTextBlock(match[1] || "");
+        if (thought) thoughts.push(thought);
+    }
+    return thoughts;
+};
 
 function renderMarkdown(text) {
     if (!text) return "";
@@ -2262,6 +2301,15 @@ export default function AgentFramework() {
         if (normalized.startsWith("calculate")) return "info";
         return "info";
     };
+    const buildThoughtSteps = (value, prefix = "", { includePartial = false } = {}) => (
+        extractThoughtBlocks(value, { includePartial }).map((thought, index, thoughts) => ({
+            type: "thought",
+            thought: `${prefix}${thought}`,
+            iteration: index + 1,
+            batchSize: thoughts.length,
+            status: "think",
+        }))
+    );
     const buildToolSteps = (items = [], prefix = "") => (
         (Array.isArray(items) ? items : []).map((entry, index) => {
             let input = entry?.args;
@@ -2278,6 +2326,19 @@ export default function AgentFramework() {
             };
         })
     );
+    const buildTraceSteps = (text, tools = [], prefix = "") => ([
+        ...buildThoughtSteps(text, prefix),
+        ...buildToolSteps(tools, prefix),
+    ]);
+    const formatTerminalStepText = (step = {}) => {
+        if (step.type === "thought") {
+            return step.thought || "Thinking...";
+        }
+        const details = [];
+        if (step.input && Object.keys(step.input).length) details.push(`input=${JSON.stringify(step.input)}`);
+        if (step.observation) details.push(`obs=${step.observation}`);
+        return `${step.action || "step"}${details.length ? " " + details.join(" | ") : ""}`;
+    };
     useEffect(() => {
         if (!conv) return;
         const nextSummary = buildEpisodicSummary(conv.messages || []);
@@ -2513,6 +2574,14 @@ export default function AgentFramework() {
                 }, {
                     maxTokens: MAX_COMPLETION_TOKENS,
                     log: (msg) => pushRunLog("System", msg, "var(--text-dim)"),
+                    onThought: (thought) => {
+                        pushRunLog("Thought", thought, "var(--accent-2)");
+                        const [step] = buildThoughtSteps(`<thought>${thought}</thought>`, "", { includePartial: true });
+                        if (step) {
+                            step.iteration = (Array.isArray(getConversationById(conversationId)?.pendingSteps) ? getConversationById(conversationId).pendingSteps.length : 0) + 1;
+                            pushPendingStep(step);
+                        }
+                    },
                     onToolCall: (name, args) => {
                         pushRunLog("Tool", `Called ${name} with ${JSON.stringify(args)}`, "var(--accent)");
                         const [step] = buildToolSteps([{ name, args }]);
@@ -2532,7 +2601,7 @@ export default function AgentFramework() {
                 if (!doublePass) {
                     updateRunConversation(c => ({
                         ...c,
-                        messages: [...c.messages, { role: "assistant", content: fastText, steps: buildToolSteps(toolsUsed) }],
+                        messages: [...c.messages, { role: "assistant", content: fastText, steps: buildTraceSteps(fastText, toolsUsed) }],
                         activeStream: "",
                         pendingSteps: [],
                     }));
@@ -2548,6 +2617,14 @@ export default function AgentFramework() {
                     const { text: refinedText, toolsUsed: refineTools = [] } = await callLLMStream(reviewMessages, primaryModel.id, signal, () => {}, {
                         maxTokens: MAX_COMPLETION_TOKENS,
                         log: (msg) => pushRunLog("System", `[Refine] ${msg}`, "var(--text-dim)"),
+                        onThought: (thought) => {
+                            pushRunLog("Thought", `[Refine] ${thought}`, "var(--accent-2)");
+                            const [step] = buildThoughtSteps(`<thought>${thought}</thought>`, "refine: ", { includePartial: true });
+                            if (step) {
+                                step.iteration = (Array.isArray(getConversationById(conversationId)?.pendingSteps) ? getConversationById(conversationId).pendingSteps.length : 0) + 1;
+                                pushPendingStep(step);
+                            }
+                        },
                         onToolCall: (name, args) => {
                             pushRunLog("Tool", `[Refine] Called ${name} with ${JSON.stringify(args)}`, "var(--accent)");
                             const [step] = buildToolSteps([{ name, args }], "refine: ");
@@ -2562,8 +2639,8 @@ export default function AgentFramework() {
                     }
                     const combined = `### Pass 1\n${fastText}\n\n### Pass 2 (refined)\n${refinedText || ""}`;
                     const combinedSteps = [
-                        ...buildToolSteps(toolsUsed),
-                        ...buildToolSteps(refineTools, "refine: "),
+                        ...buildTraceSteps(fastText, toolsUsed),
+                        ...buildTraceSteps(refinedText, refineTools, "refine: "),
                     ];
                     updateRunConversation(c => ({
                         ...c,
@@ -2584,6 +2661,14 @@ export default function AgentFramework() {
                     return callLLMStream(thinkerMessages, primaryModel.id, signal, () => {}, {
                         maxTokens: MAX_COMPLETION_TOKENS,
                         log: (msg) => pushRunLog(`System`, `[${label}] ${msg}`, "var(--text-dim)"),
+                        onThought: (thought) => {
+                            pushRunLog("Thought", `[${label}] ${thought}`, "var(--accent-2)");
+                            const [step] = buildThoughtSteps(`<thought>${thought}</thought>`, `${label}: `, { includePartial: true });
+                            if (step) {
+                                step.iteration = (Array.isArray(getConversationById(conversationId)?.pendingSteps) ? getConversationById(conversationId).pendingSteps.length : 0) + 1;
+                                pushPendingStep(step);
+                            }
+                        },
                         onToolCall: (name, args) => {
                             pushRunLog("Tool", `[${label}] Called ${name} with ${JSON.stringify(args)}`, "var(--accent)");
                             const [step] = buildToolSteps([{ name, args }], `${label}: `);
@@ -2599,7 +2684,7 @@ export default function AgentFramework() {
                 const combined = drafts
                     .map(draft => `## ${draft.label}\n${draft.text || draft.content || ""}`.trim())
                     .join("\n\n");
-                const combinedSteps = drafts.flatMap((draft) => buildToolSteps(draft.toolsUsed, `${draft.label}: `));
+                const combinedSteps = drafts.flatMap((draft) => buildTraceSteps(draft.text || draft.content || "", draft.toolsUsed, `${draft.label}: `));
 
                 drafts.forEach(draft => {
                     if (Array.isArray(draft.toolsUsed) && draft.toolsUsed.length) {
@@ -2844,14 +2929,17 @@ export default function AgentFramework() {
 .tm-prefix--active{color:#52e1ff;text-shadow:0 0 14px rgba(82,225,255,0.28);}
 .tm-prefix--success{color:#35d399;}
 .tm-prefix--error{color:#fb7185;}
+.tm-prefix--think{color:#22d3ee;}
 .tm-prefix--warn{color:#fbbf24;}
 .tm-prefix--info{color:#60a5fa;}
 .tm-prefix--fetch{color:#c084fc;}
 .tm-prefix--default{color:#8b96b8;}
 .tm-text--error{color:#fda4af;}
+.tm-text--think{color:#b6f4ff;}
 .tm-row--active{border-color:rgba(82,225,255,0.24);background:linear-gradient(180deg,rgba(8,20,30,0.96),rgba(8,14,24,0.96));}
 .tm-row--success{border-color:rgba(53,211,153,0.16);}
 .tm-row--error{border-color:rgba(251,113,133,0.2);}
+.tm-row--think{border-color:rgba(34,211,238,0.22);background:linear-gradient(180deg,rgba(6,20,27,0.96),rgba(8,15,23,0.96));}
 .tm-row--warn{border-color:rgba(251,191,36,0.18);}
 .tm-row--fetch{border-color:rgba(192,132,252,0.18);}
 .af-step{border:1px solid var(--border);border-radius:8px;margin-bottom:6px;overflow:hidden;transition:all .2s;}
@@ -3439,20 +3527,14 @@ export default function AgentFramework() {
                                 <div key={idx} className="af-msg-bot">
                                     {msg.steps?.length > 0 && (
                                         <div className="af-steps">
-                                            {msg.steps.filter(s => s.type === "action").map((step, si) => {
-                                                const details = [];
-                                                if (step.input && Object.keys(step.input).length) details.push(`input=${JSON.stringify(step.input)}`);
-                                                if (step.observation) details.push(`obs=${step.observation}`);
-                                                const text = `${step.action}${details.length ? " " + details.join(" | ") : ""}`;
-                                                return (
-                                                    <TerminalMessage
-                                                        key={`${idx}-${si}`}
-                                                        status={step.status || "info"}
-                                                        isRunning={false}
-                                                        text={text}
-                                                    />
-                                                );
-                                            })}
+                                            {msg.steps.map((step, si) => (
+                                                <TerminalMessage
+                                                    key={`${idx}-${si}`}
+                                                    status={step.status || (step.type === "thought" ? "think" : "info")}
+                                                    isRunning={false}
+                                                    text={formatTerminalStepText(step)}
+                                                />
+                                            ))}
                                         </div>
                                     )}
                                     {msg.error ? (
@@ -3465,19 +3547,14 @@ export default function AgentFramework() {
 
                             {running && pendingSteps?.length > 0 && (
                                 <div className="af-steps">
-                                    {pendingSteps.filter(s => s.type === "action").map((step, si) => {
-                                        const details = [];
-                                        if (step.input && Object.keys(step.input).length) details.push(`input=${JSON.stringify(step.input)}`);
-                                        const text = `${step.action}${details.length ? " " + details.join(" | ") : ""}`;
-                                        return (
-                                            <TerminalMessage
-                                                key={`pending-${si}`}
-                                                status={step.status || "info"}
-                                                isRunning
-                                                text={text}
-                                            />
-                                        );
-                                    })}
+                                    {pendingSteps.map((step, si) => (
+                                        <TerminalMessage
+                                            key={`pending-${si}`}
+                                            status={step.status || (step.type === "thought" ? "think" : "info")}
+                                            isRunning={si === pendingSteps.length - 1}
+                                            text={formatTerminalStepText(step)}
+                                        />
+                                    ))}
                                 </div>
                             )}
 

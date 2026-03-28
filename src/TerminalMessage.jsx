@@ -20,6 +20,7 @@ export default function TerminalMessage({ status = "default", text, isRunning = 
         switch (status) {
             case "success": return "[   OK   ]";
             case "error": return "[ FATAL  ]";
+            case "think": return "[ THINK  ]";
             case "warn": return "[  WARN  ]";
             case "info": return "[  INFO  ]";
             case "fetch": return "[  CURL  ]";
