@@ -14,6 +14,8 @@ const MAX_TOOL_TURNS = 6;
 const { definition: calcDef, handler: calcHandler } = require("./tools/calculate");
 const { definition: searchDef, handler: searchHandler } = require("./tools/web_search");
 const { definition: fetchDef, handler: fetchHandler } = require("./tools/web_fetch");
+const { definition: imageSearchDef, handler: imageSearchHandler } = require("./tools/search_images");
+const { definition: viewImageDef, handler: viewImageHandler } = require("./tools/view_image");
 
 const writeCorsHeaders = (res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -34,7 +36,7 @@ const wantsStream = (body = {}) => {
     return body.stream === true;
 };
 
-const TOOL_DEFINITIONS = [calcDef, searchDef, fetchDef];
+const TOOL_DEFINITIONS = [calcDef, searchDef, fetchDef, imageSearchDef, viewImageDef];
 
 const executeTool = async (toolCall) => {
     const name = toolCall?.function?.name;
@@ -49,6 +51,8 @@ const executeTool = async (toolCall) => {
     if (name === "calculate") return calcHandler(args);
     if (name === "web_search") return searchHandler(args);
     if (name === "web_fetch") return fetchHandler(args);
+    if (name === "search_images") return imageSearchHandler(args);
+    if (name === "view_image") return viewImageHandler(args);
     return `Error: unknown tool ${name}`;
 };
 

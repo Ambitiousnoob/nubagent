@@ -1427,6 +1427,18 @@ function createTools() {
             description: "Fetch a URL (text/html) and return up to ~3000 characters.",
             example: "web_fetch: https://example.com/page",
         },
+        search_images: {
+            category: "Search",
+            icon: "",
+            description: "Search the web for relevant images and return up to 10 image URLs/snippets.",
+            example: "search_images: solar eclipse nasa photo",
+        },
+        view_image: {
+            category: "Search",
+            icon: "",
+            description: "Inspect an image URL for metadata (content type, size) to verify a link.",
+            example: "view_image: https://example.com/pic.jpg",
+        },
     };
 }
 
