@@ -1407,7 +1407,16 @@ const parseRouterResponse = (text) => {
     return { analysis, primary, secondary, reason };
 };
 
-function createTools() { return {}; }
+function createTools() {
+    return {
+        calculate: {
+            category: "Core",
+            icon: "🧮",
+            description: "Evaluate arithmetic expressions (use when math is required).",
+            example: "calculate: 15*7+(2/3)",
+        },
+    };
+}
 
 const buildSystemPrompt = (n, desc) => `You are an exceptionally capable autonomous AI agent.
 
