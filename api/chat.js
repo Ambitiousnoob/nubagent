@@ -4,16 +4,18 @@ dotenv.config();
 dotenv.config({ path: path.join(__dirname, "..", ".env") });
 
 const { readBody } = require("../lib/web");
+const googleThis = require("googlethis");
 require("dotenv/config");
 
 const DEFAULT_MODEL = "qwen-3-235b-a22b-instruct-2507";
 const API_URL = "https://api.cerebras.ai/v1/chat/completions";
 const ALLOWED_MODELS = new Set([DEFAULT_MODEL]);
+const MAX_TOOL_TURNS = 6;
 
 const writeCorsHeaders = (res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type", "Authorization");
 };
 
 const sendJson = (res, status, payload) => {
@@ -29,6 +31,90 @@ const wantsStream = (body = {}) => {
     return body.stream === true;
 };
 
+const TOOL_DEFINITIONS = [
+    {
+        type: "function",
+        function: {
+            name: "calculate",
+            strict: true,
+            description: "Evaluate a basic arithmetic expression. Supports + - * / and parentheses. Use for math.",
+            parameters: {
+                type: "object",
+                properties: {
+                    expression: {
+                        type: "string",
+                        description: "Arithmetic expression, e.g. 15*7+(2/3)",
+                    },
+                },
+                required: ["expression"],
+                additionalProperties: false,
+            },
+        },
+    },
+    {
+        type: "function",
+        function: {
+            name: "web_search",
+            strict: true,
+            description: "Search the web for recent information and return top snippets.",
+            parameters: {
+                type: "object",
+                properties: {
+                    query: { type: "string", description: "Search query" },
+                    count: { type: "integer", minimum: 1, maximum: 5, description: "Results to return (1-5)" },
+                },
+                required: ["query"],
+                additionalProperties: false,
+            },
+        },
+    },
+];
+
+const executeTool = async (toolCall) => {
+    const name = toolCall?.function?.name;
+    const argsRaw = toolCall?.function?.arguments || "{}";
+    let args = {};
+    try {
+        args = JSON.parse(argsRaw);
+    } catch (e) {
+        return `Error: could not parse arguments (${e.message})`;
+    }
+
+    if (name === "calculate") {
+        const expr = String(args.expression || "");
+        const safeExpr = expr.replace(/[^0-9+\\-*/().\\s]/g, "");
+        try {
+            // eslint-disable-next-line no-eval
+            const result = eval(safeExpr);
+            if (!Number.isFinite(result)) return "Error: calculation produced non-finite result";
+            return String(result);
+        } catch (e) {
+            return `Error: invalid expression (${e.message})`;
+        }
+    }
+
+    if (name === "web_search") {
+        const query = String(args.query || "").trim();
+        const count = Math.min(Math.max(parseInt(args.count, 10) || 3, 1), 5);
+        if (!query) return "Error: query is required";
+        try {
+            const results = await googleThis.search(query, { page: 0, safe: false, parse_ads: false });
+            const top = (results?.results || []).slice(0, count).map((item, idx) => ({
+                rank: idx + 1,
+                title: item.title,
+                url: item.url,
+                description: item.description,
+            }));
+            if (!top.length) return `No results for "${query}"`;
+            return JSON.stringify(top);
+        } catch (e) {
+            return `Error: search failed (${e.message})`;
+        }
+    }
+
+    return `Error: unknown tool ${name}`;
+};
+
 const normalizeModel = (model) => {
     const id = typeof model === "string" ? model.trim() : "";
     const lowered = id.toLowerCase();
@@ -42,23 +128,12 @@ const normalizeModel = (model) => {
     return DEFAULT_MODEL;
 };
 
-const askAgent = async (body, streamCallback) => {
-    const model = normalizeModel(body.model);
-    const payload = {
-        model,
-        messages: Array.isArray(body.messages) ? body.messages : [],
-        stream: wantsStream(body),
-    };
-    if (Array.isArray(body.tools)) payload.tools = body.tools;
-    if (body.tool_choice) payload.tool_choice = body.tool_choice;
-    if (body.temperature !== undefined) payload.temperature = body.temperature;
-    if (body.max_tokens !== undefined) payload.max_tokens = body.max_tokens;
-
+const callCerebras = async (payload, streamCallback) => {
     const apiKey = process.env.CEREBRAS_API_KEY;
     const response = await fetch(API_URL, {
         method: "POST",
         headers: {
-            "Authorization": `Bearer ${apiKey}`,
+            Authorization: `Bearer ${apiKey}`,
             "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
@@ -80,12 +155,12 @@ const askAgent = async (body, streamCallback) => {
             const { done, value } = await reader.read();
             if (done) break;
             buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
+            const lines = buffer.split("\\n");
             buffer = lines.pop() || "";
 
             for (const line of lines) {
-                if (!line.startsWith('data: ')) continue;
-                if (line === 'data: [DONE]') continue;
+                if (!line.startsWith("data: ")) continue;
+                if (line === "data: [DONE]") continue;
                 try {
                     const data = JSON.parse(line.slice(6));
                     const chunk = data.choices?.[0]?.delta?.content || "";
@@ -98,11 +173,53 @@ const askAgent = async (body, streamCallback) => {
                 }
             }
         }
-        return fullText;
+        return { content: fullText };
     }
 
     const json = await response.json();
-    return json.choices?.[0]?.message?.content || json.output_text || "";
+    const choice = json.choices?.[0] || {};
+    return {
+        content: choice.message?.content || json.output_text || "",
+        message: choice.message,
+    };
+};
+
+const runChatWithTools = async (body) => {
+    const model = normalizeModel(body.model);
+    const messages = Array.isArray(body.messages) ? [...body.messages] : [];
+    const base = {
+        model,
+        temperature: body.temperature,
+        max_tokens: body.max_tokens,
+        tools: TOOL_DEFINITIONS,
+        parallel_tool_calls: true,
+        stream: false, // tool path uses non-stream for determinism
+    };
+
+    let lastContent = "";
+    for (let i = 0; i < MAX_TOOL_TURNS; i += 1) {
+        const payload = { ...base, messages };
+        const result = await callCerebras(payload);
+        const assistantMessage = result.message || { role: "assistant", content: result.content };
+        messages.push(assistantMessage);
+
+        const toolCalls = assistantMessage?.tool_calls || assistantMessage?.toolCalls || [];
+        if (!toolCalls.length) {
+            lastContent = assistantMessage?.content || "";
+            break;
+        }
+
+        for (const call of toolCalls) {
+            const toolResult = await executeTool(call);
+            messages.push({
+                role: "tool",
+                tool_call_id: call.id || call?.function?.name || "tool-call",
+                content: toolResult,
+            });
+        }
+    }
+
+    return lastContent;
 };
 
 const metadataPayload = () => ({
@@ -116,8 +233,9 @@ const metadataPayload = () => ({
         label: "nub-agent (ambitiousnoob) · Cerebras Qwen 3 235B",
     },
     default_execution_mode: "completion",
-    agentic: false,
-    stream: "SSE",
+    agentic: true,
+    stream: "SSE (streaming disabled during tool calls)",
+    tools: TOOL_DEFINITIONS.map((t) => t.function.name),
     example: {
         model: DEFAULT_MODEL,
         messages: [{ role: "user", content: "Hello!" }],
@@ -166,7 +284,10 @@ module.exports = async (req, res) => {
 
     const HARD_TIMEOUT_MS = 60000;
     try {
-        if (wantsStream(body)) {
+        const allowTools = body.use_tools !== false;
+        const wantsSse = wantsStream(body) && !allowTools;
+
+        if (wantsSse) {
             res.status(200);
             res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
             res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -177,7 +298,13 @@ module.exports = async (req, res) => {
             };
 
             await Promise.race([
-                askAgent(body, streamCallback),
+                callCerebras({
+                    model: normalizedModel,
+                    messages: body.messages,
+                    stream: true,
+                    temperature: body.temperature,
+                    max_tokens: body.max_tokens,
+                }, streamCallback),
                 new Promise((_, reject) => setTimeout(() => reject(new Error(`Timed out after ${HARD_TIMEOUT_MS}ms`)), HARD_TIMEOUT_MS)),
             ]);
 
@@ -185,7 +312,15 @@ module.exports = async (req, res) => {
             res.end();
         } else {
             const reply = await Promise.race([
-                askAgent(body),
+                allowTools
+                    ? runChatWithTools(body)
+                    : callCerebras({
+                        model: normalizedModel,
+                        messages: body.messages,
+                        stream: false,
+                        temperature: body.temperature,
+                        max_tokens: body.max_tokens,
+                    }).then((r) => r.content),
                 new Promise((_, reject) => setTimeout(() => reject(new Error(`Timed out after ${HARD_TIMEOUT_MS}ms`)), HARD_TIMEOUT_MS)),
             ]);
 
@@ -195,7 +330,7 @@ module.exports = async (req, res) => {
                 output_text: reply,
                 choices: [{ message: { content: reply }, finish_reason: "stop" }],
                 finish_reason: "stop",
-                agentic: false,
+                agentic: allowTools,
             });
         }
     } catch (error) {
