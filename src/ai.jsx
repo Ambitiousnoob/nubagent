@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import TerminalMessage from "./TerminalMessage.jsx";
 
 const HOSTED_CHAT_API_PATH = "/api/chat";
+const HOSTED_STATE_API_PATH = "/api/state";
 const PUBLIC_MODEL_NAME = "nub-agent";
 const PUBLIC_DEVELOPER_NAME = "Ambitiousnoob";
 const MODEL_SUPPORTS_INLINE_IMAGES = true;
@@ -60,6 +61,13 @@ const HOSTED_API_LABEL = "Server API";
 const MOBILE_UI_BREAKPOINT = 768;
 const AUTO_SIDEBAR_BREAKPOINT = 900;
 const ANDROID_USER_AGENT_RE = /Android/i;
+const REMOTE_STATE_SAVE_DEBOUNCE_MS = 900;
+const STORAGE_KEYS = Object.freeze({
+    primaryModel: "primary_model",
+    fallbackModels: "fallback_models",
+    conversations: "agent_convos_v4",
+    currentConversationId: "agent_current_conversation_id",
+});
 
 const createId = () => (
     typeof crypto !== "undefined" && crypto.randomUUID
@@ -817,6 +825,70 @@ const serializeConversation = (conversation = {}) => ({
         }))
         : [],
 });
+
+const readStoredJson = (key, fallback = null) => {
+    if (typeof window === "undefined") return fallback;
+    try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : fallback;
+    } catch {
+        return fallback;
+    }
+};
+
+const buildPersistedStateSnapshot = ({
+    conversations = [],
+    currentConversationId = "",
+    primaryModelId = PUBLIC_MODEL_NAME,
+    fallbackModelIds = [],
+} = {}) => ({
+    version: 1,
+    conversations: (Array.isArray(conversations) ? conversations : []).map(serializeConversation),
+    currentConversationId,
+    primaryModelId,
+    fallbackModelIds: Array.isArray(fallbackModelIds) ? fallbackModelIds : [],
+});
+
+const hydratePersistedStateSnapshot = (raw = {}) => {
+    const conversations = Array.isArray(raw?.conversations) && raw.conversations.length
+        ? raw.conversations.map(hydrateConversation)
+        : [createConversation()];
+    const validIds = new Set(conversations.map((conversation) => conversation.id));
+    const requestedCurrentConversationId = typeof raw?.currentConversationId === "string"
+        ? raw.currentConversationId
+        : "";
+    const currentConversationId = validIds.has(requestedCurrentConversationId)
+        ? requestedCurrentConversationId
+        : conversations[0].id;
+    const primaryModel = AVAILABLE_MODELS.find((model) => model.id === raw?.primaryModelId) || AVAILABLE_MODELS[0];
+    const fallbackModels = (Array.isArray(raw?.fallbackModelIds) ? raw.fallbackModelIds : [])
+        .map((id) => AVAILABLE_MODELS.find((model) => model.id === id))
+        .filter((model, index, models) => (
+            model &&
+            model.id !== primaryModel.id &&
+            models.findIndex((candidate) => candidate?.id === model.id) === index
+        ));
+
+    return {
+        conversations,
+        currentConversationId,
+        primaryModel,
+        fallbackModels,
+    };
+};
+
+const readLocalPersistedState = () => {
+    if (typeof window === "undefined") return null;
+    const conversations = readStoredJson(STORAGE_KEYS.conversations, null);
+    if (!Array.isArray(conversations) || !conversations.length) return null;
+
+    return {
+        conversations,
+        currentConversationId: localStorage.getItem(STORAGE_KEYS.currentConversationId) || conversations[0]?.id || "",
+        primaryModelId: localStorage.getItem(STORAGE_KEYS.primaryModel) || PUBLIC_MODEL_NAME,
+        fallbackModelIds: readStoredJson(STORAGE_KEYS.fallbackModels, []),
+    };
+};
 
 const stripAgentArtifacts = (value) => {
     const text = normalizeTextBlock(value);
@@ -1853,6 +1925,14 @@ export default function AgentFramework() {
     if (initialConversationRef.current === null) {
         initialConversationRef.current = createConversation();
     }
+    const initialPersistedStateRef = useRef(null);
+    if (initialPersistedStateRef.current === null) {
+        const localPersistedState = readLocalPersistedState();
+        initialPersistedStateRef.current = localPersistedState
+            ? hydratePersistedStateSnapshot(localPersistedState)
+            : null;
+    }
+    const initialPersistedState = initialPersistedStateRef.current;
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [multiThink, setMultiThink] = useState(false);
     const [doublePass, setDoublePass] = useState(false);
@@ -1869,21 +1949,10 @@ export default function AgentFramework() {
         return window.innerWidth > AUTO_SIDEBAR_BREAKPOINT;
     });
     const [logCopyStatus, setLogCopyStatus] = useState("Copy");
-    const [primaryModel, setPrimaryModel] = useState(() => AVAILABLE_MODELS.find(m => m.id === localStorage.getItem("primary_model")) || AVAILABLE_MODELS[0]);
-    const [fallbackModels, setFallbackModels] = useState(() => {
-        const s = localStorage.getItem("fallback_models");
-        if (!s) return [AVAILABLE_MODELS[1] || AVAILABLE_MODELS[0]];
-        return JSON.parse(s).map(id => AVAILABLE_MODELS.find(m => m.id === id)).filter(Boolean);
-    });
-    const [conversations, setConversations] = useState(() => {
-        const s = localStorage.getItem("agent_convos_v4");
-        if (s) return JSON.parse(s).map(hydrateConversation);
-        return [initialConversationRef.current];
-    });
-    const [currentConversationId, setCurrentConversationId] = useState(() => {
-        const s = localStorage.getItem("agent_convos_v4");
-        return s ? JSON.parse(s)[0]?.id : initialConversationRef.current.id;
-    });
+    const [primaryModel, setPrimaryModel] = useState(() => initialPersistedState?.primaryModel || AVAILABLE_MODELS[0]);
+    const [fallbackModels, setFallbackModels] = useState(() => initialPersistedState?.fallbackModels || []);
+    const [conversations, setConversations] = useState(() => initialPersistedState?.conversations || [initialConversationRef.current]);
+    const [currentConversationId, setCurrentConversationId] = useState(() => initialPersistedState?.currentConversationId || initialConversationRef.current.id);
     const [running, setRunning] = useState(false);
     const [preparingSend, setPreparingSend] = useState(false);
     const [expandedSteps, setExpandedSteps] = useState({});
@@ -1902,6 +1971,12 @@ export default function AgentFramework() {
     const ocrQueueRef = useRef(Promise.resolve());
     const ocrJobsRef = useRef(new Map());
     const ocrLoggerRef = useRef(() => {});
+    const remoteStateRef = useRef({
+        loaded: false,
+        applying: false,
+        lastSaved: "",
+        saveTimer: null,
+    });
 
     // Track both the stable viewport and the visual viewport so Android keyboards do not cover the composer.
     useEffect(() => {
@@ -1936,6 +2011,57 @@ export default function AgentFramework() {
     useEffect(() => {
         conversationsRef.current = conversations;
     }, [conversations]);
+    useEffect(() => {
+        let cancelled = false;
+
+        (async () => {
+            try {
+                const response = await fetch(HOSTED_STATE_API_PATH, {
+                    method: "GET",
+                    cache: "no-store",
+                    credentials: "include",
+                });
+                if (!response.ok) {
+                    throw new Error(await readApiErrorText(response));
+                }
+
+                const payload = await response.json();
+                if (cancelled || !payload?.state || typeof payload.state !== "object") return;
+
+                const hydrated = hydratePersistedStateSnapshot(payload.state);
+                const snapshot = buildPersistedStateSnapshot({
+                    conversations: hydrated.conversations,
+                    currentConversationId: hydrated.currentConversationId,
+                    primaryModelId: hydrated.primaryModel.id,
+                    fallbackModelIds: hydrated.fallbackModels.map((model) => model.id),
+                });
+
+                remoteStateRef.current.applying = true;
+                remoteStateRef.current.lastSaved = JSON.stringify(snapshot);
+
+                setPrimaryModel(hydrated.primaryModel);
+                setFallbackModels(hydrated.fallbackModels);
+                setConversations(hydrated.conversations);
+                setCurrentConversationId(hydrated.currentConversationId);
+
+                setTimeout(() => {
+                    remoteStateRef.current.applying = false;
+                }, 0);
+            } catch {
+                // Local storage remains the fallback when the DB is unavailable.
+            } finally {
+                remoteStateRef.current.loaded = true;
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+            if (remoteStateRef.current.saveTimer) {
+                clearTimeout(remoteStateRef.current.saveTimer);
+                remoteStateRef.current.saveTimer = null;
+            }
+        };
+    }, []);
     useEffect(() => {
         if (typeof window === "undefined") return;
         localStorage.removeItem("agent_api_keys_pool");
@@ -2089,9 +2215,61 @@ export default function AgentFramework() {
         }));
     };
 
-    useEffect(() => localStorage.setItem("primary_model", primaryModel.id), [primaryModel]);
-    useEffect(() => localStorage.setItem("fallback_models", JSON.stringify(fallbackModels.map(m => m.id))), [fallbackModels]);
-    useEffect(() => localStorage.setItem("agent_convos_v4", JSON.stringify(conversations.map(serializeConversation))), [conversations]);
+    const fallbackModelIds = fallbackModels.map((model) => model.id);
+    const fallbackModelIdsKey = fallbackModelIds.join(",");
+    useEffect(() => {
+        if (typeof window === "undefined") return undefined;
+
+        const snapshot = buildPersistedStateSnapshot({
+            conversations,
+            currentConversationId,
+            primaryModelId: primaryModel.id,
+            fallbackModelIds,
+        });
+        const serializedSnapshot = JSON.stringify(snapshot);
+
+        localStorage.setItem(STORAGE_KEYS.primaryModel, primaryModel.id);
+        localStorage.setItem(STORAGE_KEYS.fallbackModels, JSON.stringify(fallbackModelIds));
+        localStorage.setItem(STORAGE_KEYS.conversations, JSON.stringify(snapshot.conversations));
+        localStorage.setItem(STORAGE_KEYS.currentConversationId, currentConversationId);
+
+        if (!remoteStateRef.current.loaded || remoteStateRef.current.applying) {
+            return undefined;
+        }
+        if (serializedSnapshot === remoteStateRef.current.lastSaved) {
+            return undefined;
+        }
+
+        if (remoteStateRef.current.saveTimer) {
+            clearTimeout(remoteStateRef.current.saveTimer);
+        }
+
+        remoteStateRef.current.saveTimer = window.setTimeout(async () => {
+            try {
+                const response = await fetch(HOSTED_STATE_API_PATH, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ state: snapshot }),
+                });
+                if (!response.ok) {
+                    throw new Error(await readApiErrorText(response));
+                }
+                remoteStateRef.current.lastSaved = serializedSnapshot;
+            } catch {
+                // Ignore remote persistence failures and keep local state intact.
+            } finally {
+                remoteStateRef.current.saveTimer = null;
+            }
+        }, REMOTE_STATE_SAVE_DEBOUNCE_MS);
+
+        return () => {
+            if (remoteStateRef.current.saveTimer) {
+                clearTimeout(remoteStateRef.current.saveTimer);
+                remoteStateRef.current.saveTimer = null;
+            }
+        };
+    }, [conversations, currentConversationId, primaryModel.id, fallbackModelIdsKey]);
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [currentConversationId, conversations.length, running, activeTab]);
