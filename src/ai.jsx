@@ -1794,6 +1794,7 @@ export default function AgentFramework() {
     const [multiThink, setMultiThink] = useState(false);
     const [doublePass, setDoublePass] = useState(false);
     const [headerOpen, setHeaderOpen] = useState(false);
+    const [thinkAloud, setThinkAloud] = useState(false);
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [uploadStatus, setUploadStatus] = useState("");
     const [activeTab, setActiveTab] = useState("chat");
@@ -2450,7 +2451,8 @@ export default function AgentFramework() {
         pushRunLog("System", "Agentic tools enabled; backend may call calculate/web_search/web_fetch.", "var(--text-dim)");
 
         try {
-            const chatMessages = [...historyMessages, { role: "user", content: preparedQuery }];
+            const thinkPrompt = thinkAloud ? [{ role: "system", content: "Think step by step. Show a concise <thought> plan before answering." }] : [];
+            const chatMessages = [...historyMessages, ...thinkPrompt, { role: "user", content: preparedQuery }];
 
             if (!multiThink) {
                 const { text: fastText, toolsUsed = [] } = await callLLMStream(chatMessages, primaryModel.id, signal, (text) => {
@@ -2967,6 +2969,13 @@ export default function AgentFramework() {
                                     <span>Two-pass refinement (draft then self-review)</span>
                                 </label>
                                 <small style={{ color: "var(--text-muted)" }}>First pass writes an answer; second pass critiques and improves it. Skips refinement when multi-process is on.</small>
+                            </div>
+                            <div style={{ display: "grid", gap: 6, marginTop: 6, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-input)", fontSize: 13 }}>
+                                <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                    <input type="checkbox" checked={thinkAloud} onChange={e => setThinkAloud(e.target.checked)} />
+                                    <span>Think-aloud plan (injects a &lt;thought&gt; plan before answers)</span>
+                                </label>
+                                <small style={{ color: "var(--text-muted)" }}>Adds a brief step-by-step plan before the final answer so you can see reasoning.</small>
                             </div>
                             <div className="af-api-actions">
                                 <span>{HOSTED_API_ENABLED ? `${HOSTED_API_LABEL} active` : "Server API offline"}</span>
