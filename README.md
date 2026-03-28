@@ -1,12 +1,12 @@
-# nub-agent
+# gemini-3-flash
 
-`nub-agent` is a Vite + React chat app with a Vercel serverless backend for tool-using AI workflows.
+`gemini-3-flash` is a Vite + React chat app with a Vercel serverless backend for tool-using AI workflows.
 
-The frontend exposes a branded assistant experience. The backend routes requests to Cerebras, executes a small toolset, and returns normalized responses for chat, web reading, and crawling.
+The frontend exposes a branded assistant experience. The backend routes requests to Google Gemini, executes a small toolset, and returns normalized responses for chat, web reading, and crawling.
 
 ## Features
 
-- Branded assistant surface exposed as `nub-agent`
+- Branded assistant surface exposed as `gemini-3-flash`
 - React chat UI with conversation history, session memory, and live activity logs
 - Terminal-style agent activity view with tool call tracing
 - Sandboxed live preview for generated HTML UI snippets
@@ -26,7 +26,7 @@ The frontend exposes a branded assistant experience. The backend routes requests
 
 - Frontend: React 17, Vite
 - Backend: Vercel Serverless Functions
-- Model provider: Cerebras chat completions
+- Model provider: Google Gemini
 - OCR: `tesseract.js`
 
 ## Repository Layout
@@ -44,7 +44,7 @@ vercel.json       Vercel routing and build config
 
 - Node.js 18+
 - npm
-- A `CEREBRAS_API_KEY`
+- `GEMINI_API_KEYS` (comma-separated list)
 - Vercel CLI if you want to deploy from the terminal
 
 ## Local Development
@@ -53,7 +53,7 @@ Frontend only:
 
 ```bash
 npm install
-export CEREBRAS_API_KEY="your-key-here"
+export GEMINI_API_KEYS="your-keys-here"
 npm run dev
 ```
 
@@ -79,7 +79,7 @@ npm run lint:regex
 
 Required:
 
-- `CEREBRAS_API_KEY` - backend key used by `api/chat.js`
+- `GEMINI_API_KEYS` - backend keys used by `api/chat.js`
 
 Notes:
 
@@ -116,7 +116,7 @@ Response shape:
 ```json
 {
   "ok": true,
-  "model": "nub-agent",
+  "model": "gemini-3-flash",
   "output_text": "...",
   "choices": [
     {
@@ -207,7 +207,7 @@ Deploy:
 npx -y vercel --prod
 ```
 
-Make sure `CEREBRAS_API_KEY` is configured in the target Vercel project before deploying.
+Make sure `GEMINI_API_KEYS` is configured in the target Vercel project before deploying.
 
 ## Current Gaps
 

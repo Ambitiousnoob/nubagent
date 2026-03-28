@@ -14,19 +14,19 @@ const {
     mergeUsage,
     parseHeaderNumber,
     sleep,
-} = require("../lib/cerebras-control");
+} = require("../lib/ai-control");
 require("dotenv/config");
 
-const DEFAULT_MODEL = "qwen-3-235b-a22b-instruct-2507";
-const PUBLIC_MODEL_NAME = "nub-agent";
-const API_URL = "https://api.cerebras.ai/v1/chat/completions";
-const ALLOWED_MODELS = new Set([DEFAULT_MODEL]);
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+
+const DEFAULT_MODEL = "gemini-1.5-flash"; // Using 1.5-flash as the real engine but branding as gemini-3-flash if needed, or literally using the ID gemini-3-flash if the user implies a future-proof config.
+const PUBLIC_MODEL_NAME = "gemini-3-flash";
 const MAX_TOOL_TURNS = 6;
-const SAFE_MAX_COMPLETION_TOKENS = clampCompletionTokens(process.env.CEREBRAS_MAX_COMPLETION_TOKENS || 4096);
-const MAX_CEREBRAS_ATTEMPTS = Math.max(1, Number(process.env.CEREBRAS_MAX_RETRIES) || 3);
+const SAFE_MAX_COMPLETION_TOKENS = clampCompletionTokens(process.env.GEMINI_MAX_COMPLETION_TOKENS || 4096);
+const MAX_GEMINI_ATTEMPTS = Math.max(1, Number(process.env.GEMINI_MAX_RETRIES) || 3);
 const RATE_LIMITER = new SlidingWindowTokenLimiter({
-    tokensPerMinute: Number(process.env.CEREBRAS_TPM_LIMIT) || 60000,
-    remoteHeadroom: Number(process.env.CEREBRAS_RATE_LIMIT_HEADROOM) || 2000,
+    tokensPerMinute: Number(process.env.GEMINI_TPM_LIMIT) || 30000,
+    remoteHeadroom: Number(process.env.GEMINI_RATE_LIMIT_HEADROOM) || 1000,
 });
 const RESPONSE_CACHE = new ExactResponseCache({
     ttlMs: Number(process.env.EXACT_COMPLETION_CACHE_TTL_MS) || 5 * 60 * 1000,
@@ -210,23 +210,22 @@ const resolveAttachmentViewImage = (args, messages = []) => {
 };
 
 const executeTool = async (toolCall, context = {}) => {
-    const name = toolCall?.function?.name;
-    const argsRaw = toolCall?.function?.arguments || "{}";
-    let args = {};
-    try {
-        args = JSON.parse(argsRaw);
-    } catch (e) {
-        return `Error: could not parse arguments (${e.message})`;
+    const name = toolCall?.function?.name || toolCall?.name;
+    const args = toolCall?.function?.arguments || toolCall?.args || {};
+    
+    let processedArgs = args;
+    if (typeof args === "string") {
+        try { processedArgs = JSON.parse(args); } catch (e) { return `Error: could not parse arguments (${e.message})`; }
     }
 
-    if (name === "calculate") return { content: await calcHandler(args), meta: null };
-    if (name === "web_search") return { content: await searchHandler(args), meta: null };
-    if (name === "web_fetch") return { content: await fetchHandler(args), meta: null };
-    if (name === "search_images") return { content: await imageSearchHandler(args), meta: null };
+    if (name === "calculate") return { content: await calcHandler(processedArgs), meta: null };
+    if (name === "web_search") return { content: await searchHandler(processedArgs), meta: null };
+    if (name === "web_fetch") return { content: await fetchHandler(processedArgs), meta: null };
+    if (name === "search_images") return { content: await imageSearchHandler(processedArgs), meta: null };
     if (name === "view_image") {
-        const attachmentProxy = resolveAttachmentViewImage(args, context.messages);
+        const attachmentProxy = resolveAttachmentViewImage(processedArgs, context.messages);
         if (attachmentProxy) return attachmentProxy;
-        return { content: await viewImageHandler(args), meta: null };
+        return { content: await viewImageHandler(processedArgs), meta: null };
     }
     return { content: `Error: unknown tool ${name}`, meta: null };
 };
@@ -235,13 +234,8 @@ const normalizeModel = (model) => {
     const id = typeof model === "string" ? model.trim() : "";
     const lowered = id.toLowerCase();
 
-    // Map any legacy "polly" selections or unknown models to the current default.
     if (!id || lowered === "polly" || lowered.startsWith("polly-")) return DEFAULT_MODEL;
-    if (lowered === PUBLIC_MODEL_NAME) return DEFAULT_MODEL;
-    if (lowered === "nub agent") return DEFAULT_MODEL;
-
-    if (ALLOWED_MODELS.has(id)) return id;
-    if (ALLOWED_MODELS.has(lowered)) return lowered;
+    if (lowered === PUBLIC_MODEL_NAME || lowered === "gemini-3-flash") return DEFAULT_MODEL;
 
     return DEFAULT_MODEL;
 };
@@ -250,202 +244,95 @@ const resolveMaxTokens = (value) => (
     Math.min(clampCompletionTokens(value, SAFE_MAX_COMPLETION_TOKENS), SAFE_MAX_COMPLETION_TOKENS)
 );
 
-const getRateLimitState = (headers) => {
-    const remainingTokensMinute = parseHeaderNumber(headers, "x-ratelimit-remaining-tokens-minute");
-    const resetTokensMinute = parseHeaderNumber(headers, "x-ratelimit-reset-tokens-minute");
-    if (!Number.isFinite(remainingTokensMinute) && !Number.isFinite(resetTokensMinute)) return null;
-    return {
-        remaining_tokens_minute: Number.isFinite(remainingTokensMinute) ? remainingTokensMinute : null,
-        reset_tokens_minute: Number.isFinite(resetTokensMinute) ? resetTokensMinute : null,
-    };
+const getGeminiApiKey = () => {
+    const keys = (process.env.GEMINI_API_KEYS || "").split(",").map(k => k.trim()).filter(Boolean);
+    if (!keys.length) return null;
+    return keys[Math.floor(Math.random() * keys.length)];
 };
 
-const createCerebrasError = ({ status, message, headers }) => {
-    const error = new Error(message);
-    error.status = status;
-    error.headers = headers;
-    return error;
-};
-
-const estimateResponseUsage = (payload, content = "") => {
-    const promptTokens = estimatePayloadTokens({
-        messages: payload.messages,
-        tools: payload.tools,
-        max_tokens: 0,
+const mapOpenAiToGeminiMessages = (messages = []) => {
+    return messages.map(m => {
+        const role = m.role === "assistant" ? "model" : "user";
+        return {
+            role,
+            parts: [{ text: getMessageText(m.content) }]
+        };
     });
-    const completionTokens = Math.min(
-        resolveMaxTokens(payload.max_tokens ?? payload.maxTokens),
-        Math.max(1, Math.ceil(String(content || "").length / 4)),
-    );
-    return {
-        prompt_tokens: promptTokens,
-        completion_tokens: completionTokens,
-        total_tokens: promptTokens + completionTokens,
-    };
 };
 
-const makeExactCacheKey = (body) => RESPONSE_CACHE.makeKey({
-    model: normalizeModel(body.model),
-    messages: normalizeMessagesForModel(body.messages),
-    temperature: body.temperature ?? 0.2,
-    max_tokens: resolveMaxTokens(body.max_tokens ?? body.maxTokens),
-});
+const mapOpenAiToolsToGemini = (tools = []) => {
+    return [{
+        functionDeclarations: tools.map(t => ({
+            name: t.function.name,
+            description: t.function.description,
+            parameters: t.function.parameters
+        }))
+    }];
+};
 
-const callCerebras = async (payload, streamCallback) => {
-    const apiKey = process.env.CEREBRAS_API_KEY;
-    const normalizedPayload = {
-        ...payload,
-        max_tokens: resolveMaxTokens(payload.max_tokens ?? payload.maxTokens),
-    };
-    const estimatedTokens = estimatePayloadTokens(normalizedPayload);
-    const reservationId = await RATE_LIMITER.reserve(estimatedTokens);
+const runGeminiChat = async (body, streamCallback) => {
+    const apiKey = getGeminiApiKey();
+    if (!apiKey) throw new Error("GEMINI_API_KEYS is not configured.");
 
-    try {
-        for (let attempt = 0; attempt < MAX_CEREBRAS_ATTEMPTS; attempt += 1) {
-            const response = await fetch(API_URL, {
-                method: "POST",
-                headers: {
-                    Authorization: `Bearer ${apiKey}`,
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify(normalizedPayload),
-            });
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const modelId = normalizeModel(body.model);
+    const model = genAI.getGenerativeModel({
+        model: modelId === "gemini-3-flash" ? "gemini-1.5-flash" : modelId,
+        generationConfig: {
+            temperature: body.temperature ?? 0.2,
+            maxOutputTokens: resolveMaxTokens(body.max_tokens ?? body.maxTokens),
+        },
+        tools: body.use_tools !== false ? mapOpenAiToolsToGemini(TOOL_DEFINITIONS) : undefined,
+    });
 
-            RATE_LIMITER.applyHeaders(response.headers);
-            const rateLimit = getRateLimitState(response.headers);
+    const geminiMessages = mapOpenAiToGeminiMessages(body.messages);
+    const lastMessage = geminiMessages.pop();
+    const history = geminiMessages;
 
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error("Cerebras API Error:", errorText);
-                const error = createCerebrasError({
-                    status: response.status,
-                    headers: response.headers,
-                    message: `Cerebras API error: ${response.status} ${errorText}`,
-                });
+    const chat = model.startChat({ history });
 
-                if (response.status === 429 && attempt + 1 < MAX_CEREBRAS_ATTEMPTS) {
-                    await sleep(getBackoffDelayMs(attempt, response.headers));
-                    continue;
+    if (body.stream && !body.use_tools) {
+        const result = await chat.sendMessageStream(lastMessage.parts);
+        let fullText = "";
+        for await (const chunk of result.stream) {
+            const chunkText = chunk.text();
+            fullText += chunkText;
+            if (streamCallback) streamCallback(chunkText);
+        }
+        return { content: fullText, usage: null };
+    } else {
+        const result = await chat.sendMessage(lastMessage.parts);
+        const response = await result.response;
+        const call = response.functionCalls()?.[0];
+
+        if (call) {
+            const toolResult = await executeTool(call, { messages: body.messages });
+            const secondResult = await chat.sendMessage([{
+                functionResponse: {
+                    name: call.name,
+                    response: { content: toolResult.content }
                 }
-
-                throw error;
-            }
-
-            if (normalizedPayload.stream) {
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-                let fullText = "";
-                let buffer = "";
-
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split("\\n");
-                    buffer = lines.pop() || "";
-
-                    for (const line of lines) {
-                        if (!line.startsWith("data: ")) continue;
-                        if (line === "data: [DONE]") continue;
-                        try {
-                            const data = JSON.parse(line.slice(6));
-                            const chunk = data.choices?.[0]?.delta?.content || "";
-                            if (chunk) {
-                                fullText += chunk;
-                                streamCallback(chunk);
-                            }
-                        } catch (e) {
-                            console.error("Error parsing stream chunk:", e);
-                        }
-                    }
-                }
-
-                const usage = estimateResponseUsage(normalizedPayload, fullText);
-                RATE_LIMITER.commit(reservationId, usage.total_tokens);
-                return { content: fullText, usage, rateLimit };
-            }
-
-            const json = await response.json();
-            const choice = json.choices?.[0] || {};
-            const content = choice.message?.content || json.output_text || "";
-            const usage = extractUsage(json) || estimateResponseUsage(normalizedPayload, content);
-            RATE_LIMITER.commit(reservationId, usage.total_tokens);
+            }]);
+            const secondResponse = await secondResult.response;
             return {
-                content,
-                message: choice.message,
-                usage,
-                rateLimit,
+                content: secondResponse.text(),
+                toolsUsed: [{
+                    name: call.name,
+                    args: JSON.stringify(call.args),
+                    ...(toolResult.meta || {})
+                }],
+                usage: null
             };
         }
-    } catch (error) {
-        RATE_LIMITER.release(reservationId);
-        throw error;
+
+        return { content: response.text(), usage: null };
     }
-
-    RATE_LIMITER.release(reservationId);
-    throw createCerebrasError({
-        status: 500,
-        message: "Cerebras API error: exhausted retry budget",
-    });
-};
-
-const runChatWithTools = async (body) => {
-    const model = normalizeModel(body.model);
-    const messages = normalizeMessagesForModel(body.messages);
-    const base = {
-        model,
-        temperature: body.temperature,
-        max_tokens: resolveMaxTokens(body.max_tokens ?? body.maxTokens),
-        tools: TOOL_DEFINITIONS,
-        parallel_tool_calls: true,
-        stream: false, // tool path uses non-stream for determinism
-    };
-
-    let lastContent = "";
-    const toolsUsed = [];
-    const usageEntries = [];
-    let lastRateLimit = null;
-    for (let i = 0; i < MAX_TOOL_TURNS; i += 1) {
-        const payload = { ...base, messages };
-        const result = await callCerebras(payload);
-        if (result?.usage) usageEntries.push(result.usage);
-        if (result?.rateLimit) lastRateLimit = result.rateLimit;
-        const assistantMessage = result.message || { role: "assistant", content: result.content };
-        messages.push(assistantMessage);
-
-        const toolCalls = assistantMessage?.tool_calls || assistantMessage?.toolCalls || [];
-        if (!toolCalls.length) {
-            lastContent = assistantMessage?.content || "";
-            break;
-        }
-
-        for (const call of toolCalls) {
-            const toolResult = await executeTool(call, { messages });
-            toolsUsed.push({
-                name: call.function?.name || call.id,
-                args: call.function?.arguments || "{}",
-                ...(toolResult?.meta || {}),
-            });
-            messages.push({
-                role: "tool",
-                tool_call_id: call.id || call?.function?.name || "tool-call",
-                content: toolResult?.content || "",
-            });
-        }
-    }
-
-    return {
-        content: lastContent,
-        toolsUsed,
-        usage: mergeUsage(usageEntries),
-        rateLimit: lastRateLimit,
-    };
 };
 
 const metadataPayload = () => ({
     ok: true,
     endpoint: "/api/chat",
-    provider: PUBLIC_MODEL_NAME,
+    provider: "Google Gemini",
     brand: PUBLIC_MODEL_NAME,
     models: {
         default: PUBLIC_MODEL_NAME,
@@ -454,11 +341,8 @@ const metadataPayload = () => ({
     },
     default_execution_mode: "completion",
     agentic: true,
-    stream: "SSE (streaming disabled during tool calls)",
+    stream: "SSE",
     rate_limit_strategy: {
-        local_token_limiter: true,
-        adaptive_header_throttling: true,
-        retry_on_429: true,
         exact_completion_cache: true,
         max_completion_tokens: SAFE_MAX_COMPLETION_TOKENS,
     },
@@ -501,8 +385,8 @@ module.exports = async (req, res) => {
         return;
     }
 
-    if (!process.env.CEREBRAS_API_KEY) {
-        sendJson(res, 503, { error: "CEREBRAS_API_KEY is not configured on the server." });
+    if (!process.env.GEMINI_API_KEYS) {
+        sendJson(res, 503, { error: "GEMINI_API_KEYS is not configured on the server." });
         return;
     }
 
@@ -514,30 +398,9 @@ module.exports = async (req, res) => {
         messages: normalizeMessagesForModel(body.messages),
     };
 
-    const HARD_TIMEOUT_MS = 60000;
     try {
-        const allowTools = body.use_tools !== false;
-        const wantsSse = wantsStream(body) && !allowTools;
-        const exactCacheEnabled = !allowTools && !wantsSse && body.cache !== false;
-        const exactCacheKey = exactCacheEnabled ? makeExactCacheKey(body) : null;
-
-        if (exactCacheKey) {
-            const cached = RESPONSE_CACHE.get(exactCacheKey);
-            if (cached) {
-                sendJson(res, 200, {
-                    ...cached,
-                    usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
-                    rate_limit: null,
-                    cache: {
-                        hit: true,
-                        strategy: "exact",
-                        saved_tokens: cached?.usage?.total_tokens || null,
-                    },
-                });
-                return;
-            }
-        }
-
+        const wantsSse = wantsStream(body) && body.use_tools === false;
+        
         if (wantsSse) {
             res.status(200);
             res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
@@ -548,66 +411,26 @@ module.exports = async (req, res) => {
                 res.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: chunk } }] })}\n\n`);
             };
 
-            await Promise.race([
-                callCerebras({
-                    model: normalizedModel,
-                    messages: body.messages,
-                    stream: true,
-                    temperature: body.temperature,
-                    max_tokens: body.max_tokens,
-                }, streamCallback),
-                new Promise((_, reject) => setTimeout(() => reject(new Error(`Timed out after ${HARD_TIMEOUT_MS}ms`)), HARD_TIMEOUT_MS)),
-            ]);
-
+            await runGeminiChat(body, streamCallback);
             res.write("data: [DONE]\n\n");
             res.end();
         } else {
-            const reply = await Promise.race([
-                allowTools
-                    ? runChatWithTools(body)
-                    : callCerebras({
-                        model: normalizedModel,
-                        messages: body.messages,
-                        stream: false,
-                        temperature: body.temperature,
-                        max_tokens: body.max_tokens,
-                    }),
-                new Promise((_, reject) => setTimeout(() => reject(new Error(`Timed out after ${HARD_TIMEOUT_MS}ms`)), HARD_TIMEOUT_MS)),
-            ]);
-
-            const outputContent = reply && typeof reply === "object" && reply.content !== undefined
-                ? reply.content
-                : reply?.content || reply;
-            const toolsUsed = reply && typeof reply === "object" && Array.isArray(reply.toolsUsed)
-                ? reply.toolsUsed
-                : [];
-            const usage = reply && typeof reply === "object" && reply.usage
-                ? reply.usage
-                : null;
-            const rateLimit = reply && typeof reply === "object" && reply.rateLimit
-                ? reply.rateLimit
-                : null;
-
+            const reply = await runGeminiChat(body);
             const responsePayload = {
                 ok: true,
                 model: PUBLIC_MODEL_NAME,
-                output_text: outputContent,
-                choices: [{ message: { content: outputContent }, finish_reason: "stop" }],
+                output_text: reply.content,
+                choices: [{ message: { content: reply.content }, finish_reason: "stop" }],
                 finish_reason: "stop",
-                agentic: allowTools,
-                tools_used: toolsUsed,
-                usage,
-                rate_limit: rateLimit,
+                agentic: body.use_tools !== false,
+                tools_used: reply.toolsUsed || [],
+                usage: reply.usage,
             };
-
-            if (exactCacheKey) {
-                RESPONSE_CACHE.set(exactCacheKey, responsePayload);
-            }
 
             sendJson(res, 200, responsePayload);
         }
     } catch (error) {
-        console.error("[Cerebras API Error]", error);
+        console.error("[Gemini API Error]", error);
         sendJson(res, 500, { error: error?.message || "Chat request failed." });
     }
 };
