@@ -108,10 +108,12 @@ const askAgent = async (body, streamCallback) => {
 const metadataPayload = () => ({
     ok: true,
     endpoint: "/api/chat",
-    provider: "Cerebras Inference",
+    provider: "nub-agent (ambitiousnoob) via Cerebras",
+    brand: "nub-agent (ambitiousnoob)",
     models: {
         default: DEFAULT_MODEL,
         available: Array.from(ALLOWED_MODELS),
+        label: "nub-agent (ambitiousnoob) · Cerebras Qwen 3 235B",
     },
     default_execution_mode: "completion",
     agentic: false,

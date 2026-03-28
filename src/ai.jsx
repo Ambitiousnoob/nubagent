@@ -4,7 +4,7 @@ const HOSTED_CHAT_API_PATH = "/api/chat";
 const AVAILABLE_MODELS = [
     {
         id: "qwen-3-235b-a22b-instruct-2507",
-        label: "Cerebras Qwen 3 235B",
+        label: "nub-agent (ambitiousnoob) · Cerebras Qwen 3 235B",
         icon: "🧠",
         capabilities: ["text", "streaming"],
     },
