@@ -19,7 +19,7 @@ require("dotenv/config");
 
 const { GoogleGenAI } = require("@google/genai");
 
-const DEFAULT_MODEL = "gemini-1.5-flash-latest"; // Using -latest to ensure the model ID is valid in v1beta.
+const DEFAULT_MODEL = "gemini-3-flash-preview"; // Using the actual Gemini 3 Flash Preview model as requested.
 const PUBLIC_MODEL_NAME = "gemini-3-flash";
 const MAX_TOOL_TURNS = 6;
 const SAFE_MAX_COMPLETION_TOKENS = clampCompletionTokens(process.env.GEMINI_MAX_COMPLETION_TOKENS || 4096);
@@ -289,7 +289,7 @@ const runGeminiChat = async (body, streamCallback) => {
     const modelId = normalizeModel(body.model);
     
     const config = {
-        model: modelId === "gemini-3-flash" ? "gemini-1.5-flash-latest" : modelId,
+        model: modelId === "gemini-3-flash" ? "gemini-3-flash-preview" : modelId,
         generationConfig: {
             temperature: body.temperature ?? 0.2,
             maxOutputTokens: resolveMaxTokens(body.max_tokens ?? body.maxTokens),
