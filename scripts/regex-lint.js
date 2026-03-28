@@ -23,7 +23,7 @@ base.JSXFragment = () => {};
 base.JSXElement = () => {};
 
 const roots = ["api", "src", "lib"];
-const exts = new Set([".js", ".jsx", ".mjs", ".cjs"]);
+const exts = new Set([".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"]);
 
 const files = [];
 function collect(dir) {
@@ -79,27 +79,25 @@ for (const file of files) {
                 testRegex(node.regex.pattern, node.regex.flags, formatLoc(node.loc));
             }
         },
-        NewExpression(node) {
-            if (node.callee.type === "Identifier" && node.callee.name === "RegExp") {
-                const arg = node.arguments[0];
-                const flagsArg = node.arguments[1];
-                if (arg && arg.type === "Literal" && typeof arg.value === "string") {
-                    const flags = flagsArg && flagsArg.type === "Literal" ? String(flagsArg.value || "") : "";
-                    testRegex(arg.value, flags, formatLoc(node.loc));
-                }
-            }
-        },
-        CallExpression(node) {
-            if (node.callee.type === "Identifier" && node.callee.name === "RegExp") {
-                const arg = node.arguments[0];
-                const flagsArg = node.arguments[1];
-                if (arg && arg.type === "Literal" && typeof arg.value === "string") {
-                    const flags = flagsArg && flagsArg.type === "Literal" ? String(flagsArg.value || "") : "";
-                    testRegex(arg.value, flags, formatLoc(node.loc));
-                }
-            }
-        },
+        NewExpression: handleRegExpFactory,
+        CallExpression: handleRegExpFactory,
     }, base);
+
+    function handleRegExpFactory(node) {
+        if (!(node.callee.type === "Identifier" && node.callee.name === "RegExp")) return;
+        const arg = node.arguments[0];
+        const flagsArg = node.arguments[1];
+        const flags = flagsArg && flagsArg.type === "Literal" ? String(flagsArg.value || "") : "";
+
+        if (arg && arg.type === "Literal" && typeof arg.value === "string") {
+            testRegex(arg.value, flags, formatLoc(node.loc));
+            return;
+        }
+
+        if (arg && arg.type === "TemplateLiteral" && arg.expressions.length === 0) {
+            testRegex(arg.quasis.map(q => q.value.cooked).join(""), flags, formatLoc(node.loc));
+        }
+    }
 }
 
 if (failures.length) {
