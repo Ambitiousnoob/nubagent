@@ -1391,7 +1391,7 @@ Respond using this exact XML format:
 
 Rules:
 - Pick one primary tool or "none".
-- Prefer web_read for a single page, web_crawl for multi-page docs/sites, web_fetch only as a lightweight fallback.
+- Prefer web_search for external info; use web_fetch only when a specific URL is provided.
 - Prefer specialized tools over generic ones.
 - Do not answer the user request directly.
 - Keep the analysis short.`;
