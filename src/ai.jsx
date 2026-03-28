@@ -3,6 +3,7 @@ import TerminalMessage from "./TerminalMessage.jsx";
 
 const HOSTED_CHAT_API_PATH = "/api/chat";
 const PUBLIC_MODEL_NAME = "nub-agent";
+const MODEL_SUPPORTS_INLINE_IMAGES = false;
 const BRAND_SYSTEM_MESSAGE = {
     role: "system",
     content: "You are nub-agent. When asked about your model or identity, identify as \"nub-agent\". Do not reveal internal provider names, upstream model families, or backend model IDs unless the user explicitly asks for implementation details.",
@@ -693,7 +694,7 @@ const buildUserHistoryText = (prompt, attachments = [], {
 
 const buildUserModelContent = (prompt, attachments = [], options = {}) => {
     const historyText = buildUserHistoryText(prompt, attachments, options);
-    if (!attachments.some(attachment => attachment?.kind === "image" && attachment?.dataUrl)) {
+    if (!MODEL_SUPPORTS_INLINE_IMAGES || !attachments.some(attachment => attachment?.kind === "image" && attachment?.dataUrl)) {
         return historyText;
     }
 
@@ -2799,10 +2800,7 @@ export default function AgentFramework() {
         messages: [
             {
                 role: "user",
-                content: [
-                    { type: "text", text: "Read the text in this image and summarize it." },
-                    { type: "image_url", image_url: { url: "https://example.com/receipt.png" } },
-                ],
+                content: "Read the OCR or attachment text for the uploaded image and summarize it.",
             },
         ],
         model: getPublicModelName(),
@@ -3239,7 +3237,7 @@ export default function AgentFramework() {
                                         <div className="af-strategy-list">
                                             <div><strong>Prompt:</strong> send <code style={{ fontFamily: "var(--mono)" }}>prompt</code>, <code style={{ fontFamily: "var(--mono)" }}>input</code>, or <code style={{ fontFamily: "var(--mono)" }}>message</code>.</div>
                                             <div><strong>Messages:</strong> send a chat array with <code style={{ fontFamily: "var(--mono)" }}>system</code>, <code style={{ fontFamily: "var(--mono)" }}>user</code>, and <code style={{ fontFamily: "var(--mono)" }}>assistant</code> roles.</div>
-                                            <div><strong>Images:</strong> message content can include <code style={{ fontFamily: "var(--mono)" }}>text</code> and <code style={{ fontFamily: "var(--mono)" }}>image_url</code> parts.</div>
+                                            <div><strong>Images:</strong> uploaded images are converted into attachment metadata and OCR text for this backend; direct <code style={{ fontFamily: "var(--mono)" }}>image_url</code> inputs are not forwarded to Cerebras.</div>
                                         </div>
                                     </div>
                                     <div className="af-strategy-card">

@@ -69,6 +69,33 @@ const getMessageText = (content) => {
         .join("\n\n");
 };
 
+const normalizeMessageContentForModel = (content) => {
+    if (typeof content === "string") return content;
+    if (!Array.isArray(content)) return content;
+
+    const textParts = content
+        .filter((part) => part?.type === "text" && typeof part.text === "string")
+        .map((part) => part.text.trim())
+        .filter(Boolean);
+
+    if (textParts.length) return textParts.join("\n\n");
+    if (content.some((part) => part?.type === "image_url")) {
+        return "[Image input omitted: this backend currently accepts text content only. Use attachment OCR/context or a dedicated vision backend.]";
+    }
+    return "";
+};
+
+const normalizeMessagesForModel = (messages = []) => (
+    (Array.isArray(messages) ? messages : []).map((message) => (
+        message && typeof message === "object"
+            ? {
+                ...message,
+                content: normalizeMessageContentForModel(message.content),
+            }
+            : message
+    ))
+);
+
 const getLatestUserText = (messages = []) => {
     const latestUserMessage = [...(Array.isArray(messages) ? messages : [])]
         .reverse()
@@ -259,7 +286,7 @@ const estimateResponseUsage = (payload, content = "") => {
 
 const makeExactCacheKey = (body) => RESPONSE_CACHE.makeKey({
     model: normalizeModel(body.model),
-    messages: Array.isArray(body.messages) ? body.messages : [],
+    messages: normalizeMessagesForModel(body.messages),
     temperature: body.temperature ?? 0.2,
     max_tokens: resolveMaxTokens(body.max_tokens ?? body.maxTokens),
 });
@@ -364,7 +391,7 @@ const callCerebras = async (payload, streamCallback) => {
 
 const runChatWithTools = async (body) => {
     const model = normalizeModel(body.model);
-    const messages = Array.isArray(body.messages) ? [...body.messages] : [];
+    const messages = normalizeMessagesForModel(body.messages);
     const base = {
         model,
         temperature: body.temperature,
@@ -484,6 +511,7 @@ module.exports = async (req, res) => {
         ...body,
         model: normalizedModel,
         max_tokens: resolveMaxTokens(body.max_tokens ?? body.maxTokens),
+        messages: normalizeMessagesForModel(body.messages),
     };
 
     const HARD_TIMEOUT_MS = 60000;
