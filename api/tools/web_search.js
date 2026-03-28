@@ -12,12 +12,6 @@ module.exports = {
                         type: "string",
                         description: "The specific search query. If checking the date or time, include the timezone or location.",
                     },
-                    count: {
-                        type: "integer",
-                        minimum: 1,
-                        maximum: 5,
-                        description: "Results to return (1-5)",
-                    },
                 },
                 required: ["query"],
                 additionalProperties: false,
@@ -26,7 +20,6 @@ module.exports = {
     },
     handler: async (args) => {
         const query = String(args.query || "").trim();
-        const count = Math.min(Math.max(parseInt(args.count, 10) || 5, 1), 5);
         if (!query) return "Error: query is required";
 
         const apiKey = process.env.TAVILY_API_KEY || "tvly-YOUR_FREE_API_KEY_HERE";
@@ -48,7 +41,7 @@ module.exports = {
                     query,
                     search_depth: "basic",
                     include_answer: false,
-                    max_results: count,
+                    max_results: 5,
                 }),
                 signal: controller.signal,
             });
@@ -60,7 +53,7 @@ module.exports = {
             }
 
             const data = await response.json();
-            const top = (data.results || []).slice(0, count).map((item, idx) => ({
+            const top = (data.results || []).map((item, idx) => ({
                 rank: idx + 1,
                 title: item.title,
                 url: item.url,
