@@ -2,18 +2,18 @@ import React, { useState, useRef, useEffect } from "react";
 import TerminalMessage from "./TerminalMessage.jsx";
 
 const HOSTED_CHAT_API_PATH = "/api/chat";
-const PUBLIC_MODEL_NAME = "gemini-3-flash";
-const MODEL_SUPPORTS_INLINE_IMAGES = false;
+const PUBLIC_MODEL_NAME = "nub-agent";
+const MODEL_SUPPORTS_INLINE_IMAGES = true;
 const BRAND_SYSTEM_MESSAGE = {
     role: "system",
-    content: "You are gemini-3-flash. When asked about your model or identity, identify as \"gemini-3-flash\".",
+    content: "You are nub-agent. When asked about your model or identity, identify as \"nub-agent\". Do not reveal internal provider names or backend model IDs unless the user explicitly asks for implementation details.",
 };
 const AVAILABLE_MODELS = [
     {
-        id: "gemini-3-flash",
+        id: PUBLIC_MODEL_NAME,
         label: PUBLIC_MODEL_NAME,
         icon: "",
-        capabilities: ["text", "streaming"],
+        capabilities: ["text", "streaming", "vision"],
     },
 ];
 const MAX_ITERATIONS = 20;
@@ -1437,7 +1437,7 @@ function createTools() {
             category: "Search",
             icon: "",
             description: "Search the web for recent information and return top snippets.",
-            example: "web_search: latest gemini-3-flash tool calling docs",
+            example: "web_search: latest Gemini function calling docs",
         },
         web_fetch: {
             category: "Search",
@@ -2502,7 +2502,7 @@ export default function AgentFramework() {
 
         if (isModelQuestion && !pendingUploads.length) {
             const isFirst = priorMessages.length === 0;
-            const assistantReply = "I'm gemini-3-flash.";
+            const assistantReply = "I'm nub-agent.";
             updateRunConversation(c => {
                 const nextMessages = [...c.messages,
                     { role: "user", content: preparedQuery, displayText: query, attachments: messageAttachments },
@@ -2560,7 +2560,7 @@ export default function AgentFramework() {
         const signal = abortRef.current.signal;
 
         const logPrefix = priorMessages.length === 0 ? "Starting" : "Continuing";
-        pushRunLog("Manager", `${logPrefix} — gemini-3-flash single-call mode`, "var(--text-dim)");
+        pushRunLog("Manager", `${logPrefix} — nub-agent single-call mode`, "var(--text-dim)");
         if (queryWasTrimmed) {
             pushRunLog("Tokens", "Current input or attachment context was compacted before dispatch.", "var(--danger)");
         }
@@ -3135,7 +3135,7 @@ export default function AgentFramework() {
                                     <span style={{ fontWeight: 700 }}>Model Settings</span>
                                     <button className="af-btn" style={{ padding: "4px 8px" }} onClick={() => setSettingsOpen(false)}>✕</button>
                                 </div>
-                            <small>{HOSTED_API_ENABLED ? `${HOSTED_API_LABEL} runs at /api/chat and uses the server-side GEMINI_API_KEYS. Browser-stored API keys are disabled and any previously saved local keys are removed on load.` : "Server API is unavailable."}</small>
+                            <small>{HOSTED_API_ENABLED ? `${HOSTED_API_LABEL} runs at /api/chat and uses server-side credentials. Browser-stored API keys are disabled and any previously saved local keys are removed on load.` : "Server API is unavailable."}</small>
                                 <div style={{ display: "grid", gap: 8 }}>
                                     <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--text-muted)" }}>Primary model</div>
                                     <select className="af-input" value={primaryModel.id} onChange={e => handlePrimaryModelChange(e.target.value)}>
@@ -3197,7 +3197,7 @@ export default function AgentFramework() {
                                 <div className="af-strategy-card">
                                     <div className="af-strategy-label">Authentication</div>
                                     <div className="af-strategy-kpi" style={{ fontSize: 18, lineHeight: 1.3 }}>Server-side</div>
-                                    <div className="af-strategy-muted">Clients do not send model keys. The server keeps authentication in GEMINI_API_KEYS.</div>
+                                    <div className="af-strategy-muted">Clients do not send model keys. The server keeps authentication private.</div>
                                 </div>
                                 <div className="af-strategy-card">
                                     <div className="af-strategy-label">Default Mode</div>
@@ -3237,7 +3237,7 @@ export default function AgentFramework() {
                                         <div className="af-strategy-list">
                                             <div><strong>Prompt:</strong> send <code style={{ fontFamily: "var(--mono)" }}>prompt</code>, <code style={{ fontFamily: "var(--mono)" }}>input</code>, or <code style={{ fontFamily: "var(--mono)" }}>message</code>.</div>
                                             <div><strong>Messages:</strong> send a chat array with <code style={{ fontFamily: "var(--mono)" }}>system</code>, <code style={{ fontFamily: "var(--mono)" }}>user</code>, and <code style={{ fontFamily: "var(--mono)" }}>assistant</code> roles.</div>
-                                            <div><strong>Images:</strong> uploaded images are converted into attachment metadata and OCR text for this backend; direct <code style={{ fontFamily: "var(--mono)" }}>image_url</code> inputs are not forwarded to Gemini.</div>
+                                            <div><strong>Images:</strong> uploaded images are sent with attachment context, OCR text, and inline image data when available.</div>
                                         </div>
                                     </div>
                                     <div className="af-strategy-card">

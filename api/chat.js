@@ -19,8 +19,13 @@ require("dotenv/config");
 
 const { GoogleGenAI } = require("@google/genai");
 
-const DEFAULT_MODEL = "gemini-3-flash-preview"; // Using the actual Gemini 3 Flash Preview model as requested.
-const PUBLIC_MODEL_NAME = "gemini-3-flash";
+const DEFAULT_MODEL = "gemini-3-flash-preview";
+const PUBLIC_MODEL_NAME = "nub-agent";
+const FALLBACK_MODELS = [
+    DEFAULT_MODEL,
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+];
 const MAX_TOOL_TURNS = 6;
 const SAFE_MAX_COMPLETION_TOKENS = clampCompletionTokens(process.env.GEMINI_MAX_COMPLETION_TOKENS || 4096);
 const MAX_GEMINI_ATTEMPTS = Math.max(1, Number(process.env.GEMINI_MAX_RETRIES) || 3);
@@ -73,16 +78,21 @@ const normalizeMessageContentForModel = (content) => {
     if (typeof content === "string") return content;
     if (!Array.isArray(content)) return content;
 
-    const textParts = content
-        .filter((part) => part?.type === "text" && typeof part.text === "string")
-        .map((part) => part.text.trim())
+    return content
+        .map((part) => {
+            if (!part || typeof part !== "object") return null;
+            if (part.type === "text" && typeof part.text === "string") {
+                return { type: "text", text: part.text };
+            }
+            if (part.type === "image_url" && typeof part.image_url?.url === "string") {
+                return {
+                    type: "image_url",
+                    image_url: { url: part.image_url.url },
+                };
+            }
+            return null;
+        })
         .filter(Boolean);
-
-    if (textParts.length) return textParts.join("\n\n");
-    if (content.some((part) => part?.type === "image_url")) {
-        return "[Image input omitted: this backend currently accepts text content only. Use attachment OCR/context or a dedicated vision backend.]";
-    }
-    return "";
 };
 
 const normalizeMessagesForModel = (messages = []) => (
@@ -235,8 +245,10 @@ const normalizeModel = (model) => {
     const lowered = id.toLowerCase();
 
     if (!id || lowered === "polly" || lowered.startsWith("polly-")) return DEFAULT_MODEL;
-    if (lowered === PUBLIC_MODEL_NAME || lowered === "gemini-3-flash") return DEFAULT_MODEL;
-
+    if (lowered === PUBLIC_MODEL_NAME || lowered === "nub agent" || lowered === "gemini-3-flash") return DEFAULT_MODEL;
+    if (lowered === "gemini-3-flash-preview") return "gemini-3-flash-preview";
+    if (lowered === "gemini-2.5-flash") return "gemini-2.5-flash";
+    if (lowered === "gemini-2.5-flash-lite") return "gemini-2.5-flash-lite";
     return DEFAULT_MODEL;
 };
 
@@ -250,14 +262,64 @@ const getGeminiApiKey = () => {
     return keys[Math.floor(Math.random() * keys.length)];
 };
 
-const mapOpenAiToGeminiMessages = (messages = []) => {
-    return messages.map(m => {
-        const role = m.role === "assistant" ? "model" : "user";
-        return {
-            role,
-            parts: [{ text: getMessageText(m.content) }]
-        };
+const getFallbackModelChain = (requestedModel) => {
+    const configured = (process.env.GEMINI_FALLBACK_MODELS || FALLBACK_MODELS.join(","))
+        .split(",")
+        .map((item) => normalizeModel(item))
+        .filter(Boolean);
+    return [...new Set([normalizeModel(requestedModel), ...configured])];
+};
+
+const parseInlineDataUrl = (value) => {
+    const match = String(value || "").match(/^data:([^;,]+);base64,(.+)$/i);
+    if (!match) return null;
+    return {
+        mimeType: match[1],
+        data: match[2],
+    };
+};
+
+const mapOpenAiContentToGeminiParts = (content) => {
+    if (typeof content === "string") {
+        return content ? [{ text: content }] : [];
+    }
+
+    if (!Array.isArray(content)) return [];
+
+    return content.flatMap((part) => {
+        if (!part || typeof part !== "object") return [];
+        if (part.type === "text" && typeof part.text === "string" && part.text.trim()) {
+            return [{ text: part.text }];
+        }
+        if (part.type === "image_url" && typeof part.image_url?.url === "string") {
+            const inlineData = parseInlineDataUrl(part.image_url.url);
+            if (inlineData) {
+                return [{ inlineData }];
+            }
+            return [{ text: `[Remote image URL provided: ${part.image_url.url}]` }];
+        }
+        return [];
     });
+};
+
+const getSystemInstruction = (messages = []) => {
+    const text = (Array.isArray(messages) ? messages : [])
+        .filter((message) => message?.role === "system")
+        .map((message) => getMessageText(message.content))
+        .filter(Boolean)
+        .join("\n\n");
+    return text || undefined;
+};
+
+const mapOpenAiToGeminiMessages = (messages = []) => {
+    return (Array.isArray(messages) ? messages : [])
+        .filter((message) => message?.role !== "system")
+        .map((message) => {
+            const role = message.role === "assistant" ? "model" : "user";
+            const parts = mapOpenAiContentToGeminiParts(message.content);
+            if (!parts.length) parts.push({ text: "" });
+            return { role, parts };
+        });
 };
 
 const mapOpenAiToolsToGemini = (tools = []) => {
@@ -281,82 +343,148 @@ const mapOpenAiToolsToGemini = (tools = []) => {
     }];
 };
 
-const runGeminiChat = async (body, streamCallback) => {
+const getGeminiResponseText = (response) => {
+    if (!response) return "";
+    if (typeof response.text === "function") return response.text() || "";
+    if (typeof response.text === "string") return response.text;
+    return response?.candidates?.[0]?.content?.parts
+        ?.map((part) => (typeof part?.text === "string" ? part.text : ""))
+        .filter(Boolean)
+        .join("") || "";
+};
+
+const getGeminiResponseContent = (response) => (
+    response?.candidates?.[0]?.content || {
+        role: "model",
+        parts: [{ text: getGeminiResponseText(response) }],
+    }
+);
+
+const getGeminiFunctionCalls = (response) => {
+    if (!response) return [];
+    if (Array.isArray(response.functionCalls)) return response.functionCalls;
+    if (typeof response.functionCalls === "function") {
+        const calls = response.functionCalls();
+        return Array.isArray(calls) ? calls : [];
+    }
+    return [];
+};
+
+const normalizeGeminiError = (error) => {
+    if (!error) return new Error("Unknown Gemini error");
+    const next = error instanceof Error ? error : new Error(String(error?.message || error));
+    const text = String(next.message || "");
+    if (!Number.isFinite(Number(next.status))) {
+        const statusMatch = text.match(/"code"\s*:\s*(\d{3})/);
+        if (statusMatch) next.status = Number(statusMatch[1]);
+    }
+    return next;
+};
+
+const isRetryableGeminiModelError = (error) => {
+    const normalized = normalizeGeminiError(error);
+    const text = String(normalized.message || "");
+    return Number(normalized.status) === 503
+        || Number(normalized.status) === 429
+        || /UNAVAILABLE|high demand|overloaded|RESOURCE_EXHAUSTED|rate limit/i.test(text);
+};
+
+const runGeminiWithModel = async (body, modelId, streamCallback) => {
     const apiKey = getGeminiApiKey();
     if (!apiKey) throw new Error("GEMINI_API_KEYS is not configured.");
 
     const client = new GoogleGenAI({ apiKey });
-    const modelId = normalizeModel(body.model);
-    
-    const config = {
-        model: modelId === "gemini-3-flash" ? "gemini-3-flash-preview" : modelId,
-        generationConfig: {
-            temperature: body.temperature ?? 0.2,
-            maxOutputTokens: resolveMaxTokens(body.max_tokens ?? body.maxTokens),
-        },
-        tools: body.use_tools !== false ? mapOpenAiToolsToGemini(TOOL_DEFINITIONS) : undefined,
-    };
-
     const messages = mapOpenAiToGeminiMessages(body.messages);
+    const systemInstruction = getSystemInstruction(body.messages);
+    const config = {
+        maxOutputTokens: resolveMaxTokens(body.max_tokens ?? body.maxTokens),
+        ...(typeof body.temperature === "number" ? { temperature: body.temperature } : {}),
+        ...(systemInstruction ? { systemInstruction } : {}),
+        ...(body.use_tools !== false ? { tools: mapOpenAiToolsToGemini(TOOL_DEFINITIONS) } : {}),
+    };
 
     if (body.stream && body.use_tools === false) {
         const result = await client.models.generateContentStream({
-            ...config,
+            model: modelId,
             contents: messages,
+            config,
         });
         let fullText = "";
-        for await (const chunk of result.stream) {
-            const chunkText = chunk.text();
+        for await (const chunk of result) {
+            const chunkText = typeof chunk?.text === "function" ? chunk.text() : (chunk?.text || "");
             fullText += chunkText;
             if (streamCallback) streamCallback(chunkText);
         }
         return { content: fullText, usage: null };
-    } else {
-        const result = await client.models.generateContent({
-            ...config,
-            contents: messages,
-        });
-        const response = result.response;
-        const call = response.functionCalls()?.[0];
+    }
 
-        if (call) {
-            const toolResult = await executeTool(call, { messages: body.messages });
-            const secondResult = await client.models.generateContent({
-                ...config,
-                contents: [
-                    ...messages,
-                    response.candidates[0].content,
-                    {
-                        role: "user",
-                        parts: [{
-                            functionResponse: {
-                                name: call.name,
-                                response: { content: toolResult.content }
-                            }
-                        }]
-                    }
-                ],
-            });
-            const secondResponse = secondResult.response;
-            return {
-                content: secondResponse.text(),
-                toolsUsed: [{
-                    name: call.name,
-                    args: JSON.stringify(call.args),
-                    ...(toolResult.meta || {})
-                }],
-                usage: null
-            };
+    const contents = [...messages];
+    const toolsUsed = [];
+
+    for (let turn = 0; turn < MAX_TOOL_TURNS; turn += 1) {
+        const responseResult = await client.models.generateContent({
+            model: modelId,
+            contents,
+            config,
+        });
+        const response = responseResult?.response || responseResult;
+        const functionCalls = getGeminiFunctionCalls(response);
+
+        if (!functionCalls.length) {
+            return { content: getGeminiResponseText(response), toolsUsed, usage: null };
         }
 
-        return { content: response.text(), usage: null };
+        contents.push(getGeminiResponseContent(response));
+
+        const functionResponseParts = [];
+        for (const call of functionCalls) {
+            const toolResult = await executeTool(call, { messages: body.messages });
+            toolsUsed.push({
+                name: call.name,
+                args: JSON.stringify(call.args || {}),
+                ...(toolResult.meta || {}),
+            });
+            functionResponseParts.push({
+                functionResponse: {
+                    name: call.name,
+                    response: { content: toolResult.content },
+                },
+            });
+        }
+
+        contents.push({
+            role: "user",
+            parts: functionResponseParts,
+        });
     }
+
+    throw new Error(`Gemini API error: exceeded max tool turns (${MAX_TOOL_TURNS})`);
+};
+
+const runGeminiChat = async (body, streamCallback) => {
+    const modelChain = getFallbackModelChain(body.model);
+    let lastError = null;
+
+    for (let attempt = 0; attempt < modelChain.length; attempt += 1) {
+        const modelId = modelChain[attempt];
+        try {
+            return await runGeminiWithModel(body, modelId, streamCallback);
+        } catch (error) {
+            lastError = normalizeGeminiError(error);
+            if (!isRetryableGeminiModelError(lastError) || attempt === modelChain.length - 1) {
+                throw lastError;
+            }
+            await sleep(getBackoffDelayMs(attempt, lastError.headers));
+        }
+    }
+
+    throw lastError || new Error("Gemini API error: no fallback model succeeded");
 };
 
 const metadataPayload = () => ({
     ok: true,
     endpoint: "/api/chat",
-    provider: "Google Gemini",
+    provider: PUBLIC_MODEL_NAME,
     brand: PUBLIC_MODEL_NAME,
     models: {
         default: PUBLIC_MODEL_NAME,
