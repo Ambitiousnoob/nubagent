@@ -2239,6 +2239,21 @@ export default function AgentFramework() {
     };
 
     const updateConv = (fn) => updateConversationById(currentConversationId, fn);
+    const buildToolSteps = (items = [], prefix = "") => (
+        (Array.isArray(items) ? items : []).map((entry, index) => {
+            let input = entry?.args;
+            if (typeof input === "string") {
+                try { input = JSON.parse(input); } catch { /* keep raw */ }
+            }
+            return {
+                type: "action",
+                action: `${prefix}${entry?.name || "tool"}`,
+                input: input || {},
+                iteration: index + 1,
+                batchSize: items.length,
+            };
+        })
+    );
     useEffect(() => {
         if (!conv) return;
         const nextSummary = buildEpisodicSummary(conv.messages || []);
@@ -2472,7 +2487,7 @@ export default function AgentFramework() {
                 if (!doublePass) {
                     updateRunConversation(c => ({
                         ...c,
-                        messages: [...c.messages, { role: "assistant", content: fastText }],
+                        messages: [...c.messages, { role: "assistant", content: fastText, steps: buildToolSteps(toolsUsed) }],
                         activeStream: "",
                         pendingSteps: [],
                     }));
@@ -2494,9 +2509,13 @@ export default function AgentFramework() {
                         refineTools.forEach(entry => pushRunLog("Tool", `[Refine] Called ${entry?.name || "tool"} with ${entry?.args || "{}"}`, "var(--accent)"));
                     }
                     const combined = `### Pass 1\n${fastText}\n\n### Pass 2 (refined)\n${refinedText || ""}`;
+                    const combinedSteps = [
+                        ...buildToolSteps(toolsUsed),
+                        ...buildToolSteps(refineTools, "refine: "),
+                    ];
                     updateRunConversation(c => ({
                         ...c,
-                        messages: [...c.messages, { role: "assistant", content: combined }],
+                        messages: [...c.messages, { role: "assistant", content: combined, steps: combinedSteps }],
                         activeStream: "",
                         pendingSteps: [],
                     }));
@@ -2521,6 +2540,7 @@ export default function AgentFramework() {
                 const combined = drafts
                     .map(draft => `## ${draft.label}\n${draft.text || draft.content || ""}`.trim())
                     .join("\n\n");
+                const combinedSteps = drafts.flatMap((draft) => buildToolSteps(draft.toolsUsed, `${draft.label}: `));
 
                 drafts.forEach(draft => {
                     if (Array.isArray(draft.toolsUsed) && draft.toolsUsed.length) {
@@ -2532,7 +2552,7 @@ export default function AgentFramework() {
 
                 updateRunConversation(c => ({
                     ...c,
-                    messages: [...c.messages, { role: "assistant", content: combined }],
+                    messages: [...c.messages, { role: "assistant", content: combined, steps: combinedSteps }],
                     activeStream: "",
                     pendingSteps: [],
                 }));
