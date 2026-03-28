@@ -110,22 +110,39 @@ const resolveAttachmentViewImage = (args, messages = []) => {
     if (!matched && parsed.hostname.toLowerCase() !== "example.com") return null;
 
     if (!matched) {
-        return JSON.stringify({
+        const payload = {
             url,
             source: "attachment_context",
             note: "This URL appears to be a placeholder for an uploaded attachment that is already present in the conversation. Do not fetch it remotely. Use the attachment OCR/context already provided in the prompt.",
-        });
+        };
+        return {
+            content: JSON.stringify(payload),
+            meta: {
+                rewritten: true,
+                source: payload.source,
+                note: payload.note,
+            },
+        };
     }
 
     const ocrText = matched.text.length > 5000 ? `${matched.text.slice(0, 5000)}...` : matched.text;
-    return JSON.stringify({
+    const payload = {
         url,
         source: "attachment_ocr",
         attachmentName: matched.name,
         summary: ocrText.slice(0, 1200),
         ocrText,
         note: "This URL maps to an uploaded attachment already present in the conversation. Use this OCR/context instead of attempting a remote fetch.",
-    });
+    };
+    return {
+        content: JSON.stringify(payload),
+        meta: {
+            rewritten: true,
+            source: payload.source,
+            attachmentName: payload.attachmentName,
+            note: payload.note,
+        },
+    };
 };
 
 const executeTool = async (toolCall, context = {}) => {
@@ -138,16 +155,16 @@ const executeTool = async (toolCall, context = {}) => {
         return `Error: could not parse arguments (${e.message})`;
     }
 
-    if (name === "calculate") return calcHandler(args);
-    if (name === "web_search") return searchHandler(args);
-    if (name === "web_fetch") return fetchHandler(args);
-    if (name === "search_images") return imageSearchHandler(args);
+    if (name === "calculate") return { content: await calcHandler(args), meta: null };
+    if (name === "web_search") return { content: await searchHandler(args), meta: null };
+    if (name === "web_fetch") return { content: await fetchHandler(args), meta: null };
+    if (name === "search_images") return { content: await imageSearchHandler(args), meta: null };
     if (name === "view_image") {
         const attachmentProxy = resolveAttachmentViewImage(args, context.messages);
         if (attachmentProxy) return attachmentProxy;
-        return viewImageHandler(args);
+        return { content: await viewImageHandler(args), meta: null };
     }
-    return `Error: unknown tool ${name}`;
+    return { content: `Error: unknown tool ${name}`, meta: null };
 };
 
 const normalizeModel = (model) => {
@@ -340,11 +357,15 @@ const runChatWithTools = async (body) => {
 
         for (const call of toolCalls) {
             const toolResult = await executeTool(call, { messages });
-            toolsUsed.push({ name: call.function?.name || call.id, args: call.function?.arguments || "{}" });
+            toolsUsed.push({
+                name: call.function?.name || call.id,
+                args: call.function?.arguments || "{}",
+                ...(toolResult?.meta || {}),
+            });
             messages.push({
                 role: "tool",
                 tool_call_id: call.id || call?.function?.name || "tool-call",
-                content: toolResult,
+                content: toolResult?.content || "",
             });
         }
     }

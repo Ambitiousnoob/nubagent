@@ -1630,7 +1630,7 @@ async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MA
                         } catch {
                             /* ignore JSON parse errors */
                         }
-                        logTool(name, args);
+                        logTool(name, args, entry);
                     });
                 }
                 emitThoughts(text, { includePartial: true });
@@ -2326,6 +2326,7 @@ export default function AgentFramework() {
                 type: "action",
                 action: `${prefix}${entry?.name || "tool"}`,
                 input: input || {},
+                observation: typeof entry?.note === "string" ? entry.note : "",
                 iteration: index + 1,
                 batchSize: items.length,
                 status: getToolStatus(`${prefix}${entry?.name || "tool"}`),
@@ -2589,9 +2590,10 @@ export default function AgentFramework() {
                             pushPendingStep(step);
                         }
                     },
-                    onToolCall: (name, args) => {
-                        pushRunLog("Tool", `Called ${name} with ${JSON.stringify(args)}`, "var(--accent)");
-                        const [step] = buildToolSteps([{ name, args }]);
+                    onToolCall: (name, args, meta) => {
+                        const detail = meta?.note ? ` — ${meta.note}` : "";
+                        pushRunLog("Tool", `Called ${name} with ${JSON.stringify(args)}${detail}`, "var(--accent)");
+                        const [step] = buildToolSteps([{ name, args, note: meta?.note }]);
                         if (step) {
                             step.iteration = (Array.isArray(getConversationById(conversationId)?.pendingSteps) ? getConversationById(conversationId).pendingSteps.length : 0) + 1;
                             pushPendingStep(step);
@@ -2601,7 +2603,8 @@ export default function AgentFramework() {
 
                 if (Array.isArray(toolsUsed) && toolsUsed.length) {
                     toolsUsed.forEach((entry) => {
-                        pushRunLog("Tool", `Called ${entry?.name || "tool"} with ${entry?.args || "{}"}`, "var(--accent)");
+                        const detail = entry?.note ? ` — ${entry.note}` : "";
+                        pushRunLog("Tool", `Called ${entry?.name || "tool"} with ${entry?.args || "{}"}${detail}`, "var(--accent)");
                     });
                 }
 
@@ -2632,9 +2635,10 @@ export default function AgentFramework() {
                                 pushPendingStep(step);
                             }
                         },
-                        onToolCall: (name, args) => {
-                            pushRunLog("Tool", `[Refine] Called ${name} with ${JSON.stringify(args)}`, "var(--accent)");
-                            const [step] = buildToolSteps([{ name, args }], "refine: ");
+                        onToolCall: (name, args, meta) => {
+                            const detail = meta?.note ? ` — ${meta.note}` : "";
+                            pushRunLog("Tool", `[Refine] Called ${name} with ${JSON.stringify(args)}${detail}`, "var(--accent)");
+                            const [step] = buildToolSteps([{ name, args, note: meta?.note }], "refine: ");
                             if (step) {
                                 step.iteration = (Array.isArray(getConversationById(conversationId)?.pendingSteps) ? getConversationById(conversationId).pendingSteps.length : 0) + 1;
                                 pushPendingStep(step);
@@ -2642,7 +2646,10 @@ export default function AgentFramework() {
                         },
                     });
                     if (Array.isArray(refineTools) && refineTools.length) {
-                        refineTools.forEach(entry => pushRunLog("Tool", `[Refine] Called ${entry?.name || "tool"} with ${entry?.args || "{}"}`, "var(--accent)"));
+                        refineTools.forEach(entry => {
+                            const detail = entry?.note ? ` — ${entry.note}` : "";
+                            pushRunLog("Tool", `[Refine] Called ${entry?.name || "tool"} with ${entry?.args || "{}"}${detail}`, "var(--accent)");
+                        });
                     }
                     const combined = `### Pass 1\n${fastText}\n\n### Pass 2 (refined)\n${refinedText || ""}`;
                     const combinedSteps = [
@@ -2676,9 +2683,10 @@ export default function AgentFramework() {
                                 pushPendingStep(step);
                             }
                         },
-                        onToolCall: (name, args) => {
-                            pushRunLog("Tool", `[${label}] Called ${name} with ${JSON.stringify(args)}`, "var(--accent)");
-                            const [step] = buildToolSteps([{ name, args }], `${label}: `);
+                        onToolCall: (name, args, meta) => {
+                            const detail = meta?.note ? ` — ${meta.note}` : "";
+                            pushRunLog("Tool", `[${label}] Called ${name} with ${JSON.stringify(args)}${detail}`, "var(--accent)");
+                            const [step] = buildToolSteps([{ name, args, note: meta?.note }], `${label}: `);
                             if (step) {
                                 step.iteration = (Array.isArray(getConversationById(conversationId)?.pendingSteps) ? getConversationById(conversationId).pendingSteps.length : 0) + 1;
                                 pushPendingStep(step);
@@ -2696,7 +2704,8 @@ export default function AgentFramework() {
                 drafts.forEach(draft => {
                     if (Array.isArray(draft.toolsUsed) && draft.toolsUsed.length) {
                         draft.toolsUsed.forEach(entry => {
-                            pushRunLog("Tool", `[${draft.label}] Called ${entry?.name || "tool"} with ${entry?.args || "{}"}`, "var(--accent)");
+                            const detail = entry?.note ? ` — ${entry.note}` : "";
+                            pushRunLog("Tool", `[${draft.label}] Called ${entry?.name || "tool"} with ${entry?.args || "{}"}${detail}`, "var(--accent)");
                         });
                     }
                 });
