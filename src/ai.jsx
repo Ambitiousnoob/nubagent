@@ -1734,17 +1734,51 @@ function DocCodeBlock({ code, language = "text" }) {
 
 function MessageContent({ text }) {
     if (!text) return null;
+    const extractHtmlBlock = (value) => {
+        if (typeof value !== "string") return null;
+        const match = value.match(/```html\n([\s\S]*?)\n```/i);
+        return match ? match[1] : null;
+    };
+
+    const uiCode = extractHtmlBlock(text);
+    const cleanedText = uiCode ? text.replace(/```html[\s\S]*?```/gi, "[UI code generated]") : text;
     const isLong = typeof text === "string" && text.length > MAX_RENDER_CHARS;
     if (!isLong) {
-        return <div className="af-msg-answer text" dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }} />;
+        return (
+            <div className="af-msg-answer text">
+                <div dangerouslySetInnerHTML={{ __html: renderMarkdown(cleanedText) }} />
+                {uiCode && (
+                    <div className="af-preview">
+                        <div className="af-preview__bar">Live Preview</div>
+                        <iframe
+                            title="AI Code Preview"
+                            sandbox="allow-scripts"
+                            srcDoc={uiCode}
+                            className="af-preview__frame"
+                        />
+                    </div>
+                )}
+            </div>
+        );
     }
     const preview = text.slice(0, MAX_RENDER_CHARS);
     return (
         <div className="af-msg-answer text">
             <div dangerouslySetInnerHTML={{ __html: renderMarkdown(preview + " …") }} />
             <details className="af-long-msg">
-                <summary>Show full message ({text.length.toLocaleString()} chars)</summary>
-                <div dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }} />
+            <summary>Show full message ({text.length.toLocaleString()} chars)</summary>
+            <div dangerouslySetInnerHTML={{ __html: renderMarkdown(cleanedText) }} />
+            {uiCode && (
+                <div className="af-preview">
+                    <div className="af-preview__bar">Live Preview</div>
+                    <iframe
+                        title="AI Code Preview"
+                        sandbox="allow-scripts"
+                        srcDoc={uiCode}
+                        className="af-preview__frame"
+                    />
+                </div>
+            )}
             </details>
         </div>
     );
