@@ -1464,7 +1464,7 @@ async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MA
                     model,
                     maxTokens,
                     messages,
-                    stream: false,
+                    stream: true,
                 })),
                 credentials: "include",
                 cache: "no-store",
@@ -1491,10 +1491,61 @@ async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MA
                 throw new Error(`${HOSTED_API_LABEL} ${details}`);
             }
 
-            const json = await res.json();
-            const text = json?.choices?.[0]?.message?.content || json?.output_text || "";
-            onUpdate(text);
-            return text;
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let fullText = "";
+            let buffer = "";
+            let chunkCount = 0;
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || "";
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+                        try {
+                            const data = JSON.parse(line.slice(6));
+                            const chunk = data.choices?.[0]?.delta?.content || "";
+                            if (chunk) {
+                                chunkCount += 1;
+                                fullText += chunk;
+                                onUpdate(fullText);
+                            }
+                        } catch (e) { /* ignore parse error on partial chunks */ }
+                    }
+                }
+            }
+            log?.(`Stream complete after ${chunkCount} chunk(s).`);
+
+            if (!fullText && chunkCount === 0) {
+                log?.("No stream chunks received; retrying as non-stream.");
+                const fallbackRes = await fetch(getToolApiUrl(HOSTED_CHAT_API_PATH), {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(buildOpenRouterRequestBody({
+                        model,
+                        maxTokens,
+                        messages,
+                        stream: false,
+                    })),
+                    credentials: "include",
+                    cache: "no-store",
+                    signal: controller.signal,
+                });
+                if (!fallbackRes.ok) {
+                    const errText = await readApiErrorText(fallbackRes);
+                    throw new Error(`${HOSTED_API_LABEL} fallback HTTP ${fallbackRes.status}: ${errText}`);
+                }
+                const json = await fallbackRes.json();
+                const text = json?.choices?.[0]?.message?.content || json?.output_text || "";
+                onUpdate(text);
+                return text;
+            }
+
+            return fullText;
         } catch (e) {
             if (e.name === "AbortError") throw e;
             if (attempt === maxAttempts - 1) throw e;

@@ -6,7 +6,8 @@ dotenv.config({ path: path.join(__dirname, "..", ".env") });
 const { readBody } = require("../lib/web");
 require("dotenv/config");
 
-const POLLY_MODEL = "polly";
+const DEFAULT_MODEL = "qwen-3-235b-a22b-instruct-2507";
+const API_URL = "https://api.cerebras.ai/v1/chat/completions";
 
 const writeCorsHeaders = (res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -27,38 +28,19 @@ const wantsStream = (body = {}) => {
     return body.stream === true;
 };
 
-const normalizeText = (value) => String(value ?? "").replace(/\u0000/g, "").trim();
-
-const extractTextFromMessage = (message = {}) => {
-    if (typeof message.content === "string") return normalizeText(message.content);
-    if (!Array.isArray(message.content)) return "";
-    return normalizeText(
-        message.content
-            .filter((part) => part?.type === "text" && typeof part.text === "string")
-            .map((part) => part.text)
-            .join("\n")
-    );
-};
-
 const askAgent = async (body, streamCallback) => {
-    const { messages } = body;
-    const pollinationsModel = body.model || POLLY_MODEL;
-
-    const processedMessages = messages
-        .map((msg) => ({
-            role: ["system", "user", "assistant"].includes(msg.role) ? msg.role : "user",
-            content: extractTextFromMessage(msg),
-        }))
-        .filter((msg) => msg.content);
-
     const payload = {
-        model: pollinationsModel,
-        messages: processedMessages,
+        model: body.model || DEFAULT_MODEL,
+        messages: Array.isArray(body.messages) ? body.messages : [],
         stream: wantsStream(body),
     };
+    if (Array.isArray(body.tools)) payload.tools = body.tools;
+    if (body.tool_choice) payload.tool_choice = body.tool_choice;
+    if (body.temperature !== undefined) payload.temperature = body.temperature;
+    if (body.max_tokens !== undefined) payload.max_tokens = body.max_tokens;
 
-    const apiKey = process.env.POLLINATIONS_API_KEY;
-    const response = await fetch("https://gen.pollinations.ai/v1/chat/completions", {
+    const apiKey = process.env.CEREBRAS_API_KEY;
+    const response = await fetch(API_URL, {
         method: "POST",
         headers: {
             "Authorization": `Bearer ${apiKey}`,
@@ -69,8 +51,8 @@ const askAgent = async (body, streamCallback) => {
 
     if (!response.ok) {
         const errorText = await response.text();
-        console.error("Pollinations API Error:", errorText);
-        throw new Error(`Pollinations API error: ${response.status} ${errorText}`);
+        console.error("Cerebras API Error:", errorText);
+        throw new Error(`Cerebras API error: ${response.status} ${errorText}`);
     }
 
     if (payload.stream) {
@@ -87,41 +69,41 @@ const askAgent = async (body, streamCallback) => {
             buffer = lines.pop() || "";
 
             for (const line of lines) {
-                if (line.startsWith('data: ') && line !== 'data: [DONE]') {
-                    try {
-                        const data = JSON.parse(line.slice(6));
-                        const chunk = data.choices?.[0]?.delta?.content || "";
-                        if (chunk) {
-                            fullText += chunk;
-                            streamCallback(chunk);
-                        }
-                    } catch (e) {
-                        console.error("Error parsing stream chunk:", e);
+                if (!line.startsWith('data: ')) continue;
+                if (line === 'data: [DONE]') continue;
+                try {
+                    const data = JSON.parse(line.slice(6));
+                    const chunk = data.choices?.[0]?.delta?.content || "";
+                    if (chunk) {
+                        fullText += chunk;
+                        streamCallback(chunk);
                     }
+                } catch (e) {
+                    console.error("Error parsing stream chunk:", e);
                 }
             }
         }
         return fullText;
-    } else {
-        const json = await response.json();
-        return json.choices[0]?.message?.content || "";
     }
+
+    const json = await response.json();
+    return json.choices?.[0]?.message?.content || json.output_text || "";
 };
 
 const metadataPayload = () => ({
     ok: true,
     endpoint: "/api/chat",
-    provider: "nub-agent by ambitiousnoob (Pollinations AI backend)",
+    provider: "Cerebras Inference",
     models: {
-        default: POLLY_MODEL,
+        default: DEFAULT_MODEL,
     },
     default_execution_mode: "completion",
     agentic: false,
     stream: "SSE",
     example: {
-        model: "polly",
-        messages: [{role: "user", content: "Hello!"}],
-        stream: false,
+        model: DEFAULT_MODEL,
+        messages: [{ role: "user", content: "Hello!" }],
+        stream: true,
     },
 });
 
@@ -156,8 +138,8 @@ module.exports = async (req, res) => {
         return;
     }
 
-    if (!process.env.POLLINATIONS_API_KEY) {
-        sendJson(res, 503, { error: "POLLINATIONS_API_KEY is not configured on the server." });
+    if (!process.env.CEREBRAS_API_KEY) {
+        sendJson(res, 503, { error: "CEREBRAS_API_KEY is not configured on the server." });
         return;
     }
 
@@ -188,7 +170,7 @@ module.exports = async (req, res) => {
 
             sendJson(res, 200, {
                 ok: true,
-                model: POLLY_MODEL,
+                model: DEFAULT_MODEL,
                 output_text: reply,
                 choices: [{ message: { content: reply }, finish_reason: "stop" }],
                 finish_reason: "stop",
@@ -196,7 +178,7 @@ module.exports = async (req, res) => {
             });
         }
     } catch (error) {
-        console.error("[Pollinations AI Error]", error);
+        console.error("[Cerebras API Error]", error);
         sendJson(res, 500, { error: error?.message || "Chat request failed." });
     }
 };
