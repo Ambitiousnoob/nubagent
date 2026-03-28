@@ -1528,6 +1528,7 @@ async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MA
             const reader = res.body.getReader();
             const decoder = new TextDecoder();
             let fullText = "";
+            let collectedTools = [];
             let buffer = "";
             let chunkCount = 0;
 
@@ -1576,9 +1577,10 @@ async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MA
                 const json = await fallbackRes.json();
                 const text = json?.choices?.[0]?.message?.content || json?.output_text || "";
                 const toolsUsed = json?.tools_used || json?.toolsUsed;
+                collectedTools = Array.isArray(toolsUsed) ? toolsUsed : [];
                 const logTool = typeof onToolCall === "function" ? onToolCall : () => {};
-                if (Array.isArray(toolsUsed)) {
-                    toolsUsed.forEach((entry) => {
+                if (Array.isArray(collectedTools)) {
+                    collectedTools.forEach((entry) => {
                         const name = entry?.name || "tool";
                         let args = entry?.args;
                         try {
@@ -1591,10 +1593,10 @@ async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MA
                 }
                 onUpdate(text || "");
                 log?.("Non-stream retry completed.");
-                return text;
+                return { text, toolsUsed: collectedTools };
             }
 
-            return fullText;
+            return { text: fullText, toolsUsed: collectedTools };
         } catch (e) {
             if (e.name === "AbortError") throw e;
             if (attempt === maxAttempts - 1) throw e;
@@ -1624,7 +1626,8 @@ async function callLLMText(messages, chain, signal, {
     for (const model of chain) {
         if (signal?.aborted) throw new Error("aborted");
         try {
-            return await callLLMStream(prepared.messages, model, signal, () => {}, { maxTokens });
+            const { text } = await callLLMStream(prepared.messages, model, signal, () => {}, { maxTokens });
+            return text;
         } catch (e) {
             lastErr = e;
             if (e.name === "AbortError") throw e;
@@ -2412,13 +2415,19 @@ export default function AgentFramework() {
 
         try {
             const chatMessages = [...historyMessages, { role: "user", content: preparedQuery }];
-            const fastText = await callLLMStream(chatMessages, primaryModel.id, signal, (text) => {
+            const { text: fastText, toolsUsed = [] } = await callLLMStream(chatMessages, primaryModel.id, signal, (text) => {
                 updateRunConversation(c => ({ ...c, activeStream: text }));
             }, {
                 maxTokens: MAX_COMPLETION_TOKENS,
                 log: (msg) => pushRunLog("System", msg, "var(--text-dim)"),
                 onToolCall: (name, args) => pushRunLog("Tool", `Called ${name} with ${JSON.stringify(args)}`, "var(--accent)"),
             });
+
+            if (Array.isArray(toolsUsed) && toolsUsed.length) {
+                toolsUsed.forEach((entry) => {
+                    pushRunLog("Tool", `Called ${entry?.name || "tool"} with ${entry?.args || "{}"}`, "var(--accent)");
+                });
+            }
 
             updateRunConversation(c => ({
                 ...c,
