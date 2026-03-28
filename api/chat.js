@@ -4,7 +4,6 @@ dotenv.config();
 dotenv.config({ path: path.join(__dirname, "..", ".env") });
 
 const { readBody } = require("../lib/web");
-const googleThis = require("googlethis");
 require("dotenv/config");
 
 const DEFAULT_MODEL = "qwen-3-235b-a22b-instruct-2507";
@@ -15,7 +14,7 @@ const MAX_TOOL_TURNS = 6;
 const writeCorsHeaders = (res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type", "Authorization");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 };
 
 const sendJson = (res, status, payload) => {
@@ -98,6 +97,8 @@ const executeTool = async (toolCall) => {
         const count = Math.min(Math.max(parseInt(args.count, 10) || 3, 1), 5);
         if (!query) return "Error: query is required";
         try {
+            const googleThis = requireSafeGoogleThis();
+            if (!googleThis) return "Error: web search library unavailable";
             const results = await googleThis.search(query, { page: 0, safe: false, parse_ads: false });
             const top = (results?.results || []).slice(0, count).map((item, idx) => ({
                 rank: idx + 1,
@@ -113,6 +114,17 @@ const executeTool = async (toolCall) => {
     }
 
     return `Error: unknown tool ${name}`;
+};
+
+const requireSafeGoogleThis = () => {
+    try {
+        // Lazy require to avoid init failure bringing down the function
+        // eslint-disable-next-line global-require
+        return require("googlethis");
+    } catch (e) {
+        console.error("googlethis load failed:", e);
+        return null;
+    }
 };
 
 const normalizeModel = (model) => {
