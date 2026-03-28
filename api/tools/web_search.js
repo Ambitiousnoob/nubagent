@@ -14,11 +14,14 @@ module.exports = {
         function: {
             name: "web_search",
             strict: true,
-            description: "Search the web for recent information and return top snippets.",
+            description: "CRITICAL: You MUST use this tool whenever you need real-time data, the current date or time, current events, or information beyond your training cutoff. Never reply saying you 'don't have access to real-time data'—use this tool instead.",
             parameters: {
                 type: "object",
                 properties: {
-                    query: { type: "string", description: "Search query" },
+                    query: {
+                        type: "string",
+                        description: "The specific search query. If checking the date or time, include the timezone or location.",
+                    },
                     count: { type: "integer", minimum: 1, maximum: 5, description: "Results to return (1-5)" },
                 },
                 required: ["query"],
