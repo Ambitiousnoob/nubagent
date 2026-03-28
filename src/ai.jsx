@@ -1,6 +1,10 @@
 import React, { useState, useRef, useEffect } from "react";
 
 const HOSTED_CHAT_API_PATH = "/api/chat";
+const BRAND_SYSTEM_MESSAGE = {
+    role: "system",
+    content: "You are nub-agent (ambitiousnoob), running on Cerebras Qwen 3 235B via Cerebras Inference. When asked about your model, identify exactly as: \"nub-agent (ambitiousnoob) on Cerebras Qwen 3 235B\" and avoid claiming affiliation with other providers.",
+};
 const AVAILABLE_MODELS = [
     {
         id: "qwen-3-235b-a22b-instruct-2507",
@@ -1447,9 +1451,16 @@ RULES:
 6. Do NOT use JSON for tool calls, ONLY use the exact <tool_call> XML format.`;
 
 async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MAX_COMPLETION_TOKENS, log, clientTimeoutMs = 70000 } = {}) {
+    const ensureBrandedMessages = (msgs = []) => (
+        Array.isArray(msgs) && msgs.some(m => m?.role === "system")
+            ? msgs
+            : [BRAND_SYSTEM_MESSAGE, ...msgs]
+    );
+
     const maxAttempts = MAX_RETRIES + 1;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
         try {
+            const brandedMessages = ensureBrandedMessages(messages);
             log?.(`Dispatching to ${model} (attempt ${attempt + 1}/${maxAttempts})`);
             const controller = new AbortController();
             if (signal) {
@@ -1457,18 +1468,18 @@ async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MA
                 else signal.addEventListener("abort", () => controller.abort(signal.reason), { once: true });
             }
             const timeoutId = setTimeout(() => controller.abort(), clientTimeoutMs);
-            const res = await fetch(getToolApiUrl(HOSTED_CHAT_API_PATH), {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(buildOpenRouterRequestBody({
-                    model,
-                    maxTokens,
-                    messages,
-                    stream: true,
-                })),
-                credentials: "include",
-                cache: "no-store",
-                signal: controller.signal,
+                const res = await fetch(getToolApiUrl(HOSTED_CHAT_API_PATH), {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(buildOpenRouterRequestBody({
+                        model,
+                        maxTokens,
+                        messages: brandedMessages,
+                        stream: true,
+                    })),
+                    credentials: "include",
+                    cache: "no-store",
+                    signal: controller.signal,
             });
             clearTimeout(timeoutId);
 
@@ -1528,7 +1539,7 @@ async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MA
                     body: JSON.stringify(buildOpenRouterRequestBody({
                         model,
                         maxTokens,
-                        messages,
+                        messages: brandedMessages,
                         stream: false,
                     })),
                     credentials: "include",
@@ -2278,6 +2289,34 @@ export default function AgentFramework() {
         const workingMemoryTrimmed = priorRelevantMessages.length > workingMemoryMessages.length;
         const episodicSummary = buildEpisodicSummary(priorMessages);
         const historyMessages = workingMemoryMessages;
+        const isModelQuestion = /\b(what|which)\s+model\b|model is this|what are you|who are you|identify yourself|which ai|what ai/i.test(query.toLowerCase());
+
+        if (isModelQuestion && !pendingUploads.length) {
+            const isFirst = priorMessages.length === 0;
+            const assistantReply = "I'm nub-agent (ambitiousnoob) running on Cerebras Qwen 3 235B via Cerebras Inference.";
+            updateRunConversation(c => {
+                const nextMessages = [...c.messages,
+                    { role: "user", content: preparedQuery, displayText: query, attachments: messageAttachments },
+                    { role: "assistant", content: assistantReply },
+                ];
+                const nextEngine = hydrateMemoryEngine({
+                    ...runMemoryEngine,
+                    episodicSummary: buildEpisodicSummary(nextMessages),
+                });
+                return {
+                    ...c,
+                    currentInput: "",
+                    pendingUploads: [],
+                    messages: nextMessages,
+                    activeStream: null,
+                    pendingSteps: [],
+                    memoryEngine: nextEngine,
+                    strategyState: createStrategyState(),
+                    ...(isFirst ? { title: titleSource.slice(0, 40) + (titleSource.length > 40 ? "..." : "") } : {}),
+                };
+            });
+            return;
+        }
 
         setRunning(true);
         setExpandedSteps({});
