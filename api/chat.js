@@ -4,6 +4,17 @@ dotenv.config();
 dotenv.config({ path: path.join(__dirname, "..", ".env") });
 
 const { readBody } = require("../lib/web");
+const {
+    SlidingWindowTokenLimiter,
+    ExactResponseCache,
+    clampCompletionTokens,
+    estimatePayloadTokens,
+    extractUsage,
+    getBackoffDelayMs,
+    mergeUsage,
+    parseHeaderNumber,
+    sleep,
+} = require("../lib/cerebras-control");
 require("dotenv/config");
 
 const DEFAULT_MODEL = "qwen-3-235b-a22b-instruct-2507";
@@ -11,6 +22,16 @@ const PUBLIC_MODEL_NAME = "nub-agent";
 const API_URL = "https://api.cerebras.ai/v1/chat/completions";
 const ALLOWED_MODELS = new Set([DEFAULT_MODEL]);
 const MAX_TOOL_TURNS = 6;
+const SAFE_MAX_COMPLETION_TOKENS = clampCompletionTokens(process.env.CEREBRAS_MAX_COMPLETION_TOKENS || 4096);
+const MAX_CEREBRAS_ATTEMPTS = Math.max(1, Number(process.env.CEREBRAS_MAX_RETRIES) || 3);
+const RATE_LIMITER = new SlidingWindowTokenLimiter({
+    tokensPerMinute: Number(process.env.CEREBRAS_TPM_LIMIT) || 60000,
+    remoteHeadroom: Number(process.env.CEREBRAS_RATE_LIMIT_HEADROOM) || 2000,
+});
+const RESPONSE_CACHE = new ExactResponseCache({
+    ttlMs: Number(process.env.EXACT_COMPLETION_CACHE_TTL_MS) || 5 * 60 * 1000,
+    maxEntries: Number(process.env.EXACT_COMPLETION_CACHE_MAX_ENTRIES) || 100,
+});
 
 const { definition: calcDef, handler: calcHandler } = require("./tools/calculate");
 const { definition: searchDef, handler: searchHandler } = require("./tools/web_search");
@@ -72,60 +93,147 @@ const normalizeModel = (model) => {
     return DEFAULT_MODEL;
 };
 
+const resolveMaxTokens = (value) => (
+    Math.min(clampCompletionTokens(value, SAFE_MAX_COMPLETION_TOKENS), SAFE_MAX_COMPLETION_TOKENS)
+);
+
+const getRateLimitState = (headers) => {
+    const remainingTokensMinute = parseHeaderNumber(headers, "x-ratelimit-remaining-tokens-minute");
+    const resetTokensMinute = parseHeaderNumber(headers, "x-ratelimit-reset-tokens-minute");
+    if (!Number.isFinite(remainingTokensMinute) && !Number.isFinite(resetTokensMinute)) return null;
+    return {
+        remaining_tokens_minute: Number.isFinite(remainingTokensMinute) ? remainingTokensMinute : null,
+        reset_tokens_minute: Number.isFinite(resetTokensMinute) ? resetTokensMinute : null,
+    };
+};
+
+const createCerebrasError = ({ status, message, headers }) => {
+    const error = new Error(message);
+    error.status = status;
+    error.headers = headers;
+    return error;
+};
+
+const estimateResponseUsage = (payload, content = "") => {
+    const promptTokens = estimatePayloadTokens({
+        messages: payload.messages,
+        tools: payload.tools,
+        max_tokens: 0,
+    });
+    const completionTokens = Math.min(
+        resolveMaxTokens(payload.max_tokens ?? payload.maxTokens),
+        Math.max(1, Math.ceil(String(content || "").length / 4)),
+    );
+    return {
+        prompt_tokens: promptTokens,
+        completion_tokens: completionTokens,
+        total_tokens: promptTokens + completionTokens,
+    };
+};
+
+const makeExactCacheKey = (body) => RESPONSE_CACHE.makeKey({
+    model: normalizeModel(body.model),
+    messages: Array.isArray(body.messages) ? body.messages : [],
+    temperature: body.temperature ?? 0.2,
+    max_tokens: resolveMaxTokens(body.max_tokens ?? body.maxTokens),
+});
+
 const callCerebras = async (payload, streamCallback) => {
     const apiKey = process.env.CEREBRAS_API_KEY;
-    const response = await fetch(API_URL, {
-        method: "POST",
-        headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Cerebras API Error:", errorText);
-        throw new Error(`Cerebras API error: ${response.status} ${errorText}`);
-    }
-
-    if (payload.stream) {
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let fullText = "";
-        let buffer = "";
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\\n");
-            buffer = lines.pop() || "";
-
-            for (const line of lines) {
-                if (!line.startsWith("data: ")) continue;
-                if (line === "data: [DONE]") continue;
-                try {
-                    const data = JSON.parse(line.slice(6));
-                    const chunk = data.choices?.[0]?.delta?.content || "";
-                    if (chunk) {
-                        fullText += chunk;
-                        streamCallback(chunk);
-                    }
-                } catch (e) {
-                    console.error("Error parsing stream chunk:", e);
-                }
-            }
-        }
-        return { content: fullText };
-    }
-
-    const json = await response.json();
-    const choice = json.choices?.[0] || {};
-    return {
-        content: choice.message?.content || json.output_text || "",
-        message: choice.message,
+    const normalizedPayload = {
+        ...payload,
+        max_tokens: resolveMaxTokens(payload.max_tokens ?? payload.maxTokens),
     };
+    const estimatedTokens = estimatePayloadTokens(normalizedPayload);
+    const reservationId = await RATE_LIMITER.reserve(estimatedTokens);
+
+    try {
+        for (let attempt = 0; attempt < MAX_CEREBRAS_ATTEMPTS; attempt += 1) {
+            const response = await fetch(API_URL, {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${apiKey}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(normalizedPayload),
+            });
+
+            RATE_LIMITER.applyHeaders(response.headers);
+            const rateLimit = getRateLimitState(response.headers);
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error("Cerebras API Error:", errorText);
+                const error = createCerebrasError({
+                    status: response.status,
+                    headers: response.headers,
+                    message: `Cerebras API error: ${response.status} ${errorText}`,
+                });
+
+                if (response.status === 429 && attempt + 1 < MAX_CEREBRAS_ATTEMPTS) {
+                    await sleep(getBackoffDelayMs(attempt, response.headers));
+                    continue;
+                }
+
+                throw error;
+            }
+
+            if (normalizedPayload.stream) {
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let fullText = "";
+                let buffer = "";
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split("\\n");
+                    buffer = lines.pop() || "";
+
+                    for (const line of lines) {
+                        if (!line.startsWith("data: ")) continue;
+                        if (line === "data: [DONE]") continue;
+                        try {
+                            const data = JSON.parse(line.slice(6));
+                            const chunk = data.choices?.[0]?.delta?.content || "";
+                            if (chunk) {
+                                fullText += chunk;
+                                streamCallback(chunk);
+                            }
+                        } catch (e) {
+                            console.error("Error parsing stream chunk:", e);
+                        }
+                    }
+                }
+
+                const usage = estimateResponseUsage(normalizedPayload, fullText);
+                RATE_LIMITER.commit(reservationId, usage.total_tokens);
+                return { content: fullText, usage, rateLimit };
+            }
+
+            const json = await response.json();
+            const choice = json.choices?.[0] || {};
+            const content = choice.message?.content || json.output_text || "";
+            const usage = extractUsage(json) || estimateResponseUsage(normalizedPayload, content);
+            RATE_LIMITER.commit(reservationId, usage.total_tokens);
+            return {
+                content,
+                message: choice.message,
+                usage,
+                rateLimit,
+            };
+        }
+    } catch (error) {
+        RATE_LIMITER.release(reservationId);
+        throw error;
+    }
+
+    RATE_LIMITER.release(reservationId);
+    throw createCerebrasError({
+        status: 500,
+        message: "Cerebras API error: exhausted retry budget",
+    });
 };
 
 const runChatWithTools = async (body) => {
@@ -134,7 +242,7 @@ const runChatWithTools = async (body) => {
     const base = {
         model,
         temperature: body.temperature,
-        max_tokens: body.max_tokens,
+        max_tokens: resolveMaxTokens(body.max_tokens ?? body.maxTokens),
         tools: TOOL_DEFINITIONS,
         parallel_tool_calls: true,
         stream: false, // tool path uses non-stream for determinism
@@ -142,9 +250,13 @@ const runChatWithTools = async (body) => {
 
     let lastContent = "";
     const toolsUsed = [];
+    const usageEntries = [];
+    let lastRateLimit = null;
     for (let i = 0; i < MAX_TOOL_TURNS; i += 1) {
         const payload = { ...base, messages };
         const result = await callCerebras(payload);
+        if (result?.usage) usageEntries.push(result.usage);
+        if (result?.rateLimit) lastRateLimit = result.rateLimit;
         const assistantMessage = result.message || { role: "assistant", content: result.content };
         messages.push(assistantMessage);
 
@@ -165,7 +277,12 @@ const runChatWithTools = async (body) => {
         }
     }
 
-    return { content: lastContent, toolsUsed };
+    return {
+        content: lastContent,
+        toolsUsed,
+        usage: mergeUsage(usageEntries),
+        rateLimit: lastRateLimit,
+    };
 };
 
 const metadataPayload = () => ({
@@ -181,6 +298,13 @@ const metadataPayload = () => ({
     default_execution_mode: "completion",
     agentic: true,
     stream: "SSE (streaming disabled during tool calls)",
+    rate_limit_strategy: {
+        local_token_limiter: true,
+        adaptive_header_throttling: true,
+        retry_on_429: true,
+        exact_completion_cache: true,
+        max_completion_tokens: SAFE_MAX_COMPLETION_TOKENS,
+    },
     tools: TOOL_DEFINITIONS.map((t) => t.function.name),
     example: {
         model: PUBLIC_MODEL_NAME,
@@ -226,12 +350,35 @@ module.exports = async (req, res) => {
     }
 
     const normalizedModel = normalizeModel(body.model);
-    body.model = normalizedModel;
+    body = {
+        ...body,
+        model: normalizedModel,
+        max_tokens: resolveMaxTokens(body.max_tokens ?? body.maxTokens),
+    };
 
     const HARD_TIMEOUT_MS = 60000;
     try {
         const allowTools = body.use_tools !== false;
         const wantsSse = wantsStream(body) && !allowTools;
+        const exactCacheEnabled = !allowTools && !wantsSse && body.cache !== false;
+        const exactCacheKey = exactCacheEnabled ? makeExactCacheKey(body) : null;
+
+        if (exactCacheKey) {
+            const cached = RESPONSE_CACHE.get(exactCacheKey);
+            if (cached) {
+                sendJson(res, 200, {
+                    ...cached,
+                    usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+                    rate_limit: null,
+                    cache: {
+                        hit: true,
+                        strategy: "exact",
+                        saved_tokens: cached?.usage?.total_tokens || null,
+                    },
+                });
+                return;
+            }
+        }
 
         if (wantsSse) {
             res.status(200);
@@ -276,8 +423,14 @@ module.exports = async (req, res) => {
             const toolsUsed = reply && typeof reply === "object" && Array.isArray(reply.toolsUsed)
                 ? reply.toolsUsed
                 : [];
+            const usage = reply && typeof reply === "object" && reply.usage
+                ? reply.usage
+                : null;
+            const rateLimit = reply && typeof reply === "object" && reply.rateLimit
+                ? reply.rateLimit
+                : null;
 
-            sendJson(res, 200, {
+            const responsePayload = {
                 ok: true,
                 model: PUBLIC_MODEL_NAME,
                 output_text: outputContent,
@@ -285,7 +438,15 @@ module.exports = async (req, res) => {
                 finish_reason: "stop",
                 agentic: allowTools,
                 tools_used: toolsUsed,
-            });
+                usage,
+                rate_limit: rateLimit,
+            };
+
+            if (exactCacheKey) {
+                RESPONSE_CACHE.set(exactCacheKey, responsePayload);
+            }
+
+            sendJson(res, 200, responsePayload);
         }
     } catch (error) {
         console.error("[Cerebras API Error]", error);
