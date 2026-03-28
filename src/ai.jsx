@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import TerminalMessage from "./TerminalMessage.jsx";
 
 const HOSTED_CHAT_API_PATH = "/api/chat";
 const BRAND_SYSTEM_MESSAGE = {
@@ -3376,36 +3377,14 @@ export default function AgentFramework() {
                                 <div key={idx} className="af-msg-bot">
                                     {msg.steps?.length > 0 && (
                                         <div className="af-steps">
-                                            {msg.steps.filter(s => s.type === "action").map((step, si) => {
-                                                const key = `${idx}-${si}`;
-                                                const open = expandedSteps[key] !== false;
-                                                return (
-                                                    <div key={si} className="af-step">
-                                                        <div className="af-step-hdr" onClick={() => setExpandedSteps(p => ({ ...p, [key]: !open }))}>
-                                                            <span>{tools[step.action]?.icon || ""}</span>
-                                                            <code style={{ fontFamily: "var(--mono)", fontWeight: 600, fontSize: 12 }}>{step.action}</code>
-                                                            <span style={{ flex: 1, color: "var(--text-muted)", marginLeft: 8, fontSize: 11 }}>
-                                                                {step.batchSize > 1 ? `Step ${step.iteration}.${step.batchIndex}/${step.batchSize}` : `Step ${step.iteration}`}
-                                                                {step.durationMs ? ` · ${step.durationMs}ms` : ""}
-                                                            </span>
-                                                            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{open ? "▴" : "▾"}</span>
-                                                        </div>
-                                                        {open && (
-                                                            <div className="af-step-body">
-                                                                {step.thought && <div className="af-step-thought">Note: {step.thought}</div>}
-                                                                {step.input && Object.keys(step.input).length > 0 && <div className="af-step-input" style={{position:"relative"}}><button onClick={(e)=>{navigator.clipboard.writeText(JSON.stringify(step.input,null,2)); e.target.innerText="Copied!"; setTimeout(()=>e.target.innerText="Copy",2000)}} style={{position:"absolute",top:4,right:4,fontSize:10,background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",borderRadius:4,padding:"2px 6px",cursor:"pointer"}}>Copy</button>{JSON.stringify(step.input, null, 2)}</div>}
-                                                                {step.observation && (
-                                                                    <div className="af-step-obs" style={{position:"relative"}}>
-                                                                        <button onClick={(e)=>{navigator.clipboard.writeText(step.observation); e.target.innerText="Copied!"; setTimeout(()=>e.target.innerText="Copy",2000)}} style={{position:"absolute",top:4,right:4,fontSize:10,background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",borderRadius:4,padding:"2px 6px",cursor:"pointer"}}>Copy</button>
-                                                                        <div className="af-step-obs-label">Observation</div>
-                                                                        <pre>{step.observation}</pre>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
+                                            {msg.steps.filter(s => s.type === "action").map((step, si) => (
+                                                <TerminalMessage
+                                                    key={`${idx}-${si}`}
+                                                    status={step.status || "info"}
+                                                    isRunning={false}
+                                                    text={`${step.action}${step.input && Object.keys(step.input).length ? ` ${JSON.stringify(step.input)}` : ""}`}
+                                                />
+                                            ))}
                                         </div>
                                     )}
                                     {msg.error ? (
