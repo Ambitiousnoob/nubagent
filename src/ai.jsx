@@ -2965,17 +2965,17 @@ export default function AgentFramework() {
                         </div>
                     </div>
                     {settingsOpen && (
-                        <div className="af-api-fly" ref={settingsFlyRef}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                <span style={{ fontWeight: 700 }}>Model Settings</span>
-                                <button className="af-btn" style={{ padding: "4px 8px" }} onClick={() => setSettingsOpen(false)}>✕</button>
-                            </div>
-                            <small>{HOSTED_API_ENABLED ? `${HOSTED_API_LABEL} runs at /api/chat and uses the server-side GEMINI_API_KEY. Browser-stored API keys are disabled and any previously saved local keys are removed on load.` : "Server API is unavailable."}</small>
-                            <div style={{ display: "grid", gap: 8 }}>
-                                <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--text-muted)" }}>Primary model</div>
-                                <select className="af-input" value={primaryModel.id} onChange={e => handlePrimaryModelChange(e.target.value)}>
-                                    {AVAILABLE_MODELS.map(model => (
-                                        <option key={model.id} value={model.id}>{`${model.icon} ${model.label}`}</option>
+                            <div className="af-api-fly" ref={settingsFlyRef}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                    <span style={{ fontWeight: 700 }}>Model Settings</span>
+                                    <button className="af-btn" style={{ padding: "4px 8px" }} onClick={() => setSettingsOpen(false)}>✕</button>
+                                </div>
+                            <small>{HOSTED_API_ENABLED ? `${HOSTED_API_LABEL} runs at /api/chat and uses the server-side CEREBRAS_API_KEY. Browser-stored API keys are disabled and any previously saved local keys are removed on load.` : "Server API is unavailable."}</small>
+                                <div style={{ display: "grid", gap: 8 }}>
+                                    <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--text-muted)" }}>Primary model</div>
+                                    <select className="af-input" value={primaryModel.id} onChange={e => handlePrimaryModelChange(e.target.value)}>
+                                        {AVAILABLE_MODELS.map(model => (
+                                            <option key={model.id} value={model.id}>{`${model.icon} ${model.label}`}</option>
                                     ))}
                                 </select>
                             </div>

@@ -31,10 +31,10 @@
 - Keep diffs small; prefer follow-up PRs for large refactors.
 
 ## Security & Configuration Tips
-- Required envs: `GEMINI_API_KEYS` (comma-separated), `DATABASE_URL`; optional per-request `apiKey` override. Load `dotenv` before importing the AI client.
+- Required envs: `CEREBRAS_API_KEY`, `DATABASE_URL`; optional per-request `apiKey` override. Load `dotenv` before importing the AI client.
 - Functions are stateless; persist memory in the database (`agent_memory` table) and keep secrets out of client bundles.
 
 ## Agent-Specific Notes
-- Default model: `gemini-1.5-flash` branded as “nub-agent (ambitiousnoob)”.
+- Default model: `qwen-3-235b-a22b-instruct-2507` via Cerebras, branded as “nub-agent (ambitiousnoob)”.
 - Rate limiting uses a mutex queue; avoid spawning parallel API calls unless needed.
 - Emit detailed logs for tool calls and model invocations; call tools only when necessary to answer the request.
