@@ -2004,9 +2004,9 @@ export default function AgentFramework() {
         if (!textarea) return;
         textarea.style.height = "0px";
         const maxHeight = isCompactUi
-            ? Math.max(140, Math.round((window.visualViewport?.height || window.innerHeight) * 0.28))
-            : 140;
-        const nextHeight = Math.max(44, Math.min(textarea.scrollHeight, maxHeight));
+            ? Math.max(110, Math.round((window.visualViewport?.height || window.innerHeight) * 0.22))
+            : 110;
+        const nextHeight = Math.max(36, Math.min(textarea.scrollHeight, maxHeight));
         textarea.style.height = `${nextHeight}px`;
         textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
     }, [activeTab, conv?.currentInput, currentConversationId, isCompactUi]);
@@ -2608,12 +2608,12 @@ export default function AgentFramework() {
 .af-attachment-remove:hover{color:var(--text);}
 .af-attachment-remove:disabled,.af-btn-attach:disabled{opacity:.45;cursor:not-allowed;}
 .af-btn-attach {background: none; border: none; color: var(--text-dim); font-size: 18px; cursor: pointer; padding: 8px; width:42px; height:42px; border-radius:12px; transition: color .2s,background .2s;flex:0 0 auto;} .af-btn-attach:hover {color: var(--text);background:rgba(255,255,255,0.05);}
-.af-input-wrap{position:sticky;bottom:calc(68px + env(safe-area-inset-bottom));z-index:50;align-self:center;width:82%;max-width:640px;margin:0 auto 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:20px;display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:10px 12px 12px;backdrop-filter:blur(20px);box-shadow:0 10px 40px rgba(0,0,0,0.45);}
-.af-input-row{display:flex;align-items:flex-end;gap:8px;min-width:0;}
+.af-input-wrap{position:sticky;bottom:calc(68px + env(safe-area-inset-bottom));z-index:50;align-self:center;width:78%;max-width:560px;margin:0 auto 12px;background:var(--bg-card);border:1px solid var(--border);border-radius:16px;display:flex;flex-direction:column;align-items:stretch;gap:6px;padding:8px 10px 10px;backdrop-filter:blur(20px);box-shadow:0 8px 28px rgba(0,0,0,0.4);}
+.af-input-row{display:flex;align-items:flex-end;gap:6px;min-width:0;}
 .af-upload-status{font-size:11px;color:var(--text-dim);padding:0 2px;}
-.af-textarea{flex:1;resize:none;min-height:44px;height:44px;max-height:110px;padding:12px 0;border:none;background:transparent;color:var(--text);font-family:var(--font);font-size:14px;line-height:1.5;outline:none;}
+.af-textarea{flex:1;resize:none;min-height:36px;height:36px;max-height:96px;padding:10px 0;border:none;background:transparent;color:var(--text);font-family:var(--font);font-size:14px;line-height:1.5;outline:none;}
 .af-textarea::placeholder{color:var(--text-muted);}
-.af-send{padding:8px 18px;border-radius:18px;font-size:13px;font-weight:600;min-width:60px;min-height:42px;}
+.af-send{padding:7px 16px;border-radius:16px;font-size:13px;font-weight:600;min-width:56px;min-height:40px;}
 .af-panel{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;backdrop-filter:blur(20px);}
 .af-strategy-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:16px;}
 .af-strategy-card{background:var(--bg-input);border:1px solid var(--border);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px;}
@@ -2653,10 +2653,10 @@ export default function AgentFramework() {
     .af-btn{min-height:42px;padding:9px 14px;}
     .af-content{padding:16px;min-height:0;}
     .af-content-chat{padding-bottom:220px;}
-    .af-input-wrap{position:sticky;bottom:calc(68px + env(safe-area-inset-bottom));z-index:50;align-self:stretch;width:calc(100% - 24px);max-width:none;border-radius:18px;margin:0 auto;padding:10px calc(14px + env(safe-area-inset-right)) 12px calc(14px + env(safe-area-inset-left));padding-bottom:calc(12px + env(safe-area-inset-bottom));box-shadow:0 -14px 34px rgba(0,0,0,0.45);}
-    .af-btn-attach{width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,0.04);}
-    .af-send{min-width:56px;min-height:46px;border-radius:14px;padding:0 16px;}
-    .af-textarea{min-height:48px;max-height:34vh;font-size:16px;padding:13px 0 11px;}
+    .af-input-wrap{position:sticky;bottom:calc(68px + env(safe-area-inset-bottom));z-index:50;align-self:stretch;width:calc(100% - 24px);max-width:none;border-radius:16px;margin:0 auto;padding:9px calc(14px + env(safe-area-inset-right)) 11px calc(14px + env(safe-area-inset-left));padding-bottom:calc(12px + env(safe-area-inset-bottom));box-shadow:0 -14px 34px rgba(0,0,0,0.42);}
+    .af-btn-attach{width:44px;height:44px;border-radius:13px;background:rgba(255,255,255,0.04);}
+    .af-send{min-width:54px;min-height:44px;border-radius:13px;padding:0 15px;}
+    .af-textarea{min-height:42px;max-height:28vh;font-size:15px;padding:11px 0 10px;}
     .af-msg-user,.af-msg-bot{max-width:100%;}
     .af-attachment-chip{padding:10px 12px;border-radius:16px;}
     .af-attachment-remove{min-width:40px;min-height:40px;}
