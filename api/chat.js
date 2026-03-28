@@ -69,11 +69,34 @@ const getMessageText = (content) => {
         .join("\n\n");
 };
 
-const extractAttachmentOcrEntries = (messages = []) => {
+const getLatestUserText = (messages = []) => {
     const latestUserMessage = [...(Array.isArray(messages) ? messages : [])]
         .reverse()
         .find((message) => message?.role === "user");
-    const source = getMessageText(latestUserMessage?.content || latestUserMessage) || "";
+    return getMessageText(latestUserMessage?.content || latestUserMessage) || "";
+};
+
+const extractAttachmentManifestEntries = (messages = []) => {
+    const source = getLatestUserText(messages);
+    if (!source) return [];
+
+    return source
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith("- Image:") || line.startsWith("- Text:"))
+        .map((line) => {
+            const kind = line.startsWith("- Image:") ? "image" : "text";
+            const prefix = kind === "image" ? "- Image:" : "- Text:";
+            const afterPrefix = line.slice(prefix.length).trim();
+            const parenIndex = afterPrefix.lastIndexOf(" (");
+            const name = (parenIndex >= 0 ? afterPrefix.slice(0, parenIndex) : afterPrefix).trim();
+            return name ? { kind, name } : null;
+        })
+        .filter(Boolean);
+};
+
+const extractAttachmentOcrEntries = (messages = []) => {
+    const source = getLatestUserText(messages);
     if (!source) return [];
 
     const entries = [];
@@ -100,12 +123,16 @@ const resolveAttachmentViewImage = (args, messages = []) => {
     }
 
     const ocrEntries = extractAttachmentOcrEntries(messages);
-    if (!ocrEntries.length) return null;
+    const manifestEntries = extractAttachmentManifestEntries(messages).filter((entry) => entry.kind === "image");
+    if (!ocrEntries.length && !manifestEntries.length) return null;
 
     const fileName = decodeURIComponent(parsed.pathname.split("/").pop() || "").toLowerCase();
     const matched = ocrEntries.find((entry) => entry.name.toLowerCase() === fileName)
         || ocrEntries.find((entry) => fileName && entry.name.toLowerCase().includes(fileName))
-        || (parsed.hostname.toLowerCase() === "example.com" && ocrEntries.length === 1 ? ocrEntries[0] : null);
+        || manifestEntries.find((entry) => entry.name.toLowerCase() === fileName)
+        || manifestEntries.find((entry) => fileName && entry.name.toLowerCase().includes(fileName))
+        || (parsed.hostname.toLowerCase() === "example.com" && ocrEntries.length === 1 ? ocrEntries[0] : null)
+        || (parsed.hostname.toLowerCase() === "example.com" && manifestEntries.length === 1 ? manifestEntries[0] : null);
 
     if (!matched && parsed.hostname.toLowerCase() !== "example.com") return null;
 
@@ -125,15 +152,25 @@ const resolveAttachmentViewImage = (args, messages = []) => {
         };
     }
 
-    const ocrText = matched.text.length > 5000 ? `${matched.text.slice(0, 5000)}...` : matched.text;
-    const payload = {
-        url,
-        source: "attachment_ocr",
-        attachmentName: matched.name,
-        summary: ocrText.slice(0, 1200),
-        ocrText,
-        note: "This URL maps to an uploaded attachment already present in the conversation. Use this OCR/context instead of attempting a remote fetch.",
-    };
+    const hasOcr = typeof matched.text === "string" && matched.text.trim().length > 0;
+    const ocrText = hasOcr
+        ? (matched.text.length > 5000 ? `${matched.text.slice(0, 5000)}...` : matched.text)
+        : "";
+    const payload = hasOcr
+        ? {
+            url,
+            source: "attachment_ocr",
+            attachmentName: matched.name,
+            summary: ocrText.slice(0, 1200),
+            ocrText,
+            note: "This URL maps to an uploaded attachment already present in the conversation. Use this OCR/context instead of attempting a remote fetch.",
+        }
+        : {
+            url,
+            source: "attachment_context",
+            attachmentName: matched.name,
+            note: "This URL maps to an uploaded attachment already present in the conversation, but no OCR text was extracted from it. Do not remote-fetch the placeholder URL; reason from the existing attachment context instead.",
+        };
     return {
         content: JSON.stringify(payload),
         meta: {
