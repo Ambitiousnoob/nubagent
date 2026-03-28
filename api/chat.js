@@ -7,6 +7,7 @@ const { readBody } = require("../lib/web");
 require("dotenv/config");
 
 const DEFAULT_MODEL = "qwen-3-235b-a22b-instruct-2507";
+const PUBLIC_MODEL_NAME = "nub-agent";
 const API_URL = "https://api.cerebras.ai/v1/chat/completions";
 const ALLOWED_MODELS = new Set([DEFAULT_MODEL]);
 const MAX_TOOL_TURNS = 6;
@@ -62,6 +63,8 @@ const normalizeModel = (model) => {
 
     // Map any legacy "polly" selections or unknown models to the current default.
     if (!id || lowered === "polly" || lowered.startsWith("polly-")) return DEFAULT_MODEL;
+    if (lowered === PUBLIC_MODEL_NAME) return DEFAULT_MODEL;
+    if (lowered === "nub agent") return DEFAULT_MODEL;
 
     if (ALLOWED_MODELS.has(id)) return id;
     if (ALLOWED_MODELS.has(lowered)) return lowered;
@@ -168,19 +171,19 @@ const runChatWithTools = async (body) => {
 const metadataPayload = () => ({
     ok: true,
     endpoint: "/api/chat",
-    provider: "nub-agent (ambitiousnoob) via Cerebras",
-    brand: "nub-agent (ambitiousnoob)",
+    provider: PUBLIC_MODEL_NAME,
+    brand: PUBLIC_MODEL_NAME,
     models: {
-        default: DEFAULT_MODEL,
-        available: Array.from(ALLOWED_MODELS),
-        label: "nub-agent (ambitiousnoob) · Cerebras Qwen 3 235B",
+        default: PUBLIC_MODEL_NAME,
+        available: [PUBLIC_MODEL_NAME],
+        label: PUBLIC_MODEL_NAME,
     },
     default_execution_mode: "completion",
     agentic: true,
     stream: "SSE (streaming disabled during tool calls)",
     tools: TOOL_DEFINITIONS.map((t) => t.function.name),
     example: {
-        model: DEFAULT_MODEL,
+        model: PUBLIC_MODEL_NAME,
         messages: [{ role: "user", content: "Hello!" }],
         stream: true,
     },
@@ -276,7 +279,7 @@ module.exports = async (req, res) => {
 
             sendJson(res, 200, {
                 ok: true,
-                model: normalizedModel,
+                model: PUBLIC_MODEL_NAME,
                 output_text: outputContent,
                 choices: [{ message: { content: outputContent }, finish_reason: "stop" }],
                 finish_reason: "stop",

@@ -2,14 +2,15 @@ import React, { useState, useRef, useEffect } from "react";
 import TerminalMessage from "./TerminalMessage.jsx";
 
 const HOSTED_CHAT_API_PATH = "/api/chat";
+const PUBLIC_MODEL_NAME = "nub-agent";
 const BRAND_SYSTEM_MESSAGE = {
     role: "system",
-    content: "You are nub-agent (ambitiousnoob), running on Cerebras Qwen 3 235B via Cerebras Inference. When asked about your model, identify exactly as: \"nub-agent (ambitiousnoob) on Cerebras Qwen 3 235B\" and avoid claiming affiliation with other providers.",
+    content: "You are nub-agent. When asked about your model or identity, identify as \"nub-agent\". Do not reveal internal provider names, upstream model families, or backend model IDs unless the user explicitly asks for implementation details.",
 };
 const AVAILABLE_MODELS = [
     {
         id: "qwen-3-235b-a22b-instruct-2507",
-        label: "nub-agent (ambitiousnoob) · Cerebras Qwen 3 235B",
+        label: PUBLIC_MODEL_NAME,
         icon: "",
         capabilities: ["text", "streaming"],
     },
@@ -95,6 +96,7 @@ const FASTEST_INFERENCE_PROFILE = Object.freeze({
     label: "1X",
     provider: undefined,
 });
+const getPublicModelName = () => PUBLIC_MODEL_NAME;
 const roughTokenEstimate = (value) => {
     const text = String(value ?? "");
     if (!text) return 0;
@@ -1497,7 +1499,7 @@ async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MA
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
         try {
             const brandedMessages = ensureBrandedMessages(messages);
-            log?.(`Dispatching to ${model} (attempt ${attempt + 1}/${maxAttempts})`);
+            log?.(`Dispatching to ${getPublicModelName()} (attempt ${attempt + 1}/${maxAttempts})`);
             const controller = new AbortController();
             if (signal) {
                 if (signal.aborted) controller.abort(signal.reason);
@@ -2430,7 +2432,7 @@ export default function AgentFramework() {
 
         if (isModelQuestion && !pendingUploads.length) {
             const isFirst = priorMessages.length === 0;
-            const assistantReply = "I'm nub-agent (ambitiousnoob) running on Cerebras Qwen 3 235B via Cerebras Inference.";
+            const assistantReply = "I'm nub-agent.";
             updateRunConversation(c => {
                 const nextMessages = [...c.messages,
                     { role: "user", content: preparedQuery, displayText: query, attachments: messageAttachments },
@@ -2472,7 +2474,7 @@ export default function AgentFramework() {
                 type: "action",
                 action: "dispatch",
                 input: {
-                    model: primaryModel.id,
+                    model: getPublicModelName(),
                     tools: toolList.length,
                 },
                 iteration: 1,
@@ -2683,7 +2685,6 @@ export default function AgentFramework() {
     const canSend = Boolean(normalizeTextBlock(conv?.currentInput || "") || pendingUploadsView.length);
     const siteOrigin = typeof window !== "undefined" ? window.location.origin : "";
     const apiUrl = siteOrigin ? `${siteOrigin}${HOSTED_CHAT_API_PATH}` : HOSTED_CHAT_API_PATH;
-    const defaultApiModel = AVAILABLE_MODELS[0];
     const agentRequestExample = JSON.stringify({
         prompt: "Find the shortest path from San Francisco to Tokyo and explain which airport you chose.",
         stream: false,
@@ -2703,7 +2704,7 @@ export default function AgentFramework() {
                 ],
             },
         ],
-        model: defaultApiModel.id,
+        model: getPublicModelName(),
         stream: false,
     }, null, 2);
     const agentResponseExample = JSON.stringify({
@@ -3141,7 +3142,7 @@ export default function AgentFramework() {
                                         <div className="af-strategy-label">Controls</div>
                                         <div className="af-strategy-list">
                                             <div><strong>Mode:</strong> <code style={{ fontFamily: "var(--mono)" }}>executionMode: "agent"</code> is the default. Use <code style={{ fontFamily: "var(--mono)" }}>"completion"</code> to bypass tools and planning.</div>
-                                            <div><strong>Model:</strong> choose one of {AVAILABLE_MODELS.map(model => <code key={model.id} style={{ fontFamily: "var(--mono)", marginRight: 6 }}>{model.id}</code>)}.</div>
+                                            <div><strong>Model:</strong> use <code style={{ fontFamily: "var(--mono)" }}>{getPublicModelName()}</code>.</div>
                                             <div><strong>Output:</strong> default is normalized JSON. Use <code style={{ fontFamily: "var(--mono)" }}>format: "raw"</code> for upstream payloads.</div>
                                         </div>
                                     </div>
