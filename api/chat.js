@@ -11,6 +11,10 @@ const API_URL = "https://api.cerebras.ai/v1/chat/completions";
 const ALLOWED_MODELS = new Set([DEFAULT_MODEL]);
 const MAX_TOOL_TURNS = 6;
 
+const { definition: calcDef, handler: calcHandler } = require("./tools/calculate");
+const { definition: searchDef, handler: searchHandler } = require("./tools/web_search");
+const { definition: fetchDef, handler: fetchHandler } = require("./tools/web_fetch");
+
 const writeCorsHeaders = (res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -30,60 +34,7 @@ const wantsStream = (body = {}) => {
     return body.stream === true;
 };
 
-const TOOL_DEFINITIONS = [
-    {
-        type: "function",
-        function: {
-            name: "calculate",
-            strict: true,
-            description: "Evaluate a basic arithmetic expression. Supports + - * / and parentheses. Use for math.",
-            parameters: {
-                type: "object",
-                properties: {
-                    expression: {
-                        type: "string",
-                        description: "Arithmetic expression, e.g. 15*7+(2/3)",
-                    },
-                },
-                required: ["expression"],
-                additionalProperties: false,
-            },
-        },
-    },
-    {
-        type: "function",
-        function: {
-            name: "web_search",
-            strict: true,
-            description: "Search the web for recent information and return top snippets.",
-            parameters: {
-                type: "object",
-                properties: {
-                    query: { type: "string", description: "Search query" },
-                    count: { type: "integer", minimum: 1, maximum: 5, description: "Results to return (1-5)" },
-                },
-                required: ["query"],
-                additionalProperties: false,
-            },
-        },
-    },
-    {
-        type: "function",
-        function: {
-            name: "web_fetch",
-            strict: true,
-            description: "Fetch a URL (text/html only) and return up to 3000 characters of readable text.",
-            parameters: {
-                type: "object",
-                properties: {
-                    url: { type: "string", description: "HTTP or HTTPS URL to fetch" },
-                },
-                required: ["url"],
-                additionalProperties: false,
-            },
-        },
-    },
-];
+const TOOL_DEFINITIONS = [calcDef, searchDef, fetchDef];
 
 const executeTool = async (toolCall) => {
     const name = toolCall?.function?.name;
@@ -95,70 +46,10 @@ const executeTool = async (toolCall) => {
         return `Error: could not parse arguments (${e.message})`;
     }
 
-    if (name === "calculate") {
-        const expr = String(args.expression || "");
-        const safeExpr = expr.replace(/[^0-9+*/().\s-]/g, "");
-        try {
-            // eslint-disable-next-line no-eval
-            const result = eval(safeExpr);
-            if (!Number.isFinite(result)) return "Error: calculation produced non-finite result";
-            return String(result);
-        } catch (e) {
-            return `Error: invalid expression (${e.message})`;
-        }
-    }
-
-    if (name === "web_search") {
-        const query = String(args.query || "").trim();
-        const count = Math.min(Math.max(parseInt(args.count, 10) || 3, 1), 5);
-        if (!query) return "Error: query is required";
-        try {
-            const googleThis = requireSafeGoogleThis();
-            if (!googleThis) return "Error: web search library unavailable";
-            const results = await googleThis.search(query, { page: 0, safe: false, parse_ads: false });
-            const top = (results?.results || []).slice(0, count).map((item, idx) => ({
-                rank: idx + 1,
-                title: item.title,
-                url: item.url,
-                description: item.description,
-            }));
-            if (!top.length) return `No results for "${query}"`;
-            return JSON.stringify(top);
-        } catch (e) {
-            return `Error: search failed (${e.message})`;
-        }
-    }
-
-    if (name === "web_fetch") {
-        const url = String(args.url || "").trim();
-        if (!/^https?:\/\//i.test(url)) return "Error: url must start with http or https";
-        try {
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), 8000);
-            const res = await fetch(url, { signal: controller.signal });
-            clearTimeout(timer);
-            const type = String(res.headers.get("content-type") || "").toLowerCase();
-            if (!type.includes("text/")) return `Error: content-type not supported (${type || "unknown"})`;
-            const text = await res.text();
-            const trimmed = text.replace(/\s+/g, " ").slice(0, 3000);
-            return trimmed || "Error: empty response";
-        } catch (e) {
-            return `Error: fetch failed (${e.message})`;
-        }
-    }
-
+    if (name === "calculate") return calcHandler(args);
+    if (name === "web_search") return searchHandler(args);
+    if (name === "web_fetch") return fetchHandler(args);
     return `Error: unknown tool ${name}`;
-};
-
-const requireSafeGoogleThis = () => {
-    try {
-        // Lazy require to avoid init failure bringing down the function
-        // eslint-disable-next-line global-require
-        return require("googlethis");
-    } catch (e) {
-        console.error("googlethis load failed:", e);
-        return null;
-    }
 };
 
 const normalizeModel = (model) => {
