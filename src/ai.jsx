@@ -67,6 +67,7 @@ const STORAGE_KEYS = Object.freeze({
     fallbackModels: "fallback_models",
     conversations: "agent_convos_v4",
     currentConversationId: "agent_current_conversation_id",
+    stateKey: "agent_state_key",
 });
 
 const createId = () => (
@@ -888,6 +889,22 @@ const readLocalPersistedState = () => {
         primaryModelId: localStorage.getItem(STORAGE_KEYS.primaryModel) || PUBLIC_MODEL_NAME,
         fallbackModelIds: readStoredJson(STORAGE_KEYS.fallbackModels, []),
     };
+};
+
+const sanitizeStateKey = (value) => {
+    const key = String(value || "").trim();
+    return /^[A-Za-z0-9:_-]{8,191}$/.test(key) ? key : "";
+};
+
+const getOrCreateStateKey = () => {
+    if (typeof window === "undefined") return "";
+
+    const existing = sanitizeStateKey(localStorage.getItem(STORAGE_KEYS.stateKey));
+    if (existing) return existing;
+
+    const created = `state-${createId().replace(/[^A-Za-z0-9_-]/g, "").slice(0, 48)}`;
+    localStorage.setItem(STORAGE_KEYS.stateKey, created);
+    return created;
 };
 
 const stripAgentArtifacts = (value) => {
@@ -1933,6 +1950,10 @@ export default function AgentFramework() {
             : null;
     }
     const initialPersistedState = initialPersistedStateRef.current;
+    const stateKeyRef = useRef("");
+    if (!stateKeyRef.current) {
+        stateKeyRef.current = getOrCreateStateKey();
+    }
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [multiThink, setMultiThink] = useState(false);
     const [doublePass, setDoublePass] = useState(false);
@@ -2016,10 +2037,14 @@ export default function AgentFramework() {
 
         (async () => {
             try {
+                if (!stateKeyRef.current) return;
                 const response = await fetch(HOSTED_STATE_API_PATH, {
                     method: "GET",
                     cache: "no-store",
                     credentials: "include",
+                    headers: {
+                        "X-State-Key": stateKeyRef.current,
+                    },
                 });
                 if (!response.ok) {
                     throw new Error(await readApiErrorText(response));
@@ -2232,8 +2257,11 @@ export default function AgentFramework() {
         localStorage.setItem(STORAGE_KEYS.fallbackModels, JSON.stringify(fallbackModelIds));
         localStorage.setItem(STORAGE_KEYS.conversations, JSON.stringify(snapshot.conversations));
         localStorage.setItem(STORAGE_KEYS.currentConversationId, currentConversationId);
+        if (stateKeyRef.current) {
+            localStorage.setItem(STORAGE_KEYS.stateKey, stateKeyRef.current);
+        }
 
-        if (!remoteStateRef.current.loaded || remoteStateRef.current.applying) {
+        if (!remoteStateRef.current.loaded || remoteStateRef.current.applying || !stateKeyRef.current) {
             return undefined;
         }
         if (serializedSnapshot === remoteStateRef.current.lastSaved) {
@@ -2248,7 +2276,10 @@ export default function AgentFramework() {
             try {
                 const response = await fetch(HOSTED_STATE_API_PATH, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-State-Key": stateKeyRef.current,
+                    },
                     credentials: "include",
                     body: JSON.stringify({ state: snapshot }),
                 });
