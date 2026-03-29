@@ -2911,7 +2911,7 @@ export default function AgentFramework() {
             pushRunLog("Memory", `Semantic recall injected ${semanticRecall.hits.length} indexed chunk(s) into the latest prompt.`, "var(--text-dim)");
         }
         if (usingMemoryApiKey) {
-            pushRunLog("Memory", "API-key DB memory active: only the latest turn is dispatched and prior context is restored server-side.", "var(--text-dim)");
+            pushRunLog("Memory", "API-key DB memory active: only the latest turn is dispatched and related memories are searched server-side from the database.", "var(--text-dim)");
         }
 
         pushRunLog("System", "Agentic tools enabled; backend may call calculate/web_search/web_fetch.", "var(--text-dim)");
@@ -3569,12 +3569,12 @@ export default function AgentFramework() {
                                             setMemoryApiKeyDraft(nextKey);
                                         }
                                     }}
-                                    placeholder="Optional: use the same key to reopen the same memory"
+                                    placeholder="Optional: use the same key to reopen and search the same memory"
                                     autoComplete="off"
                                     spellCheck={false}
                                 />
                                 <small style={{ color: "var(--text-muted)" }}>
-                                    Different API keys get isolated remote memories. Leave this empty to use the anonymous browser state key.
+                                    Different API keys get isolated DB memories. The server searches that key's memory table for related info before answering.
                                 </small>
                                 <div className="af-api-actions">
                                     <span>{usingMemoryApiKey ? "API-key memory active" : "Anonymous memory active"}</span>

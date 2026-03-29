@@ -149,8 +149,8 @@ Behavior notes:
 - Tool execution is enabled by default.
 - Streaming is supported for direct completions.
 - Tool turns run in non-stream mode for deterministic tool handling.
-- If you send `X-API-Key` or `Authorization: Bearer <key>`, the server stores compact chat memory for that key and can restore it on later thin requests.
-- For lower token usage, reuse the same memory key and send only the latest user turn; the backend restores a compact summary plus a few recent turns from the database.
+- If you send `X-API-Key` or `Authorization: Bearer <key>`, the server stores memory rows for that key in the database and searches them for related context on later requests.
+- For lower token usage, reuse the same memory key and send only the latest user turn; the backend searches the key's memory table and injects only the relevant matches.
 
 ### `GET /api/state`
 

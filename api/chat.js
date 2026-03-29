@@ -12,6 +12,11 @@ const {
     shouldUseScopedChatMemory,
     buildMessagesWithScopedMemory,
 } = require("../lib/chat-memory");
+const {
+    saveApiKeyMemoryEntries,
+    searchApiKeyMemory,
+    formatApiKeyMemoryContext,
+} = require("../lib/api-key-memory");
 
 const writeCorsHeaders = (res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -23,6 +28,22 @@ const sendJson = (res, status, payload) => {
     res.status(status);
     res.setHeader("Content-Type", "application/json; charset=utf-8");
     res.end(JSON.stringify(payload));
+};
+
+const getMessageText = (content) => {
+    if (typeof content === "string") return content;
+    if (!Array.isArray(content)) return "";
+    return content
+        .filter((part) => part?.type === "text" && typeof part.text === "string")
+        .map((part) => part.text)
+        .join("\n\n");
+};
+
+const getLatestUserText = (messages = []) => {
+    const latestUserMessage = [...(Array.isArray(messages) ? messages : [])]
+        .reverse()
+        .find((message) => message?.role === "user");
+    return getMessageText(latestUserMessage?.content || "").trim();
 };
 
 module.exports = async (req, res) => {
@@ -53,11 +74,18 @@ module.exports = async (req, res) => {
 
     try {
         const scopedMemory = await loadScopedChatMemory(req).catch(() => null);
+        const latestUserText = getLatestUserText(body.messages);
+        const apiKeyMemoryHits = scopedMemory?.scope === "api_key" && latestUserText
+            ? await searchApiKeyMemory(scopedMemory.stateKey, latestUserText).catch(() => [])
+            : [];
+        const apiKeyMemoryContext = formatApiKeyMemoryContext(apiKeyMemoryHits);
         const shouldUseMemory = Boolean(scopedMemory?.dbKey) && shouldUseScopedChatMemory(body);
         const requestBody = shouldUseMemory
             ? {
                 ...body,
-                messages: buildMessagesWithScopedMemory(body.messages, scopedMemory.memory),
+                messages: buildMessagesWithScopedMemory(body.messages, scopedMemory.memory, {
+                    retrievedContext: apiKeyMemoryContext,
+                }),
             }
             : body;
         const wantsSse = wantsStream(body) && body.use_tools === false;
@@ -73,6 +101,9 @@ module.exports = async (req, res) => {
             };
 
             const result = await runLiteHostChat(requestBody, streamCallback);
+            if (scopedMemory?.scope === "api_key" && body.save_persistent_memory !== false) {
+                await saveApiKeyMemoryEntries(scopedMemory.stateKey, body.messages, result?.reply?.content || "").catch(() => {});
+            }
             if (scopedMemory?.dbKey && body.save_persistent_memory !== false) {
                 const nextMemory = mergeChatMemory(scopedMemory.memory, body.messages, result?.reply?.content || "");
                 await saveScopedChatMemory(scopedMemory, nextMemory).catch(() => {});
@@ -81,6 +112,9 @@ module.exports = async (req, res) => {
             res.end();
         } else {
             const result = await runLiteHostChat(requestBody);
+            if (scopedMemory?.scope === "api_key" && body.save_persistent_memory !== false) {
+                await saveApiKeyMemoryEntries(scopedMemory.stateKey, body.messages, result?.reply?.content || "").catch(() => {});
+            }
             let memoryMeta = null;
             if (scopedMemory?.dbKey && body.save_persistent_memory !== false) {
                 const nextMemory = mergeChatMemory(scopedMemory.memory, body.messages, result?.reply?.content || "");
@@ -91,6 +125,7 @@ module.exports = async (req, res) => {
                     injected: shouldUseMemory,
                     summary: Boolean(activeMemory?.summary),
                     recent_messages: Array.isArray(activeMemory?.recentMessages) ? activeMemory.recentMessages.length : 0,
+                    related_entries: apiKeyMemoryHits.length,
                 };
             } else if (scopedMemory?.dbKey) {
                 memoryMeta = {
@@ -98,6 +133,7 @@ module.exports = async (req, res) => {
                     injected: shouldUseMemory,
                     summary: Boolean(scopedMemory.memory?.summary),
                     recent_messages: Array.isArray(scopedMemory.memory?.recentMessages) ? scopedMemory.memory.recentMessages.length : 0,
+                    related_entries: apiKeyMemoryHits.length,
                 };
             }
 
