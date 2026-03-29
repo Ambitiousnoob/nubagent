@@ -68,6 +68,7 @@ const STORAGE_KEYS = Object.freeze({
     conversations: "agent_convos_v4",
     currentConversationId: "agent_current_conversation_id",
     stateKey: "agent_state_key",
+    memoryApiKey: "agent_memory_api_key",
 });
 
 const createId = () => (
@@ -878,7 +879,7 @@ const hydratePersistedStateSnapshot = (raw = {}) => {
     };
 };
 
-const readLocalPersistedState = () => {
+const readLegacyLocalPersistedState = () => {
     if (typeof window === "undefined") return null;
     const conversations = readStoredJson(STORAGE_KEYS.conversations, null);
     if (!Array.isArray(conversations) || !conversations.length) return null;
@@ -894,6 +895,89 @@ const readLocalPersistedState = () => {
 const sanitizeStateKey = (value) => {
     const key = String(value || "").trim();
     return /^[A-Za-z0-9:_-]{8,191}$/.test(key) ? key : "";
+};
+
+const normalizeMemoryApiKey = (value) => String(value || "").trim();
+
+const hashStorageScopeValue = (value) => {
+    let hash = 2166136261;
+    const input = String(value || "");
+    for (let index = 0; index < input.length; index += 1) {
+        hash ^= input.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(16).padStart(8, "0");
+};
+
+const buildStorageScopeId = ({ memoryApiKey = "", stateKey = "" } = {}) => {
+    const apiKey = normalizeMemoryApiKey(memoryApiKey);
+    if (apiKey) return `api:${hashStorageScopeValue(apiKey)}`;
+    const key = sanitizeStateKey(stateKey);
+    return key ? `anon:${key}` : "anon:default";
+};
+
+const getScopedStorageKey = (scopeId, storageKey) => (
+    `agent_scope_v1:${scopeId}:${storageKey}`
+);
+
+const readScopedStoredJson = (scopeId, storageKey, fallback = null) => {
+    if (!scopeId) return fallback;
+    return readStoredJson(getScopedStorageKey(scopeId, storageKey), fallback);
+};
+
+const readScopedStoredValue = (scopeId, storageKey) => {
+    if (typeof window === "undefined" || !scopeId) return "";
+    return localStorage.getItem(getScopedStorageKey(scopeId, storageKey)) || "";
+};
+
+const readLocalPersistedState = (scopeId) => {
+    if (typeof window === "undefined") return null;
+
+    const conversations = readScopedStoredJson(scopeId, STORAGE_KEYS.conversations, null);
+    if (Array.isArray(conversations) && conversations.length) {
+        return {
+            conversations,
+            currentConversationId: readScopedStoredValue(scopeId, STORAGE_KEYS.currentConversationId) || conversations[0]?.id || "",
+            primaryModelId: readScopedStoredValue(scopeId, STORAGE_KEYS.primaryModel) || PUBLIC_MODEL_NAME,
+            fallbackModelIds: readScopedStoredJson(scopeId, STORAGE_KEYS.fallbackModels, []),
+        };
+    }
+
+    if (String(scopeId || "").startsWith("anon:")) {
+        return readLegacyLocalPersistedState();
+    }
+
+    return null;
+};
+
+const persistLocalState = (scopeId, {
+    primaryModelId,
+    fallbackModelIds,
+    snapshot,
+} = {}) => {
+    if (typeof window === "undefined" || !scopeId) return;
+
+    localStorage.setItem(getScopedStorageKey(scopeId, STORAGE_KEYS.primaryModel), primaryModelId || PUBLIC_MODEL_NAME);
+    localStorage.setItem(getScopedStorageKey(scopeId, STORAGE_KEYS.fallbackModels), JSON.stringify(Array.isArray(fallbackModelIds) ? fallbackModelIds : []));
+    localStorage.setItem(getScopedStorageKey(scopeId, STORAGE_KEYS.conversations), JSON.stringify(snapshot?.conversations || []));
+    localStorage.setItem(getScopedStorageKey(scopeId, STORAGE_KEYS.currentConversationId), snapshot?.currentConversationId || "");
+};
+
+const buildStateRequestHeaders = ({ memoryApiKey = "", stateKey = "" } = {}) => {
+    const apiKey = normalizeMemoryApiKey(memoryApiKey);
+    if (apiKey) return { "X-API-Key": apiKey };
+    const key = sanitizeStateKey(stateKey);
+    return key ? { "X-State-Key": key } : {};
+};
+
+const createEmptyPersistedState = () => {
+    const conversation = createConversation();
+    return {
+        conversations: [conversation],
+        currentConversationId: conversation.id,
+        primaryModel: AVAILABLE_MODELS[0],
+        fallbackModels: [],
+    };
 };
 
 const getOrCreateStateKey = () => {
@@ -1942,18 +2026,29 @@ export default function AgentFramework() {
     if (initialConversationRef.current === null) {
         initialConversationRef.current = createConversation();
     }
+    const stateKeyRef = useRef("");
+    if (!stateKeyRef.current) {
+        stateKeyRef.current = getOrCreateStateKey();
+    }
+    const initialMemoryApiKeyRef = useRef(null);
+    if (initialMemoryApiKeyRef.current === null) {
+        initialMemoryApiKeyRef.current = typeof window === "undefined"
+            ? ""
+            : normalizeMemoryApiKey(localStorage.getItem(STORAGE_KEYS.memoryApiKey));
+    }
     const initialPersistedStateRef = useRef(null);
     if (initialPersistedStateRef.current === null) {
-        const localPersistedState = readLocalPersistedState();
+        const initialScopeId = buildStorageScopeId({
+            memoryApiKey: initialMemoryApiKeyRef.current,
+            stateKey: stateKeyRef.current,
+        });
+        const localPersistedState = readLocalPersistedState(initialScopeId);
         initialPersistedStateRef.current = localPersistedState
             ? hydratePersistedStateSnapshot(localPersistedState)
             : null;
     }
     const initialPersistedState = initialPersistedStateRef.current;
-    const stateKeyRef = useRef("");
-    if (!stateKeyRef.current) {
-        stateKeyRef.current = getOrCreateStateKey();
-    }
+    const initialMemoryApiKey = initialMemoryApiKeyRef.current || "";
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [multiThink, setMultiThink] = useState(false);
     const [doublePass, setDoublePass] = useState(false);
@@ -1970,6 +2065,8 @@ export default function AgentFramework() {
         return window.innerWidth > AUTO_SIDEBAR_BREAKPOINT;
     });
     const [logCopyStatus, setLogCopyStatus] = useState("Copy");
+    const [memoryApiKey, setMemoryApiKey] = useState(() => initialMemoryApiKey);
+    const [memoryApiKeyDraft, setMemoryApiKeyDraft] = useState(() => initialMemoryApiKey);
     const [primaryModel, setPrimaryModel] = useState(() => initialPersistedState?.primaryModel || AVAILABLE_MODELS[0]);
     const [fallbackModels, setFallbackModels] = useState(() => initialPersistedState?.fallbackModels || []);
     const [conversations, setConversations] = useState(() => initialPersistedState?.conversations || [initialConversationRef.current]);
@@ -1998,6 +2095,12 @@ export default function AgentFramework() {
         lastSaved: "",
         saveTimer: null,
     });
+    const normalizedMemoryApiKey = normalizeMemoryApiKey(memoryApiKey);
+    const stateScopeId = buildStorageScopeId({
+        memoryApiKey: normalizedMemoryApiKey,
+        stateKey: stateKeyRef.current,
+    });
+    const usingMemoryApiKey = Boolean(normalizedMemoryApiKey);
 
     // Track both the stable viewport and the visual viewport so Android keyboards do not cover the composer.
     useEffect(() => {
@@ -2034,17 +2137,58 @@ export default function AgentFramework() {
     }, [conversations]);
     useEffect(() => {
         let cancelled = false;
+        const scopedHeaders = buildStateRequestHeaders({
+            memoryApiKey: normalizedMemoryApiKey,
+            stateKey: stateKeyRef.current,
+        });
+        const applyScopeState = (hydrated, { markSaved = false } = {}) => {
+            if (cancelled || !hydrated) return;
+            const snapshot = buildPersistedStateSnapshot({
+                conversations: hydrated.conversations,
+                currentConversationId: hydrated.currentConversationId,
+                primaryModelId: hydrated.primaryModel.id,
+                fallbackModelIds: hydrated.fallbackModels.map((model) => model.id),
+            });
+
+            remoteStateRef.current.applying = true;
+            if (markSaved) {
+                remoteStateRef.current.lastSaved = JSON.stringify(snapshot);
+            }
+
+            setPrimaryModel(hydrated.primaryModel);
+            setFallbackModels(hydrated.fallbackModels);
+            setConversations(hydrated.conversations);
+            setCurrentConversationId(hydrated.currentConversationId);
+
+            setTimeout(() => {
+                if (!cancelled) remoteStateRef.current.applying = false;
+            }, 0);
+        };
 
         (async () => {
             try {
-                if (!stateKeyRef.current) return;
+                if (remoteStateRef.current.saveTimer) {
+                    clearTimeout(remoteStateRef.current.saveTimer);
+                    remoteStateRef.current.saveTimer = null;
+                }
+
+                remoteStateRef.current.loaded = false;
+                remoteStateRef.current.applying = true;
+                remoteStateRef.current.lastSaved = "";
+
+                const localPersistedState = readLocalPersistedState(stateScopeId);
+                applyScopeState(
+                    localPersistedState
+                        ? hydratePersistedStateSnapshot(localPersistedState)
+                        : createEmptyPersistedState(),
+                );
+
+                if (!Object.keys(scopedHeaders).length) return;
                 const response = await fetch(HOSTED_STATE_API_PATH, {
                     method: "GET",
                     cache: "no-store",
                     credentials: "include",
-                    headers: {
-                        "X-State-Key": stateKeyRef.current,
-                    },
+                    headers: scopedHeaders,
                 });
                 if (!response.ok) {
                     throw new Error(await readApiErrorText(response));
@@ -2052,30 +2196,12 @@ export default function AgentFramework() {
 
                 const payload = await response.json();
                 if (cancelled || !payload?.state || typeof payload.state !== "object") return;
-
-                const hydrated = hydratePersistedStateSnapshot(payload.state);
-                const snapshot = buildPersistedStateSnapshot({
-                    conversations: hydrated.conversations,
-                    currentConversationId: hydrated.currentConversationId,
-                    primaryModelId: hydrated.primaryModel.id,
-                    fallbackModelIds: hydrated.fallbackModels.map((model) => model.id),
-                });
-
-                remoteStateRef.current.applying = true;
-                remoteStateRef.current.lastSaved = JSON.stringify(snapshot);
-
-                setPrimaryModel(hydrated.primaryModel);
-                setFallbackModels(hydrated.fallbackModels);
-                setConversations(hydrated.conversations);
-                setCurrentConversationId(hydrated.currentConversationId);
-
-                setTimeout(() => {
-                    remoteStateRef.current.applying = false;
-                }, 0);
+                applyScopeState(hydratePersistedStateSnapshot(payload.state), { markSaved: true });
             } catch {
                 // Local storage remains the fallback when the DB is unavailable.
             } finally {
                 remoteStateRef.current.loaded = true;
+                remoteStateRef.current.applying = false;
             }
         })();
 
@@ -2086,7 +2212,7 @@ export default function AgentFramework() {
                 remoteStateRef.current.saveTimer = null;
             }
         };
-    }, []);
+    }, [normalizedMemoryApiKey, stateScopeId]);
     useEffect(() => {
         if (typeof window === "undefined") return;
         localStorage.removeItem("agent_api_keys_pool");
@@ -2253,15 +2379,21 @@ export default function AgentFramework() {
         });
         const serializedSnapshot = JSON.stringify(snapshot);
 
-        localStorage.setItem(STORAGE_KEYS.primaryModel, primaryModel.id);
-        localStorage.setItem(STORAGE_KEYS.fallbackModels, JSON.stringify(fallbackModelIds));
-        localStorage.setItem(STORAGE_KEYS.conversations, JSON.stringify(snapshot.conversations));
-        localStorage.setItem(STORAGE_KEYS.currentConversationId, currentConversationId);
+        persistLocalState(stateScopeId, {
+            primaryModelId: primaryModel.id,
+            fallbackModelIds,
+            snapshot,
+        });
         if (stateKeyRef.current) {
             localStorage.setItem(STORAGE_KEYS.stateKey, stateKeyRef.current);
         }
+        localStorage.setItem(STORAGE_KEYS.memoryApiKey, normalizedMemoryApiKey);
 
-        if (!remoteStateRef.current.loaded || remoteStateRef.current.applying || !stateKeyRef.current) {
+        const scopedHeaders = buildStateRequestHeaders({
+            memoryApiKey: normalizedMemoryApiKey,
+            stateKey: stateKeyRef.current,
+        });
+        if (!remoteStateRef.current.loaded || remoteStateRef.current.applying || !Object.keys(scopedHeaders).length) {
             return undefined;
         }
         if (serializedSnapshot === remoteStateRef.current.lastSaved) {
@@ -2278,7 +2410,7 @@ export default function AgentFramework() {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
-                        "X-State-Key": stateKeyRef.current,
+                        ...scopedHeaders,
                     },
                     credentials: "include",
                     body: JSON.stringify({ state: snapshot }),
@@ -2300,7 +2432,7 @@ export default function AgentFramework() {
                 remoteStateRef.current.saveTimer = null;
             }
         };
-    }, [conversations, currentConversationId, primaryModel.id, fallbackModelIdsKey]);
+    }, [conversations, currentConversationId, primaryModel.id, fallbackModelIdsKey, normalizedMemoryApiKey, stateScopeId]);
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [currentConversationId, conversations.length, running, activeTab]);
@@ -3399,6 +3531,48 @@ export default function AgentFramework() {
                                 </label>
                                 <small style={{ color: "var(--text-muted)" }}>{FAST_MODE_LOCKED ? "Disabled in fast mode." : "Adds a brief step-by-step plan before the final answer so you can see reasoning."}</small>
                             </div>
+                            <div style={{ display: "grid", gap: 8, marginTop: 6, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-input)", fontSize: 13 }}>
+                                <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--text-muted)" }}>Memory API key</div>
+                                <input
+                                    className="af-input"
+                                    value={memoryApiKeyDraft}
+                                    onChange={(event) => setMemoryApiKeyDraft(event.target.value)}
+                                    onKeyDown={(event) => {
+                                        if (event.key === "Enter") {
+                                            event.preventDefault();
+                                            const nextKey = normalizeMemoryApiKey(memoryApiKeyDraft);
+                                            setMemoryApiKey(nextKey);
+                                            setMemoryApiKeyDraft(nextKey);
+                                        }
+                                    }}
+                                    placeholder="Optional: use the same key to reopen the same memory"
+                                    autoComplete="off"
+                                    spellCheck={false}
+                                />
+                                <small style={{ color: "var(--text-muted)" }}>
+                                    Different API keys get isolated remote memories. Leave this empty to use the anonymous browser state key.
+                                </small>
+                                <div className="af-api-actions">
+                                    <span>{usingMemoryApiKey ? "API-key memory active" : "Anonymous memory active"}</span>
+                                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                        <button className="af-btn" onClick={() => {
+                                            const nextKey = normalizeMemoryApiKey(memoryApiKeyDraft);
+                                            setMemoryApiKey(nextKey);
+                                            setMemoryApiKeyDraft(nextKey);
+                                        }}>Apply key</button>
+                                        <button
+                                            className="af-btn"
+                                            onClick={() => {
+                                                setMemoryApiKey("");
+                                                setMemoryApiKeyDraft("");
+                                            }}
+                                            disabled={!memoryApiKey && !memoryApiKeyDraft}
+                                        >
+                                            Clear key
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                             <div className="af-api-actions">
                                 <span>{HOSTED_API_ENABLED ? `${HOSTED_API_LABEL} active` : "Server API offline"}</span>
                                 <span>Auth stays on the server</span>
@@ -3642,7 +3816,12 @@ export default function AgentFramework() {
                     {activeTab === "memory" && (
                         <div className="af-panel">
                             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
-                                <span style={{ fontWeight: 600 }}>Stored Memory ({Object.keys(memoryStore).length})</span>
+                                <div style={{ display: "grid", gap: 4 }}>
+                                    <span style={{ fontWeight: 600 }}>Stored Memory ({Object.keys(memoryStore).length})</span>
+                                    <span className="af-strategy-muted">
+                                        {usingMemoryApiKey ? "Scope: API key" : "Scope: anonymous browser state"}
+                                    </span>
+                                </div>
                                 <button className="af-btn af-btn-danger" onClick={() => updateMemory({})}>Clear All</button>
                             </div>
                             {Object.keys(memoryStore).length === 0

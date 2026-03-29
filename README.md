@@ -124,7 +124,7 @@ Response shape:
 ```json
 {
   "ok": true,
-  "model": "gemini-3-flash",
+  "model": "nub-agent",
   "output_text": "...",
   "choices": [
     {
@@ -149,6 +149,37 @@ Behavior notes:
 - Tool execution is enabled by default.
 - Streaming is supported for direct completions.
 - Tool turns run in non-stream mode for deterministic tool handling.
+
+### `GET /api/state`
+
+Loads persisted app state for a memory scope.
+
+Send one of:
+
+- `X-API-Key: <your-memory-key>` to isolate memory by API key
+- `Authorization: Bearer <your-memory-key>` as an alternative
+- `X-State-Key: <generated-browser-key>` for anonymous browser scope
+
+### `POST /api/state`
+
+Saves persisted app state for the selected memory scope.
+
+Example:
+
+```bash
+curl -sS -X POST http://localhost:3000/api/state \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: demo-memory-key-123" \
+  -d '{
+    "state": {
+      "version": 1,
+      "conversations": [],
+      "currentConversationId": "",
+      "primaryModelId": "nub-agent",
+      "fallbackModelIds": []
+    }
+  }'
+```
 
 ### `POST /api/read`
 
