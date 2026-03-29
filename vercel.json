@@ -35,6 +35,14 @@
       "dest": "/api/read.js"
     },
     {
+      "src": "/api/search",
+      "dest": "/api/search.js"
+    },
+    {
+      "src": "/api/fetch",
+      "dest": "/api/fetch.js"
+    },
+    {
       "src": "/api/crawl",
       "dest": "/api/crawl.js"
     },

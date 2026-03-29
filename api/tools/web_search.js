@@ -5,6 +5,7 @@ const REQUEST_TIMEOUT_MS = 8000;
 const DUCKDUCKGO_HTML_URL = "https://html.duckduckgo.com/html/";
 const TAVILY_SEARCH_URL = "https://api.tavily.com/search";
 const SERPER_SEARCH_URL = "https://google.serper.dev/search";
+const JINA_SEARCH_URL = "https://s.jina.ai/";
 const DEFAULT_TAVILY_API_KEYS = "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";
 const RESULT_LINK_RE = /<a\b[^>]*class=(?:"[^"]*\b(?:result__a|result-link)\b[^"]*"|'[^']*\b(?:result__a|result-link)\b[^']*')[^>]*href=(?:"([^"]+)"|'([^']+)')[^>]*>([\s\S]*?)<\/a>/gi;
 const RESULT_SNIPPET_RE = /<(?:a|div|span)\b[^>]*class=(?:"[^"]*\b(?:result__snippet|result-snippet)\b[^"]*"|'[^']*\b(?:result__snippet|result-snippet)\b[^']*')[^>]*>([\s\S]*?)<\/(?:a|div|span)>/i;
@@ -12,6 +13,7 @@ const GOOGLE_ONLY_OPERATORS_RE = /\b(intitle:|inurl:|intext:|before:|after:|file
 const ANY_OPERATOR_RE = /\b(site:|filetype:|intitle:|inurl:|intext:|before:|after:)/i;
 let tavilyApiKeyIndex = 0;
 let serperApiKeyIndex = 0;
+let jinaApiKeyIndex = 0;
 
 const normalizeText = (value) => (
     String(value || "")
@@ -74,6 +76,21 @@ const getSerperApiKey = () => {
     if (!keys.length) return null;
     const nextKey = keys[serperApiKeyIndex % keys.length];
     serperApiKeyIndex = (serperApiKeyIndex + 1) % keys.length;
+    return nextKey;
+};
+
+const getJinaApiKeys = () => (
+    String(process.env.JINA_API_KEYS || process.env.JINA_API_KEY || "")
+        .split(",")
+        .map((key) => key.trim())
+        .filter(Boolean)
+);
+
+const getJinaApiKey = () => {
+    const keys = getJinaApiKeys();
+    if (!keys.length) return null;
+    const nextKey = keys[jinaApiKeyIndex % keys.length];
+    jinaApiKeyIndex = (jinaApiKeyIndex + 1) % keys.length;
     return nextKey;
 };
 
@@ -214,6 +231,38 @@ const fetchSerperResults = async (query, limit = MAX_RESULTS) => {
     });
 };
 
+const fetchJinaResults = async (query, limit = MAX_RESULTS) => {
+    const apiKey = getJinaApiKey();
+    if (!apiKey) return [];
+
+    return withTimeout(async (signal) => {
+        const response = await fetch(`${JINA_SEARCH_URL}?q=${encodeURIComponent(query)}`, {
+            method: "GET",
+            signal,
+            headers: {
+                "Authorization": `Bearer ${apiKey}`,
+                "X-Respond-With": "no-content",
+                "Accept": "application/json",
+            },
+        });
+
+        if (!response.ok) {
+            throw new Error(`Jina search returned status ${response.status}`);
+        }
+
+        const data = await response.json();
+        return (Array.isArray(data?.data) ? data.data : [])
+            .slice(0, limit)
+            .map((item) => ({
+                title: normalizeText(item?.title),
+                url: normalizeUrl(item?.url) || String(item?.url || "").trim(),
+                description: normalizeText(item?.description || item?.content || "") || "No description available",
+                source: "jina",
+            }))
+            .filter((item) => item.title && item.url);
+    });
+};
+
 const mergeResults = (...sources) => {
     const merged = [];
     const seen = new Set();
@@ -317,15 +366,17 @@ module.exports = {
             fetchDuckDuckGoResults(query, MAX_RESULTS),
             fetchTavilyResults(query, MAX_RESULTS),
             ...(hasSerper ? [fetchSerperResults(query, 10)] : []),
+            ...(getJinaApiKeys().length ? [fetchJinaResults(query, 10)] : []),
         ]);
 
-        const [duckDuckGo, tavily, serper] = searches;
+        const [duckDuckGo, tavily, serper, jina] = searches;
         return formatResults(
             query,
             mergeResults(
                 duckDuckGo.status === "fulfilled" ? duckDuckGo.value : [],
                 tavily.status === "fulfilled" ? tavily.value : [],
                 serper?.status === "fulfilled" ? serper.value : [],
+                jina?.status === "fulfilled" ? jina.value : [],
             ).slice(0, MAX_RESULTS),
             searches,
         );

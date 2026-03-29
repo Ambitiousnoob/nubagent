@@ -1,7 +1,14 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 
 const CHAT_API = "/api/chat";
+const SEARCH_API = "/api/search";
+const FETCH_API = "/api/fetch";
 const MODEL_NAME = "nub-agent";
+const SOURCE_TARGET = 100;
+const SEARCH_SWARM_SIZE = 5;
+const SYNTHESIS_SWARM_SIZE = 4;
+const FETCH_CONCURRENCY = 6;
+const FETCH_MAX_CHARS = 900;
 
 const createId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
@@ -72,6 +79,119 @@ const extractAnswerParts = (text = "") => {
     };
 };
 
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const postJson = async (url, payload, signal) => {
+    const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        cache: "no-store",
+        signal,
+        body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+        let detail = response.statusText;
+        try {
+            const parsed = await response.json();
+            detail = parsed?.error || parsed?.message || detail;
+        } catch {
+            detail = await response.text().catch(() => detail);
+        }
+        throw new Error(`${response.status} ${detail}`);
+    }
+
+    return response.json();
+};
+
+const buildSwarmQueries = (query) => {
+    const base = String(query || "").trim();
+    const operatorHeavy = /\b(site:|filetype:|intitle:|inurl:|after:|before:)\b/i.test(base);
+    const variants = operatorHeavy
+        ? [
+            base,
+            `${base} analysis`,
+            `${base} evidence`,
+            `${base} expert commentary`,
+            `${base} latest`,
+        ]
+        : [
+            base,
+            `${base} overview`,
+            `${base} evidence`,
+            `${base} latest`,
+            `${base} expert analysis`,
+        ];
+
+    return [...new Set(variants.map((item) => item.trim()).filter(Boolean))].slice(0, SEARCH_SWARM_SIZE);
+};
+
+const dedupeSources = (items = [], limit = SOURCE_TARGET) => {
+    const seen = new Set();
+    const merged = [];
+    for (const item of Array.isArray(items) ? items : []) {
+        const url = String(item?.url || "").trim();
+        if (!url || seen.has(url)) continue;
+        seen.add(url);
+        merged.push({
+            title: item?.title || getDomain(url),
+            url,
+            description: item?.description || item?.snippet || "",
+            date: item?.date || null,
+            source: item?.source || null,
+        });
+        if (merged.length >= limit) break;
+    }
+    return merged;
+};
+
+const chunkArray = (items = [], size = 1) => {
+    const result = [];
+    const chunkSize = Math.max(1, size);
+    for (let index = 0; index < items.length; index += chunkSize) {
+        result.push(items.slice(index, index + chunkSize));
+    }
+    return result;
+};
+
+const stripFetchMeta = (content = "") => (
+    String(content || "")
+        .replace(/^<!--[\s\S]*?-->\s*/g, "")
+        .trim()
+);
+
+const buildEvidenceBlock = (entry, index) => {
+    const source = entry?.source || {};
+    const excerpt = stripFetchMeta(entry?.content || "").replace(/\s+/g, " ").trim();
+    const parts = [
+        `[${index}] ${source.title || getDomain(source.url || "")}`,
+        `URL: ${source.url || ""}`,
+    ];
+
+    if (source.description) parts.push(`Search snippet: ${source.description}`);
+    if (excerpt) parts.push(`Fetched excerpt: ${excerpt}`);
+    return parts.join("\n");
+};
+
+const runConcurrent = async (items, limit, worker) => {
+    const values = Array.isArray(items) ? items : [];
+    const concurrency = Math.max(1, limit || 1);
+    const results = new Array(values.length);
+    let cursor = 0;
+
+    const runNext = async () => {
+        while (cursor < values.length) {
+            const current = cursor;
+            cursor += 1;
+            results[current] = await worker(values[current], current);
+        }
+    };
+
+    await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, runNext));
+    return results;
+};
+
 function Markdown({ text, sources = [] }) {
     const renderInline = (str) => {
         const parts = str.split(/(\*\*[^*]+\*\*|`[^`]+`|\[\d+\])/g);
@@ -135,7 +255,7 @@ function Markdown({ text, sources = [] }) {
     return <>{elements}</>;
 }
 
-function SearchingCard({ queries, done }) {
+function SearchingCard({ queries, done, statusText = "" }) {
     const [shown, setShown] = useState(0);
     const [dot, setDot] = useState(0);
 
@@ -169,9 +289,10 @@ function SearchingCard({ queries, done }) {
             {!done && (
                 <div className="scard__dots">
                     {[0, 1, 2].map((index) => <span key={index} className={`sdot ${dot === index ? "sdot--on" : ""}`}>●</span>)}
-                    <span className="scard__searching">Searching...</span>
+                    <span className="scard__searching">{statusText || "Searching..."}</span>
                 </div>
             )}
+            {done && statusText && <div className="scard__searching">{statusText}</div>}
         </div>
     );
 }
@@ -241,6 +362,24 @@ function SourcePills({ sources }) {
     );
 }
 
+function SourceList({ sources }) {
+    if (!sources.length) return null;
+    return (
+        <details className="source-list">
+            <summary>Sources ({sources.length})</summary>
+            <div className="source-list__items">
+                {sources.map((source, index) => (
+                    <a key={source.url || `${index}`} href={source.url} target="_blank" rel="noopener noreferrer" className="source-list__item">
+                        <span className="source-list__idx">[{index + 1}]</span>
+                        <span className="source-list__title">{source.title || getDomain(source.url)}</span>
+                        <span className="source-list__domain">{getDomain(source.url)}</span>
+                    </a>
+                ))}
+            </div>
+        </details>
+    );
+}
+
 function UserMsg({ text }) {
     return (
         <div className="umsg">
@@ -258,13 +397,13 @@ function UserMsg({ text }) {
 }
 
 function BotMsg({ msg, isLast, streaming }) {
-    const { heading, body, sources = [], showPlanning, showSearching, queries = [], searchDone } = msg;
+    const { heading, body, sources = [], showPlanning, showSearching, queries = [], searchDone, statusText = "" } = msg;
     const active = isLast && streaming;
 
     return (
         <div className="bmsg">
             {showPlanning && <PlanningCard done={searchDone} />}
-            {showSearching && <SearchingCard queries={queries} done={searchDone} />}
+            {showSearching && <SearchingCard queries={queries} done={searchDone} statusText={statusText} />}
             {(body || (active && !showSearching)) && (
                 <div className="bmsg__ans">
                     {heading && <h2 className="bmsg__heading">{heading}</h2>}
@@ -273,6 +412,7 @@ function BotMsg({ msg, isLast, streaming }) {
                         {active && <span className="caret">▍</span>}
                     </div>
                     <SourcePills sources={sources} />
+                    <SourceList sources={sources} />
                 </div>
             )}
         </div>
@@ -404,12 +544,7 @@ export default function SearchEngine() {
 
         const sessionId = createId();
         const complex = query.length > 35 || /site:|filetype:|intitle:|inurl:|after:|before:/.test(query);
-        const seedQueries = [
-            query,
-            ...query.trim().split(/\s+/).slice(0, 3).map((word, index) => (
-                [`${word} definition`, `${word} software`, `what is ${word}`, `${word} meaning`][index] || word
-            )),
-        ].slice(0, 4);
+        const swarmQueries = buildSwarmQueries(query);
 
         const newSession = {
             id: sessionId,
@@ -424,8 +559,9 @@ export default function SearchEngine() {
                     sources: [],
                     showPlanning: complex,
                     showSearching: true,
-                    queries: seedQueries,
+                    queries: swarmQueries,
                     searchDone: false,
+                    statusText: `Launching ${swarmQueries.length} search workers...`,
                 },
             ],
         };
@@ -439,57 +575,136 @@ export default function SearchEngine() {
         const { signal } = abortRef.current;
 
         try {
-            const history = active?.messages
-                .filter((message) => message.role === "user" || (message.role === "bot" && message.body))
-                .map((message) => (
-                    message.role === "user"
-                        ? { role: "user", content: message.text }
-                        : { role: "assistant", content: `${message.heading ? `# ${message.heading}\n\n` : ""}${message.body}`.trim() }
-                )) || [];
-
-            const messages = [
-                {
-                    role: "system",
-                    content: `You are a web research assistant. Always:
-1. Search the web before answering any factual question.
-2. Use dork operators for precision (site:, filetype:, intitle:, after:, etc).
-3. Fetch top 2-3 URLs with web_fetch for full content.
-4. Start your response with a clear title on the first line (use # Title).
-5. Write inline citations [1][2][3] matching search result ranks when possible.
-6. End with ## Sources listing each cited URL.
-Never answer from memory alone - always search first.`,
-                },
-                ...history,
-                { role: "user", content: query },
-            ];
-
-            const response = await fetch(CHAT_API, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    model: MODEL_NAME,
-                    messages,
-                    stream: false,
-                }),
-                credentials: "include",
-                cache: "no-store",
-                signal,
+            patchLastBot(sessionId, {
+                statusText: `Running ${swarmQueries.length} search workers to collect up to ${SOURCE_TARGET} sites...`,
             });
 
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const searchSettled = await Promise.allSettled(
+                swarmQueries.map((workerQuery) => postJson(SEARCH_API, { query: workerQuery }, signal)),
+            );
 
-            const payload = await response.json();
-            const fullText = payload?.choices?.[0]?.message?.content || payload?.output_text || "";
-            const toolSources = extractToolSources(payload?.tools_used || payload?.toolsUsed || []);
-            const answerSources = extractSources(fullText);
-            const sources = [...toolSources];
-            for (const source of answerSources) {
-                if (!sources.find((entry) => entry.url === source.url)) sources.push(source);
+            const mergedSources = dedupeSources(
+                searchSettled.flatMap((item) => (
+                    item.status === "fulfilled" ? item.value.results || [] : []
+                )),
+                SOURCE_TARGET,
+            ).map((source, index) => ({
+                ...source,
+                citationIndex: index + 1,
+            }));
+
+            if (!mergedSources.length) {
+                throw new Error("No searchable sources were found.");
             }
 
-            patchLastBot(sessionId, { searchDone: true, showPlanning: false });
-            await new Promise((resolve) => setTimeout(resolve, 250));
-            await revealAnswer(sessionId, fullText, sources.slice(0, 8), signal);
+            patchLastBot(sessionId, {
+                showPlanning: false,
+                statusText: `Ranked ${mergedSources.length} sites. Starting ${FETCH_CONCURRENCY} fetch workers...`,
+                sources: mergedSources,
+            });
+
+            let fetchedCount = 0;
+            const evidenceEntries = await runConcurrent(mergedSources, FETCH_CONCURRENCY, async (source) => {
+                try {
+                    const fetchResult = await postJson(FETCH_API, {
+                        url: source.url,
+                        format: "text",
+                        max_chars: FETCH_MAX_CHARS,
+                    }, signal);
+
+                    fetchedCount += 1;
+                    patchLastBot(sessionId, {
+                        statusText: `Fetched ${fetchedCount}/${mergedSources.length} sites. Building evidence graph...`,
+                    });
+
+                    return {
+                        source,
+                        content: fetchResult?.content || "",
+                    };
+                } catch (error) {
+                    if (error?.name === "AbortError") throw error;
+                    fetchedCount += 1;
+                    patchLastBot(sessionId, {
+                        statusText: `Fetched ${fetchedCount}/${mergedSources.length} sites. Some fetches were skipped.`,
+                    });
+                    return {
+                        source,
+                        content: "",
+                        error: error?.message || "Fetch failed.",
+                    };
+                }
+            });
+
+            const chunkSize = Math.max(1, Math.ceil(evidenceEntries.length / SYNTHESIS_SWARM_SIZE));
+            const evidenceChunks = chunkArray(evidenceEntries, chunkSize).slice(0, SYNTHESIS_SWARM_SIZE);
+
+            patchLastBot(sessionId, {
+                statusText: `Running ${evidenceChunks.length} synthesis workers over ${mergedSources.length} cited sites...`,
+            });
+
+            const draftSettled = await Promise.allSettled(
+                evidenceChunks.map((chunk, index) => {
+                    const evidenceBlock = chunk
+                        .map((entry) => buildEvidenceBlock(entry, entry.source.citationIndex))
+                        .join("\n\n---\n\n");
+
+                    return postJson(CHAT_API, {
+                        model: MODEL_NAME,
+                        stream: false,
+                        use_tools: false,
+                        messages: [
+                            {
+                                role: "system",
+                                content: `You are research worker ${index + 1}/${evidenceChunks.length}. Use only the supplied evidence. Pull out the most relevant facts for the user query. Preserve citation numbers like [12]. Do not invent new sources.`,
+                            },
+                            {
+                                role: "user",
+                                content: `User query: ${query}\n\nEvidence set:\n\n${evidenceBlock}\n\nProduce a concise evidence digest with bullet points and inline source numbers.`,
+                            },
+                        ],
+                    }, signal);
+                }),
+            );
+
+            const workerDrafts = draftSettled
+                .map((item) => (
+                    item.status === "fulfilled"
+                        ? (item.value?.choices?.[0]?.message?.content || item.value?.output_text || "")
+                        : ""
+                ))
+                .filter(Boolean);
+
+            if (!workerDrafts.length) {
+                throw new Error("Research workers did not produce a final digest.");
+            }
+
+            const sourceIndex = mergedSources
+                .map((source) => `[${source.citationIndex}] ${source.title} — ${source.url}`)
+                .join("\n");
+
+            patchLastBot(sessionId, {
+                statusText: `Merging ${workerDrafts.length} research agents into the final cited answer...`,
+            });
+
+            const finalPayload = await postJson(CHAT_API, {
+                model: MODEL_NAME,
+                stream: false,
+                use_tools: false,
+                messages: [
+                    {
+                        role: "system",
+                        content: `You are a synthesis model for a search swarm. Merge the worker drafts into one answer. Use citation numbers like [1], [2], [57] that refer to the provided source index. Start with a single H1 title. Then provide a concise but information-dense answer. End with a short section called ## Sources used listing the cited source numbers only.`,
+                    },
+                    {
+                        role: "user",
+                        content: `User query: ${query}\n\nSource index:\n${sourceIndex}\n\nWorker drafts:\n\n${workerDrafts.map((draft, index) => `### Worker ${index + 1}\n${draft}`).join("\n\n")}`,
+                    },
+                ],
+            }, signal);
+
+            const fullText = finalPayload?.choices?.[0]?.message?.content || finalPayload?.output_text || "";
+            await delay(250);
+            await revealAnswer(sessionId, fullText, mergedSources, signal);
         } catch (error) {
             if (error.name === "AbortError") {
                 patchLastBot(sessionId, {
@@ -621,6 +836,15 @@ html,body,#root{height:100%;background:var(--bg)}
 .pill__fav{width:11px;height:11px;border-radius:2px}
 .pill__n{font-size:9px;font-weight:700;font-family:var(--mono);color:var(--ac);background:var(--acd);border-radius:3px;padding:0 3px}
 .pill__domain{max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.source-list{margin-top:10px;border:1px solid var(--bdr);border-radius:10px;background:var(--sur);overflow:hidden}
+.source-list summary{cursor:pointer;list-style:none;padding:10px 12px;font-size:12px;color:var(--txd);font-weight:600}
+.source-list summary::-webkit-details-marker{display:none}
+.source-list__items{display:grid;gap:1px;background:var(--bdr)}
+.source-list__item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 12px;background:var(--bg3);text-decoration:none;color:var(--txd);font-size:12px}
+.source-list__item:hover{background:var(--surh);color:var(--tx)}
+.source-list__idx{font-family:var(--mono);color:var(--ac);font-size:11px}
+.source-list__title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.source-list__domain{color:var(--txm);font-size:11px}
 .bot{position:absolute;bottom:0;left:0;right:0;padding:14px 22px calc(14px + env(safe-area-inset-bottom));background:linear-gradient(transparent,var(--bg) 32%);z-index:10}
 .bot__wrap{max-width:740px;margin:0 auto;background:var(--bg3);border:1px solid var(--bdr);border-radius:16px;overflow:hidden;transition:border-color .2s,box-shadow .2s}
 .bot__wrap:focus-within{border-color:rgba(0,201,167,.35);box-shadow:0 0 0 3px rgba(0,201,167,.06)}

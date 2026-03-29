@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import TerminalMessage from "./TerminalMessage.jsx";
 
 const HOSTED_CHAT_API_PATH = "/api/chat";
@@ -28,6 +28,11 @@ const MAX_OBSERVATION_CHARS = 2400;
 const MAX_COMPLETION_TOKENS = 4096;
 const MAX_SUBAGENT_TOKENS = 900;
 const MAX_VERIFIER_TOKENS = 1200;
+const SWARM_GRID_SIZE = 12;
+const MAX_SUB_AGENTS = 8;
+const SWARM_VISION_RADIUS = 3;
+const PHEROMONE_DECAY = 0.92;
+const SWARM_WORKER_MAX_TOKENS = 2400;
 const MAX_RENDER_CHARS = 12000;
 const STREAM_RENDER_CAP = 12000;
 const MAX_UPLOAD_FILES = 6;
@@ -63,6 +68,28 @@ const MOBILE_UI_BREAKPOINT = 768;
 const AUTO_SIDEBAR_BREAKPOINT = 900;
 const ANDROID_USER_AGENT_RE = /Android/i;
 const REMOTE_STATE_SAVE_DEBOUNCE_MS = 900;
+const SWARM_MEMBER_SPECS = Object.freeze([
+    {
+        label: "Scout",
+        prompt: "You are Scout in a multi-process swarm. Move quickly toward the direct answer. Use tools when they materially improve the result. Focus on likely answer path, high-signal facts, and concise findings.",
+    },
+    {
+        label: "Analyst",
+        prompt: "You are Analyst in a multi-process swarm. Stress-test assumptions, look for missing details, edge cases, and risky claims. Use tools when verification matters.",
+    },
+    {
+        label: "Builder",
+        prompt: "You are Builder in a multi-process swarm. Shape the most useful final answer structure, concrete steps, and recommendations. Use tools only when they materially help.",
+    },
+]);
+const SWARM_SYNTHESIS_PROMPT = `You are the swarm synthesizer for ${PUBLIC_MODEL_NAME}. You receive parallel worker drafts for the same user request. Merge them into one strong final answer. Keep the best verified details, remove duplication, resolve conflicts, and do not mention the swarm or worker names unless the user explicitly asks.`;
+const createEmptySwarmEnvironment = () => ({
+    gridSize: SWARM_GRID_SIZE,
+    pheromones: Array.from({ length: SWARM_GRID_SIZE }, () => Array(SWARM_GRID_SIZE).fill(0)),
+    agentPositions: {},
+    coverage: 0,
+    stepCount: 0,
+});
 const STORAGE_KEYS = Object.freeze({
     primaryModel: "primary_model",
     fallbackModels: "fallback_models",
@@ -1626,7 +1653,7 @@ function createTools() {
         web_search: {
             category: "Search",
             icon: "",
-            description: "Search the web and support dork operators like site:, filetype:, intitle:, inurl:, intext:, after:, and before: when Google-backed search is configured.",
+            description: "Search the web with merged providers and support dork operators like site:, filetype:, intitle:, inurl:, intext:, after:, and before: when Google-backed search is configured.",
             example: "web_search: intitle:\"index of\" filetype:pdf site:example.com",
         },
         web_fetch: {
@@ -2075,7 +2102,7 @@ export default function AgentFramework() {
     const initialPersistedState = initialPersistedStateRef.current;
     const initialMemoryApiKey = initialMemoryApiKeyRef.current || "";
     const [settingsOpen, setSettingsOpen] = useState(false);
-    const [multiThink, setMultiThink] = useState(false);
+    const [swarmMode, setSwarmMode] = useState(false);
     const [doublePass, setDoublePass] = useState(false);
     const [headerOpen, setHeaderOpen] = useState(false);
     const [thinkAloud, setThinkAloud] = useState(false);
@@ -2100,6 +2127,8 @@ export default function AgentFramework() {
     const [running, setRunning] = useState(false);
     const [preparingSend, setPreparingSend] = useState(false);
     const [expandedSteps, setExpandedSteps] = useState({});
+    const [swarmAgents, setSwarmAgents] = useState([]);
+    const [swarmEnvironment, setSwarmEnvironment] = useState(createEmptySwarmEnvironment);
     const conversationsRef = useRef(conversations);
     const initialVhRef = useRef(null);
     const wideLayoutRef = useRef(typeof window !== "undefined" ? window.innerWidth > AUTO_SIDEBAR_BREAKPOINT : true);
@@ -2115,6 +2144,8 @@ export default function AgentFramework() {
     const ocrQueueRef = useRef(Promise.resolve());
     const ocrJobsRef = useRef(new Map());
     const ocrLoggerRef = useRef(() => {});
+    const swarmAgentsRef = useRef([]);
+    const swarmEnvironmentRef = useRef(createEmptySwarmEnvironment());
     const remoteStateRef = useRef({
         loaded: false,
         applying: false,
@@ -2128,6 +2159,87 @@ export default function AgentFramework() {
         stateKey: stateKeyRef.current,
     });
     const usingMemoryApiKey = Boolean(normalizedMemoryApiKey);
+
+    const setSwarmSnapshot = useCallback((agents, environment) => {
+        const nextAgents = Array.isArray(agents) ? agents : [];
+        const nextEnvironment = environment && typeof environment === "object"
+            ? environment
+            : createEmptySwarmEnvironment();
+        swarmAgentsRef.current = nextAgents;
+        swarmEnvironmentRef.current = nextEnvironment;
+        setSwarmAgents(nextAgents);
+        setSwarmEnvironment(nextEnvironment);
+    }, []);
+
+    const initializeSwarm = useCallback((numAgents = SWARM_MEMBER_SPECS.length) => {
+        const environment = createEmptySwarmEnvironment();
+        const agents = [];
+
+        for (let index = 0; index < Math.min(numAgents, MAX_SUB_AGENTS); index += 1) {
+            const position = [
+                Math.floor(Math.random() * SWARM_GRID_SIZE),
+                Math.floor(Math.random() * SWARM_GRID_SIZE),
+            ];
+            environment.agentPositions[index] = position;
+            environment.pheromones[position[0]][position[1]] += 3;
+            agents.push({
+                id: index,
+                pos: position,
+                localGoal: index % 3 === 0 ? "forage" : "explore",
+                pheromoneContribution: 0,
+            });
+        }
+
+        const covered = environment.pheromones.flat().filter((value) => value > 0.1).length;
+        environment.coverage = covered / (environment.gridSize * environment.gridSize);
+        setSwarmSnapshot(agents, environment);
+    }, [setSwarmSnapshot]);
+
+    const runSwarmStep = useCallback(() => {
+        const agents = (Array.isArray(swarmAgentsRef.current) ? swarmAgentsRef.current : []).map((agent) => ({
+            ...agent,
+            pos: Array.isArray(agent?.pos) ? [...agent.pos] : [0, 0],
+        }));
+        if (!agents.length) return;
+
+        const previous = swarmEnvironmentRef.current || createEmptySwarmEnvironment();
+        const next = {
+            ...previous,
+            pheromones: previous.pheromones.map((row) => row.map((value) => value * PHEROMONE_DECAY)),
+            agentPositions: { ...previous.agentPositions },
+            stepCount: Number(previous.stepCount || 0) + 1,
+            coverage: Number(previous.coverage || 0),
+        };
+
+        agents.forEach((agent) => {
+            const [x, y] = agent.pos;
+            let bestScore = -Infinity;
+            let bestPosition = [x, y];
+
+            for (let dx = -SWARM_VISION_RADIUS; dx <= SWARM_VISION_RADIUS; dx += 1) {
+                for (let dy = -SWARM_VISION_RADIUS; dy <= SWARM_VISION_RADIUS; dy += 1) {
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    if (nx < 0 || nx >= next.gridSize || ny < 0 || ny >= next.gridSize) continue;
+                    const pheromone = Number(next.pheromones[nx]?.[ny] || 0);
+                    const score = agent.localGoal === "forage" ? pheromone : -pheromone;
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestPosition = [nx, ny];
+                    }
+                }
+            }
+
+            agent.pos = bestPosition;
+            next.agentPositions[agent.id] = bestPosition;
+            next.pheromones[bestPosition[0]][bestPosition[1]] += 1.2;
+            agent.pheromoneContribution = Number(agent.pheromoneContribution || 0) + 1.2;
+        });
+
+        const covered = next.pheromones.flat().filter((value) => value > 0.1).length;
+        next.coverage = covered / (next.gridSize * next.gridSize);
+        setSwarmSnapshot(agents, next);
+    }, [setSwarmSnapshot]);
 
     const applyMemoryApiKey = (nextValue) => {
         const nextKey = normalizeMemoryApiKey(nextValue);
@@ -2901,6 +3013,7 @@ export default function AgentFramework() {
         const messageAttachments = pendingUploads.map(createMessageAttachment);
         const titleSource = query || pendingUploads.map(upload => upload.name).join(", ");
         const priorMessages = Array.isArray(conv?.messages) ? conv.messages : [];
+        const swarmModeRequested = Boolean(swarmMode);
         const priorRelevantMessages = priorMessages.filter(message => (
             message &&
             message.role !== "system" &&
@@ -2929,6 +3042,7 @@ export default function AgentFramework() {
                 input: {
                     model: getPublicModelName(),
                     tools: toolList.length,
+                    mode: swarmModeRequested ? "swarm" : "direct",
                 },
                 iteration: 1,
                 batchSize: 1,
@@ -2943,7 +3057,7 @@ export default function AgentFramework() {
         const signal = abortRef.current.signal;
 
         const logPrefix = priorMessages.length === 0 ? "Starting" : "Continuing";
-        pushRunLog("Manager", `${logPrefix} — nub-agent single-call mode`, "var(--text-dim)");
+        pushRunLog("Manager", `${logPrefix} — nub-agent ${swarmModeRequested ? "swarm" : "single-call"} mode`, "var(--text-dim)");
         if (queryWasTrimmed) {
             pushRunLog("Tokens", "Current input or attachment context was compacted before dispatch.", "var(--danger)");
         }
@@ -2960,11 +3074,17 @@ export default function AgentFramework() {
         pushRunLog("System", "Agentic tools enabled; backend may call the registered research, fetch, math, and media tools.", "var(--text-dim)");
 
         try {
-            const effectiveMultiThink = FAST_MODE_LOCKED ? false : multiThink;
+            const effectiveSwarmMode = Boolean(swarmMode);
             const effectiveDoublePass = FAST_MODE_LOCKED ? false : doublePass;
             const effectiveThinkAloud = FAST_MODE_LOCKED ? false : thinkAloud;
             if (FAST_MODE_LOCKED) {
-                pushRunLog("System", "Fast mode enabled: using the low-latency model path with thinking disabled.", "var(--text-dim)");
+                pushRunLog(
+                    "System",
+                    effectiveSwarmMode
+                        ? "Fast mode keeps think-aloud and refinement disabled, but swarm workers still use the low-latency path."
+                        : "Fast mode enabled: using the low-latency model path with thinking disabled.",
+                    "var(--text-dim)",
+                );
             }
             const thinkPrompt = effectiveThinkAloud ? [{ role: "system", content: "Think step by step. Show a concise <thought> plan before answering." }] : [];
             const memoryScopedRequestHeaders = usingMemoryApiKey
@@ -2977,7 +3097,7 @@ export default function AgentFramework() {
                 ? [...thinkPrompt, { role: "user", content: modelUserContent }]
                 : [...historyMessages, ...thinkPrompt, { role: "user", content: modelUserContent }];
 
-            if (!effectiveMultiThink) {
+            if (!effectiveSwarmMode) {
                 const { text: fastText, toolsUsed = [] } = await callLLMStream(chatMessages, primaryModel.id, signal, (text) => {
                     updateRunConversation(c => ({ ...c, activeStream: text }));
                 }, {
@@ -3067,20 +3187,38 @@ export default function AgentFramework() {
                     }));
                 }
             } else {
-                pushRunLog("System", "Multi-process thinking enabled: launching two parallel drafts.", "var(--text-dim)");
-                const thinkerLabels = ["Alpha", "Beta"];
-                const thinkerPromises = thinkerLabels.map(label => {
-                    const thinkerMessages = [
+                pushRunLog("System", `Swarm mode enabled: launching ${SWARM_MEMBER_SPECS.length} specialist workers in parallel.`, "var(--text-dim)");
+                initializeSwarm(SWARM_MEMBER_SPECS.length);
+                runSwarmStep();
+                const workerRequestBody = usingMemoryApiKey
+                    ? { use_persistent_memory: true, save_persistent_memory: false }
+                    : {};
+
+                const swarmPromises = SWARM_MEMBER_SPECS.map((member) => {
+                    pushPendingStep({
+                        type: "action",
+                        action: `swarm:${member.label.toLowerCase()}`,
+                        input: { worker: member.label },
+                        observation: "Worker launched.",
+                        iteration: (Array.isArray(getConversationById(conversationId)?.pendingSteps) ? getConversationById(conversationId).pendingSteps.length : 0) + 1,
+                        batchSize: SWARM_MEMBER_SPECS.length,
+                        status: "info",
+                    });
+
+                    const workerMessages = [
                         BRAND_SYSTEM_MESSAGE,
-                        { role: "system", content: `You are thinker ${label}. Produce an independent best-possible answer. Do not mention other thinkers.` },
+                        { role: "system", content: member.prompt },
                         ...chatMessages,
                     ];
-                    return callLLMStream(thinkerMessages, primaryModel.id, signal, () => {}, {
-                        maxTokens: MAX_COMPLETION_TOKENS,
-                        log: (msg) => pushRunLog(`System`, `[${label}] ${msg}`, "var(--text-dim)"),
+
+                    return callLLMStream(workerMessages, primaryModel.id, signal, () => {}, {
+                        maxTokens: SWARM_WORKER_MAX_TOKENS,
+                        log: (msg) => pushRunLog("System", `[${member.label}] ${msg}`, "var(--text-dim)"),
+                        requestHeaders: memoryScopedRequestHeaders,
+                        requestBodyExtra: workerRequestBody,
                         onThought: (thought) => {
-                            pushRunLog("Thought", `[${label}] ${thought}`, "var(--accent-2)");
-                            const [step] = buildThoughtSteps(`<thought>${thought}</thought>`, `${label}: `, { includePartial: true });
+                            pushRunLog("Thought", `[${member.label}] ${thought}`, "var(--accent-2)");
+                            const [step] = buildThoughtSteps(`<thought>${thought}</thought>`, `${member.label}: `, { includePartial: true });
                             if (step) {
                                 step.iteration = (Array.isArray(getConversationById(conversationId)?.pendingSteps) ? getConversationById(conversationId).pendingSteps.length : 0) + 1;
                                 pushPendingStep(step);
@@ -3088,37 +3226,109 @@ export default function AgentFramework() {
                         },
                         onToolCall: (name, args, meta) => {
                             const detail = meta?.note ? ` — ${meta.note}` : "";
-                            pushRunLog("Tool", `[${label}] Called ${name} with ${JSON.stringify(args)}${detail}`, "var(--accent)");
-                            const [step] = buildToolSteps([{ name, args, note: meta?.note }], `${label}: `);
+                            pushRunLog("Tool", `[${member.label}] Called ${name} with ${JSON.stringify(args)}${detail}`, "var(--accent)");
+                            const [step] = buildToolSteps([{ name, args, note: meta?.note }], `${member.label}: `);
                             if (step) {
                                 step.iteration = (Array.isArray(getConversationById(conversationId)?.pendingSteps) ? getConversationById(conversationId).pendingSteps.length : 0) + 1;
                                 pushPendingStep(step);
                             }
                         },
-                    }).then(res => ({ label, ...res }));
+                    }).then((result) => ({
+                        label: member.label,
+                        text: result.text || "",
+                        toolsUsed: Array.isArray(result.toolsUsed) ? result.toolsUsed : [],
+                    })).then((result) => {
+                        runSwarmStep();
+                        return result;
+                    });
                 });
 
-                const drafts = await Promise.all(thinkerPromises);
-                const combined = drafts
-                    .map(draft => `## ${draft.label}\n${draft.text || draft.content || ""}`.trim())
+                const drafts = await Promise.all(swarmPromises);
+                const workerDraftSummary = drafts
+                    .map((draft) => {
+                        const cleaned = sanitizeAssistantHistoryText(draft.text || "") || stripAgentArtifacts(draft.text || "") || "No usable draft produced.";
+                        return `## ${draft.label}\n${cleaned}`;
+                    })
                     .join("\n\n");
-                const combinedSteps = drafts.flatMap((draft) => buildTraceSteps(draft.text || draft.content || "", draft.toolsUsed, `${draft.label}: `));
 
-                drafts.forEach(draft => {
-                    if (Array.isArray(draft.toolsUsed) && draft.toolsUsed.length) {
-                        draft.toolsUsed.forEach(entry => {
-                            const detail = entry?.note ? ` — ${entry.note}` : "";
-                            pushRunLog("Tool", `[${draft.label}] Called ${entry?.name || "tool"} with ${entry?.args || "{}"}${detail}`, "var(--accent)");
-                        });
-                    }
+                pushRunLog("System", "Swarm synthesis started: merging specialist drafts into one final answer.", "var(--text-dim)");
+                pushPendingStep({
+                    type: "action",
+                    action: "swarm:synthesize",
+                    input: { workers: drafts.length },
+                    observation: "Merging worker drafts into one final answer.",
+                    iteration: (Array.isArray(getConversationById(conversationId)?.pendingSteps) ? getConversationById(conversationId).pendingSteps.length : 0) + 1,
+                    batchSize: drafts.length + 1,
+                    status: "info",
                 });
+
+                const synthesisMessages = [
+                    BRAND_SYSTEM_MESSAGE,
+                    { role: "system", content: SWARM_SYNTHESIS_PROMPT },
+                    ...chatMessages,
+                    { role: "assistant", content: `Swarm worker drafts:\n\n${workerDraftSummary}` },
+                    { role: "user", content: "Synthesize the strongest final answer. Favor verified claims, clear reasoning, and actionable specifics. Return only the final answer." },
+                ];
+
+                runSwarmStep();
+                const { text: swarmText } = await callLLMStream(synthesisMessages, primaryModel.id, signal, (text) => {
+                    updateRunConversation(c => ({ ...c, activeStream: text }));
+                }, {
+                    maxTokens: MAX_COMPLETION_TOKENS,
+                    log: (msg) => pushRunLog("System", `[Swarm] ${msg}`, "var(--text-dim)"),
+                    requestHeaders: memoryScopedRequestHeaders,
+                    requestBodyExtra: {
+                        ...(usingMemoryApiKey ? { use_persistent_memory: true, save_persistent_memory: false } : {}),
+                        use_tools: false,
+                    },
+                });
+
+                const combinedSteps = [
+                    ...drafts.flatMap((draft) => ([
+                        {
+                            type: "action",
+                            action: `swarm:${draft.label.toLowerCase()}`,
+                            input: { worker: draft.label },
+                            observation: "Worker draft completed.",
+                            iteration: 1,
+                            batchSize: SWARM_MEMBER_SPECS.length,
+                            status: "success",
+                        },
+                        ...buildTraceSteps(draft.text || "", draft.toolsUsed, `${draft.label}: `),
+                    ])),
+                    {
+                        type: "action",
+                        action: "swarm:synthesize",
+                        input: { workers: drafts.length },
+                        observation: "Merged worker drafts into the final answer.",
+                        iteration: SWARM_MEMBER_SPECS.length + 1,
+                        batchSize: SWARM_MEMBER_SPECS.length + 1,
+                        status: "success",
+                    },
+                ];
+                runSwarmStep();
 
                 updateRunConversation(c => ({
                     ...c,
-                    messages: [...c.messages, { role: "assistant", content: combined, steps: combinedSteps }],
+                    messages: [...c.messages, { role: "assistant", content: swarmText, steps: combinedSteps }],
                     activeStream: "",
                     pendingSteps: [],
                 }));
+                if (usingMemoryApiKey && normalizedMemoryApiKey && swarmText) {
+                    fetch(HOSTED_MEMORY_API_PATH, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            ...buildStateRequestHeaders({ memoryApiKey: normalizedMemoryApiKey }),
+                        },
+                        credentials: "include",
+                        body: JSON.stringify({
+                            action: "insert",
+                            entries: [{ role: "user", content: preparedQuery || query || "Swarm input" }],
+                            assistant_reply: swarmText,
+                        }),
+                    }).catch(() => {});
+                }
             }
         } catch (e) {
             updateRunConversation(c => ({
@@ -3266,6 +3476,7 @@ export default function AgentFramework() {
     ].filter(Boolean).join(" ");
     const tabConfig = [
         { id: "chat", label: "💬 Chat" },
+        { id: "swarm", label: "🐝 Swarm" },
         { id: "docs", label: "📘 Docs" },
         { id: "memory", label: "🔑 API" },
         { id: "logs", label: `📜 Logs (${systemLogs.length})` },
@@ -3585,13 +3796,13 @@ export default function AgentFramework() {
                                     </label>
                                 ))}
                             </div>
-                            <div style={{ display: "grid", gap: 6, marginTop: 6, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-input)", fontSize: 13 }}>
-                                <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                    <input type="checkbox" checked={multiThink} onChange={e => setMultiThink(e.target.checked)} disabled={FAST_MODE_LOCKED} />
-                                    <span>Multi-process thinking (run 2 parallel drafts and merge)</span>
-                                </label>
-                                <small style={{ color: "var(--text-muted)" }}>{FAST_MODE_LOCKED ? "Disabled in fast mode." : "Runs two independent drafts (Alpha/Beta) in parallel and combines them for a more reliable answer."}</small>
-                            </div>
+                                <div style={{ display: "grid", gap: 6, marginTop: 6, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-input)", fontSize: 13 }}>
+                                    <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                        <input type="checkbox" checked={swarmMode} onChange={e => setSwarmMode(e.target.checked)} />
+                                        <span>Swarm mode (3 workers plus synthesis)</span>
+                                    </label>
+                                <small style={{ color: "var(--text-muted)" }}>Runs Scout, Analyst, and Builder in parallel, then merges their drafts into one final answer. The Swarm tab visualizes coordination state.</small>
+                                </div>
                             <div style={{ display: "grid", gap: 6, marginTop: 6, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-input)", fontSize: 13 }}>
                                 <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
                                     <input type="checkbox" checked={doublePass} onChange={e => setDoublePass(e.target.checked)} disabled={FAST_MODE_LOCKED} />
@@ -3972,6 +4183,95 @@ export default function AgentFramework() {
                         </div>
                     )}
 
+                    {activeTab === "swarm" && (
+                        <div className="af-panel">
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16, gap: 12, flexWrap: "wrap" }}>
+                                <div style={{ display: "grid", gap: 4 }}>
+                                    <span style={{ fontWeight: 600 }}>Decentralized Swarm</span>
+                                    <span className="af-strategy-muted">
+                                        {swarmAgents.length} agents active - pheromone heatmap and local coordination state
+                                    </span>
+                                </div>
+                                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                    <button className="af-btn" onClick={() => initializeSwarm(SWARM_MEMBER_SPECS.length)}>Reset swarm</button>
+                                    <button className="af-btn" onClick={runSwarmStep} disabled={!swarmAgents.length}>Step swarm</button>
+                                    <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg-input)" }}>
+                                        <input type="checkbox" checked={swarmMode} onChange={(event) => setSwarmMode(event.target.checked)} />
+                                        <span>Use swarm in chat</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div style={{ display: "grid", justifyContent: "center" }}>
+                                <div
+                                    style={{
+                                        display: "grid",
+                                        gridTemplateColumns: `repeat(${SWARM_GRID_SIZE}, 24px)`,
+                                        gap: 2,
+                                        background: "rgba(10,15,24,0.92)",
+                                        padding: 8,
+                                        borderRadius: 14,
+                                        border: "1px solid var(--border)",
+                                        boxShadow: "0 24px 48px rgba(0,0,0,0.28)",
+                                    }}
+                                >
+                                    {swarmEnvironment.pheromones.flat().map((value, index) => {
+                                        const x = Math.floor(index / SWARM_GRID_SIZE);
+                                        const y = index % SWARM_GRID_SIZE;
+                                        const isAgent = Object.values(swarmEnvironment.agentPositions || {}).some((position) => (
+                                            Array.isArray(position) && position[0] === x && position[1] === y
+                                        ));
+                                        const intensity = Math.min(255, Math.max(16, Math.floor(Number(value || 0) * 46)));
+                                        return (
+                                            <div
+                                                key={index}
+                                                style={{
+                                                    width: 24,
+                                                    height: 24,
+                                                    borderRadius: 4,
+                                                    background: isAgent ? "#22d3ee" : `rgb(${intensity}, ${Math.floor(intensity * 0.58)}, 180)`,
+                                                    color: intensity > 150 ? "#08111c" : "#e8f7ff",
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    justifyContent: "center",
+                                                    fontSize: 10,
+                                                    boxShadow: isAgent ? "0 0 0 2px rgba(34,211,238,0.38)" : "inset 0 0 0 1px rgba(255,255,255,0.04)",
+                                                }}
+                                            >
+                                                {isAgent ? "A" : ""}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
+                                <div className="af-strategy-card">
+                                    <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--text-muted)" }}>Swarm telemetry</div>
+                                    <div className="af-strategy-list">
+                                        <div><strong>Coverage:</strong> {(Number(swarmEnvironment.coverage || 0) * 100).toFixed(1)}%</div>
+                                        <div><strong>Steps:</strong> {swarmEnvironment.stepCount || 0}</div>
+                                        <div><strong>Mode:</strong> {swarmMode ? "Swarm orchestration enabled for chat runs" : "Visualization only"}</div>
+                                    </div>
+                                </div>
+                                <div className="af-strategy-card">
+                                    <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--text-muted)" }}>Agents</div>
+                                    {swarmAgents.length === 0 ? (
+                                        <div className="af-strategy-muted">Reset the swarm to seed the grid, or enable swarm mode and run a chat task.</div>
+                                    ) : (
+                                        <div className="af-strategy-list">
+                                            {swarmAgents.map((agent) => (
+                                                <div key={agent.id}>
+                                                    <strong>Agent {agent.id + 1}:</strong> goal={agent.localGoal} pos=({agent.pos?.[0] ?? 0}, {agent.pos?.[1] ?? 0}) signal={Number(agent.pheromoneContribution || 0).toFixed(1)}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {activeTab === "logs" && conv && (
                         <div className="af-panel">
                             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16, gap: 8, flexWrap: "wrap" }}>
@@ -4239,6 +4539,7 @@ export default function AgentFramework() {
                             <div className="agent-drawer__body">
                                 <div className="agent-buttons" style={{ marginBottom: 8 }}>
                                     <button className={`btn ${activeTab === "chat" ? "primary" : ""}`} onClick={() => setActiveTab("chat")}>Chat</button>
+                                    <button className={`btn ${activeTab === "swarm" ? "primary" : ""}`} onClick={() => setActiveTab("swarm")}>Swarm</button>
                                     <button className={`btn ${activeTab === "docs" ? "primary" : ""}`} onClick={() => setActiveTab("docs")}>Docs</button>
                                     <button className={`btn ${activeTab === "memory" ? "primary" : ""}`} onClick={() => setActiveTab("memory")}>API</button>
                                     <button className={`btn ${activeTab === "logs" ? "primary" : ""}`} onClick={() => setActiveTab("logs")}>Logs ({systemLogs.length})</button>
