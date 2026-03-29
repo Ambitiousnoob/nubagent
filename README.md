@@ -81,6 +81,14 @@ Required:
 
 - `GEMINI_API_KEYS` - backend keys used by `api/chat.js`
 
+Optional:
+
+- `PAGE_ACCESS_TOKEN` - Facebook Page access token used by `api/messenger.js`
+- `VERIFY_TOKEN` or `MESSENGER_VERIFY_TOKEN` - token used by Facebook webhook verification
+- `FB_GRAPH_API` - overrides the Graph API origin/version. Defaults to `https://graph.facebook.com/v21.0`
+- `MESSENGER_SYSTEM_PROMPT` - custom system instruction for Messenger replies
+- `MESSENGER_MAX_MESSAGE_CHARS` - max characters per outbound Messenger text chunk
+
 Notes:
 
 - The frontend is static; keep secrets on the server side only.
@@ -173,6 +181,24 @@ curl -sS -X POST http://localhost:3000/api/crawl \
     "maxDepth": 1,
     "sameOrigin": true
   }'
+```
+
+### `GET /api/messenger`
+
+Facebook Messenger webhook verification endpoint. Facebook sends `hub.mode`,
+`hub.verify_token`, and `hub.challenge`; the route returns the challenge when
+the verify token matches `VERIFY_TOKEN` or `MESSENGER_VERIFY_TOKEN`.
+
+### `POST /api/messenger`
+
+Facebook Messenger webhook receiver. For incoming message and postback events,
+the route calls the same LiteHost AI runtime used by `/api/chat` and sends the
+reply back through the Facebook Graph API using `PAGE_ACCESS_TOKEN`.
+
+Example local verification request:
+
+```bash
+curl -sS "http://localhost:3000/api/messenger?hub.mode=subscribe&hub.verify_token=litehost_verify_2024&hub.challenge=12345"
 ```
 
 ## Tooling Inside `/api/chat`

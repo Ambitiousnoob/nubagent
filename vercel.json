@@ -19,6 +19,10 @@
       "dest": "/api/chat.js"
     },
     {
+      "src": "/api/messenger",
+      "dest": "/api/messenger.js"
+    },
+    {
       "src": "/api/state",
       "dest": "/api/state.js"
     },
