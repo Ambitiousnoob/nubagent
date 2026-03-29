@@ -4,9 +4,10 @@ const MAX_RESULTS = 30;
 const REQUEST_TIMEOUT_MS = 8000;
 const DUCKDUCKGO_HTML_URL = "https://html.duckduckgo.com/html/";
 const TAVILY_SEARCH_URL = "https://api.tavily.com/search";
-const TAVILY_API_KEY = "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";
+const DEFAULT_TAVILY_API_KEYS = "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";
 const RESULT_LINK_RE = /<a\b[^>]*class=(?:"[^"]*\b(?:result__a|result-link)\b[^"]*"|'[^']*\b(?:result__a|result-link)\b[^']*')[^>]*href=(?:"([^"]+)"|'([^']+)')[^>]*>([\s\S]*?)<\/a>/gi;
 const RESULT_SNIPPET_RE = /<(?:a|div|span)\b[^>]*class=(?:"[^"]*\b(?:result__snippet|result-snippet)\b[^"]*"|'[^']*\b(?:result__snippet|result-snippet)\b[^']*')[^>]*>([\s\S]*?)<\/(?:a|div|span)>/i;
+let tavilyApiKeyIndex = 0;
 
 const normalizeText = (value) => (
     String(value || "")
@@ -42,6 +43,15 @@ const withTimeout = async (fn, timeoutMs = REQUEST_TIMEOUT_MS) => {
     } finally {
         clearTimeout(timer);
     }
+};
+
+const getTavilyApiKey = () => {
+    const raw = process.env.TAVILY_API_KEYS || process.env.TAVILY_API_KEY || DEFAULT_TAVILY_API_KEYS;
+    const keys = String(raw || "").split(",").map((key) => key.trim()).filter(Boolean);
+    if (!keys.length) return null;
+    const nextKey = keys[tavilyApiKeyIndex % keys.length];
+    tavilyApiKeyIndex = (tavilyApiKeyIndex + 1) % keys.length;
+    return nextKey;
 };
 
 const parseDuckDuckGoResults = (html, limit = MAX_RESULTS) => {
@@ -97,7 +107,8 @@ const fetchDuckDuckGoResults = async (query, limit = MAX_RESULTS) => (
 );
 
 const fetchTavilyResults = async (query, limit = MAX_RESULTS) => {
-    if (!TAVILY_API_KEY) return [];
+    const apiKey = getTavilyApiKey();
+    if (!apiKey) return [];
 
     return withTimeout(async (signal) => {
         const response = await fetch(TAVILY_SEARCH_URL, {
@@ -107,7 +118,7 @@ const fetchTavilyResults = async (query, limit = MAX_RESULTS) => {
                 "Content-Type": "application/json",
             },
             body: JSON.stringify({
-                api_key: TAVILY_API_KEY,
+                api_key: apiKey,
                 query,
                 search_depth: "basic",
                 include_answer: false,
@@ -172,7 +183,7 @@ module.exports = {
 
         const [duckDuckGo, tavily] = await Promise.allSettled([
             fetchDuckDuckGoResults(query, MAX_RESULTS),
-            fetchTavilyResults(query, Math.min(18, MAX_RESULTS)),
+            fetchTavilyResults(query, MAX_RESULTS),
         ]);
 
         const duckDuckGoResults = duckDuckGo.status === "fulfilled" ? duckDuckGo.value : [];
