@@ -88,6 +88,7 @@ Optional:
 
 - `CEREBRAS_API_KEY` - enables Cerebras-assisted API-key memory reranking
 - `CEREBRAS_MEMORY_MODEL` - overrides the retrieval helper model (defaults to `qwen-3-235b-a22b-instruct-2507`)
+- `SERPER_API_KEY` or `SERPER_API_KEYS` - enables Google-backed search for dork operators in `web_search`
 - `PAGE_ACCESS_TOKEN` - Facebook Page access token used by `api/messenger.js`
 - `VERIFY_TOKEN` or `MESSENGER_VERIFY_TOKEN` - token used by Facebook webhook verification
 - `FB_GRAPH_API` - overrides the Graph API origin/version. Defaults to `https://graph.facebook.com/v21.0`
@@ -282,7 +283,7 @@ curl -sS "http://localhost:3000/api/messenger?hub.mode=subscribe&hub.verify_toke
 The chat route registers five server-side tools:
 
 - `calculate` - evaluates simple math expressions
-- `web_search` - runs web search queries and returns result summaries
+- `web_search` - runs web search queries and supports Google dork operators when Serper is configured
 - `web_fetch` - fetches a URL and returns cleaned markdown or text
 - `search_images` - returns image search results
 - `view_image` - checks an image URL and returns basic metadata

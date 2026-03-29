@@ -1626,8 +1626,8 @@ function createTools() {
         web_search: {
             category: "Search",
             icon: "",
-            description: "Search the web for recent information and return top snippets.",
-            example: "web_search: latest Gemini function calling docs",
+            description: "Search the web and support dork operators like site:, filetype:, intitle:, inurl:, intext:, after:, and before: when Google-backed search is configured.",
+            example: "web_search: intitle:\"index of\" filetype:pdf site:example.com",
         },
         web_fetch: {
             category: "Search",
