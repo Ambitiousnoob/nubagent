@@ -1,6 +1,6 @@
 import React from 'react'
-import AgentFramework from './ai.jsx'
+import SearchEngine from './SearchEngine.jsx'
 
 export default function App() {
-  return <AgentFramework />
+  return <SearchEngine />
 }
