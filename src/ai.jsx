@@ -1641,6 +1641,12 @@ function createTools() {
             description: "Search the web for relevant images and return up to 10 image URLs/snippets.",
             example: "search_images: solar eclipse nasa photo",
         },
+        facebook_page_lookup: {
+            category: "Research",
+            icon: "",
+            description: "Fetch public Facebook page data through Apify when the user provides a Facebook page URL or handle.",
+            example: "facebook_page_lookup: https://www.facebook.com/zuck",
+        },
         view_image: {
             category: "Search",
             icon: "",
@@ -2957,7 +2963,7 @@ export default function AgentFramework() {
             pushRunLog("Memory", "API-key DB memory active: only the latest turn is dispatched and related memories are searched server-side from the database.", "var(--text-dim)");
         }
 
-        pushRunLog("System", "Agentic tools enabled; backend may call calculate/web_search/web_fetch.", "var(--text-dim)");
+        pushRunLog("System", "Agentic tools enabled; backend may call the registered research, fetch, math, and media tools.", "var(--text-dim)");
 
         try {
             const effectiveMultiThink = FAST_MODE_LOCKED ? false : multiThink;
