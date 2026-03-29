@@ -303,7 +303,7 @@ module.exports = {
         function: {
             name: "facebook_page_lookup",
             strict: true,
-            description: "Fetch public Facebook page data for a person, creator, brand, or organization page using Apify. Use when you need page facts, about text, contact info, or recent posts. Accepts a Facebook page URL, page handle, or a person/page name that should be resolved to a public Facebook page. This is for public pages, not private profiles.",
+            description: "Fetch public Facebook page data for a person, creator, brand, or organization page using Apify. Use when you need page facts, about text, contact info, or recent posts. Accepts a Facebook page URL, page handle, or a person/page name that should be resolved to a public Facebook page. Prefer this when the user asks who someone is and the name does not clearly match a globally popular public figure. This is for public pages, not private profiles.",
             parameters: {
                 type: "object",
                 properties: {
