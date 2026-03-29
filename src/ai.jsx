@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import TerminalMessage from "./TerminalMessage.jsx";
 
 const HOSTED_CHAT_API_PATH = "/api/chat";
+const HOSTED_MEMORY_API_PATH = "/api/memory";
 const HOSTED_STATE_API_PATH = "/api/state";
 const PUBLIC_MODEL_NAME = "nub-agent";
 const PUBLIC_DEVELOPER_NAME = "Ambitiousnoob";
@@ -76,6 +77,19 @@ const createId = () => (
         ? crypto.randomUUID()
         : `${Date.now()}-${Math.random().toString(16).slice(2)}`
 );
+
+const createMemoryApiKey = () => {
+    const randomHex = () => {
+        if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+            const bytes = new Uint8Array(16);
+            crypto.getRandomValues(bytes);
+            return Array.from(bytes, value => value.toString(16).padStart(2, "0")).join("");
+        }
+        return `${Math.random().toString(16).slice(2)}${Math.random().toString(16).slice(2)}`.padEnd(32, "0").slice(0, 32);
+    };
+
+    return `nub_mem_${randomHex()}`;
+};
 
 const detectCompactUi = () => (
     typeof window !== "undefined"
@@ -2076,6 +2090,7 @@ export default function AgentFramework() {
         return window.innerWidth > AUTO_SIDEBAR_BREAKPOINT;
     });
     const [logCopyStatus, setLogCopyStatus] = useState("Copy");
+    const [memoryApiKeyCopyStatus, setMemoryApiKeyCopyStatus] = useState("Copy key");
     const [memoryApiKey, setMemoryApiKey] = useState(() => initialMemoryApiKey);
     const [memoryApiKeyDraft, setMemoryApiKeyDraft] = useState(() => initialMemoryApiKey);
     const [primaryModel, setPrimaryModel] = useState(() => initialPersistedState?.primaryModel || AVAILABLE_MODELS[0]);
@@ -2107,11 +2122,39 @@ export default function AgentFramework() {
         saveTimer: null,
     });
     const normalizedMemoryApiKey = normalizeMemoryApiKey(memoryApiKey);
+    const normalizedMemoryApiKeyDraft = normalizeMemoryApiKey(memoryApiKeyDraft);
     const stateScopeId = buildStorageScopeId({
         memoryApiKey: normalizedMemoryApiKey,
         stateKey: stateKeyRef.current,
     });
     const usingMemoryApiKey = Boolean(normalizedMemoryApiKey);
+
+    const applyMemoryApiKey = (nextValue) => {
+        const nextKey = normalizeMemoryApiKey(nextValue);
+        setMemoryApiKey(nextKey);
+        setMemoryApiKeyDraft(nextKey);
+        return nextKey;
+    };
+
+    const handleGenerateMemoryApiKey = () => {
+        const nextKey = createMemoryApiKey();
+        applyMemoryApiKey(nextKey);
+        setMemoryApiKeyCopyStatus("Created");
+        if (typeof window !== "undefined") {
+            window.setTimeout(() => setMemoryApiKeyCopyStatus("Copy key"), 1600);
+        }
+    };
+
+    const handleCopyMemoryApiKey = () => {
+        const keyToCopy = normalizeMemoryApiKey(memoryApiKeyDraft || memoryApiKey);
+        if (!keyToCopy || typeof navigator === "undefined" || !navigator.clipboard) return;
+        navigator.clipboard.writeText(keyToCopy)
+            .then(() => {
+                setMemoryApiKeyCopyStatus("Copied!");
+                window.setTimeout(() => setMemoryApiKeyCopyStatus("Copy key"), 1600);
+            })
+            .catch(() => setMemoryApiKeyCopyStatus("Copy failed"));
+    };
 
     // Track both the stable viewport and the visual viewport so Android keyboards do not cover the composer.
     useEffect(() => {
@@ -3109,6 +3152,7 @@ export default function AgentFramework() {
     const pendingUploadsView = Array.isArray(conv?.pendingUploads) ? conv.pendingUploads : [];
     const systemLogs = conv?.systemLogs || [];
     useEffect(() => { setLogCopyStatus("Copy"); }, [systemLogs.length]);
+    useEffect(() => { setMemoryApiKeyCopyStatus("Copy key"); }, [memoryApiKeyDraft, memoryApiKey]);
     const handleCopyLogs = () => {
         if (!systemLogs.length || typeof navigator === "undefined" || !navigator.clipboard) return;
         const text = systemLogs.map((entry) => `[${entry.ts}] ${entry.module}: ${entry.msg}`).join("\n");
@@ -3154,6 +3198,8 @@ export default function AgentFramework() {
     const canSend = Boolean(normalizeTextBlock(conv?.currentInput || "") || pendingUploadsView.length);
     const siteOrigin = typeof window !== "undefined" ? window.location.origin : "";
     const apiUrl = siteOrigin ? `${siteOrigin}${HOSTED_CHAT_API_PATH}` : HOSTED_CHAT_API_PATH;
+    const memoryApiUrl = siteOrigin ? `${siteOrigin}${HOSTED_MEMORY_API_PATH}` : HOSTED_MEMORY_API_PATH;
+    const memoryApiExampleKey = normalizedMemoryApiKeyDraft || "nub_mem_demo_1234567890abcdef";
     const agentRequestExample = JSON.stringify({
         prompt: "Find the shortest path from San Francisco to Tokyo and explain which airport you chose.",
         stream: false,
@@ -3207,6 +3253,14 @@ export default function AgentFramework() {
     const streamCurlExample = `curl -N -X POST ${apiUrl} \\
   -H "Content-Type: application/json" \\
   -d '{"prompt":"hello","stream":true}'`;
+    const memoryInsertCurlExample = `curl -sS -X POST ${memoryApiUrl} \\
+  -H "Content-Type: application/json" \\
+  -H "X-API-Key: ${memoryApiExampleKey}" \\
+  -d '{"action":"insert","entries":[{"role":"user","content":"My favorite database is TiDB."}]}'`;
+    const memorySearchCurlExample = `curl -sS -X POST ${memoryApiUrl} \\
+  -H "Content-Type: application/json" \\
+  -H "X-API-Key: ${memoryApiExampleKey}" \\
+  -d '{"action":"search","query":"what is my favorite database","limit":4,"include_context":true}'`;
     const rootClassName = [
         "af-root",
         sidebarOpen ? "sidebar-open" : "",
@@ -3564,26 +3618,33 @@ export default function AgentFramework() {
                                     onKeyDown={(event) => {
                                         if (event.key === "Enter") {
                                             event.preventDefault();
-                                            const nextKey = normalizeMemoryApiKey(memoryApiKeyDraft);
-                                            setMemoryApiKey(nextKey);
-                                            setMemoryApiKeyDraft(nextKey);
+                                            applyMemoryApiKey(memoryApiKeyDraft);
                                         }
                                     }}
-                                    placeholder="Optional: use the same key to reopen and search the same memory"
+                                    placeholder="Create or paste an API memory key"
                                     autoComplete="off"
                                     spellCheck={false}
                                 />
                                 <small style={{ color: "var(--text-muted)" }}>
                                     Different API keys get isolated DB memories. The server searches that key's memory table for related info before answering.
                                 </small>
+                                <small style={{ color: "var(--text-dim)" }}>
+                                    {normalizedMemoryApiKeyDraft
+                                        ? `Current key: ${normalizedMemoryApiKeyDraft}`
+                                        : "No API key selected. Generate one to get a dedicated memory namespace."}
+                                </small>
                                 <div className="af-api-actions">
                                     <span>{usingMemoryApiKey ? "API-key memory active" : "Anonymous memory active"}</span>
                                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                                        <button className="af-btn" onClick={() => {
-                                            const nextKey = normalizeMemoryApiKey(memoryApiKeyDraft);
-                                            setMemoryApiKey(nextKey);
-                                            setMemoryApiKeyDraft(nextKey);
-                                        }}>Apply key</button>
+                                        <button className="af-btn" onClick={handleGenerateMemoryApiKey}>
+                                            {usingMemoryApiKey ? "New key" : "Create key"}
+                                        </button>
+                                        <button className="af-btn" onClick={() => applyMemoryApiKey(memoryApiKeyDraft)}>
+                                            Apply key
+                                        </button>
+                                        <button className="af-btn" onClick={handleCopyMemoryApiKey} disabled={!normalizedMemoryApiKeyDraft}>
+                                            {memoryApiKeyCopyStatus}
+                                        </button>
                                         <button
                                             className="af-btn"
                                             onClick={() => {
@@ -3652,6 +3713,7 @@ export default function AgentFramework() {
                                             Copy endpoint
                                         </button>
                                         <a className="af-btn" href={apiUrl} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>Open metadata</a>
+                                        <a className="af-btn" href={memoryApiUrl} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>Open memory API</a>
                                     </div>
                                 </div>
                                 <div className="af-strategy-grid" style={{ marginBottom: 0 }}>
@@ -3685,6 +3747,14 @@ export default function AgentFramework() {
                                             <div><strong>Server tools:</strong> the live tool registry is listed in the <strong>Tools</strong> tab.</div>
                                             <div><strong>Provider routing:</strong> requests prefer throughput routing for the fastest available upstream.</div>
                                             <div><strong>Metadata:</strong> <code style={{ fontFamily: "var(--mono)" }}>GET {HOSTED_CHAT_API_PATH}</code> returns endpoint metadata and examples.</div>
+                                        </div>
+                                    </div>
+                                    <div className="af-strategy-card">
+                                        <div className="af-strategy-label">API Memory</div>
+                                        <div className="af-strategy-list">
+                                            <div><strong>Endpoint:</strong> <code style={{ fontFamily: "var(--mono)" }}>{HOSTED_MEMORY_API_PATH}</code></div>
+                                            <div><strong>Auth:</strong> send <code style={{ fontFamily: "var(--mono)" }}>X-API-Key</code> with a generated memory key.</div>
+                                            <div><strong>Create key:</strong> open <strong>Model Settings</strong> and use <strong>{usingMemoryApiKey ? "New key" : "Create key"}</strong>.</div>
                                         </div>
                                     </div>
                                 </div>
@@ -3728,6 +3798,23 @@ export default function AgentFramework() {
                                     <div>
                                         <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: "var(--text-dim)" }}>Streaming curl</div>
                                         <DocCodeBlock code={streamCurlExample} language="bash" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="af-panel">
+                                <div style={{ fontWeight: 700, marginBottom: 12 }}>API Memory</div>
+                                <div className="af-strategy-muted" style={{ marginBottom: 12 }}>
+                                    Generate an API memory key in Model Settings, then use it with <code style={{ fontFamily: "var(--mono)" }}>{HOSTED_MEMORY_API_PATH}</code> to store and retrieve user-specific memory rows.
+                                </div>
+                                <div style={{ display: "grid", gap: 16 }}>
+                                    <div>
+                                        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: "var(--text-dim)" }}>Insert memory row</div>
+                                        <DocCodeBlock code={memoryInsertCurlExample} language="bash" />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: "var(--text-dim)" }}>Search memory row</div>
+                                        <DocCodeBlock code={memorySearchCurlExample} language="bash" />
                                     </div>
                                 </div>
                             </div>
@@ -3847,6 +3934,19 @@ export default function AgentFramework() {
                                     </span>
                                 </div>
                                 <button className="af-btn af-btn-danger" onClick={() => updateMemory({})}>Clear All</button>
+                            </div>
+                            <div className="af-strategy-card" style={{ marginBottom: 16 }}>
+                                <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--text-muted)" }}>API Memory Key</div>
+                                <div className="af-strategy-list">
+                                    <div><strong>Status:</strong> {usingMemoryApiKey ? "API-key memory active" : "Anonymous browser memory active"}</div>
+                                    <div><strong>Key:</strong> <code style={{ fontFamily: "var(--mono)" }}>{normalizedMemoryApiKeyDraft || "Not set"}</code></div>
+                                    <div><strong>Endpoint:</strong> <code style={{ fontFamily: "var(--mono)" }}>{HOSTED_MEMORY_API_PATH}</code></div>
+                                </div>
+                                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+                                    <button className="af-btn" onClick={handleGenerateMemoryApiKey}>{usingMemoryApiKey ? "New key" : "Create key"}</button>
+                                    <button className="af-btn" onClick={handleCopyMemoryApiKey} disabled={!normalizedMemoryApiKeyDraft}>{memoryApiKeyCopyStatus}</button>
+                                    <button className="af-btn" onClick={() => setSettingsOpen(true)}>Open settings</button>
+                                </div>
                             </div>
                             {Object.keys(memoryStore).length === 0
                                 ? <div className="af-empty"><span className="af-empty-icon">🧠</span><div className="af-empty-text">Named memory entries will appear here.<br/>Use the memory tools to save facts between prompts in this session.</div></div>
