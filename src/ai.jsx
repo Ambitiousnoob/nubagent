@@ -3210,12 +3210,8 @@ export default function AgentFramework() {
         executionMode: "completion",
     }, null, 2);
     const messagesRequestExample = JSON.stringify({
-        messages: [
-            {
-                role: "user",
-                content: "Read the OCR or attachment text for the uploaded image and summarize it.",
-            },
-        ],
+        message: "What is in this image?",
+        image: "data:image/png;base64,<base64-image-bytes>",
         model: getPublicModelName(),
         stream: false,
     }, null, 2);
@@ -3723,7 +3719,7 @@ export default function AgentFramework() {
                                         <div className="af-strategy-list">
                                             <div><strong>Prompt:</strong> send <code style={{ fontFamily: "var(--mono)" }}>prompt</code>, <code style={{ fontFamily: "var(--mono)" }}>input</code>, or <code style={{ fontFamily: "var(--mono)" }}>message</code>.</div>
                                             <div><strong>Messages:</strong> send a chat array with <code style={{ fontFamily: "var(--mono)" }}>system</code>, <code style={{ fontFamily: "var(--mono)" }}>user</code>, and <code style={{ fontFamily: "var(--mono)" }}>assistant</code> roles.</div>
-                                            <div><strong>Images:</strong> uploaded images are sent with attachment context, OCR text, and inline image data when available.</div>
+                                            <div><strong>Images:</strong> send <code style={{ fontFamily: "var(--mono)" }}>image</code>, <code style={{ fontFamily: "var(--mono)" }}>image_url</code>, <code style={{ fontFamily: "var(--mono)" }}>images</code>, <code style={{ fontFamily: "var(--mono)" }}>image_urls</code>, or <code style={{ fontFamily: "var(--mono)" }}>messages[].content[].image_url.url</code>.</div>
                                         </div>
                                     </div>
                                     <div className="af-strategy-card">
