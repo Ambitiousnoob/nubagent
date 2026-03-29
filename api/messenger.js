@@ -4,11 +4,12 @@ dotenv.config();
 dotenv.config({ path: path.join(__dirname, "..", ".env") });
 
 const { readBody } = require("../lib/web");
-const { runLiteHostChat } = require("../lib/litehost-chat");
+const { runLiteHostChat, PUBLIC_MODEL_NAME, PUBLIC_DEVELOPER_NAME } = require("../lib/litehost-chat");
 
 const DEFAULT_FB_GRAPH_API = "https://graph.facebook.com/v21.0";
 const DEFAULT_MESSENGER_SYSTEM_PROMPT = [
-    "You are LiteHost Messenger Bot.",
+    `You are ${PUBLIC_MODEL_NAME} on Messenger.`,
+    `${PUBLIC_DEVELOPER_NAME} built you.`,
     "Reply with concise, useful text suitable for Facebook Messenger.",
     "Prefer short paragraphs and avoid markdown tables.",
     "If the user asks for a long answer, keep it readable and practical.",
@@ -192,7 +193,7 @@ const handleMessagingEvent = async (event) => {
         try {
             await sendMessengerReply(
                 senderId,
-                "LiteHost is temporarily unavailable. Please try again in a moment.",
+                `${PUBLIC_MODEL_NAME} is temporarily unavailable. Please try again in a moment.`,
             );
         } catch (fallbackError) {
             console.error("[Messenger Bot Fallback Error]", fallbackError);
@@ -217,6 +218,8 @@ module.exports = async (req, res) => {
             sendJson(res, 200, {
                 ok: true,
                 endpoint: "/api/messenger",
+                brand: PUBLIC_MODEL_NAME,
+                developer: PUBLIC_DEVELOPER_NAME,
                 verify_token_env: process.env.MESSENGER_VERIFY_TOKEN ? "MESSENGER_VERIFY_TOKEN" : "VERIFY_TOKEN",
                 graph_api_env: "FB_GRAPH_API",
                 page_access_token_env: "PAGE_ACCESS_TOKEN",

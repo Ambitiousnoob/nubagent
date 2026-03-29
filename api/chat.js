@@ -150,7 +150,7 @@ module.exports = async (req, res) => {
             });
         }
     } catch (error) {
-        console.error("[Gemini API Error]", error);
+        console.error("[nub-agent API Error]", error);
         sendJson(res, Number(error?.status) || 500, { error: error?.message || "Chat request failed." });
     }
 };

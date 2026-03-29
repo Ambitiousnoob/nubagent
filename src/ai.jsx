@@ -3271,6 +3271,7 @@ export default function AgentFramework() {
     const tabConfig = [
         { id: "chat", label: "💬 Chat" },
         { id: "docs", label: "📘 Docs" },
+        { id: "memory", label: "🔑 API" },
         { id: "logs", label: `📜 Logs (${systemLogs.length})` },
     ];
 
@@ -4243,6 +4244,7 @@ export default function AgentFramework() {
                                 <div className="agent-buttons" style={{ marginBottom: 8 }}>
                                     <button className={`btn ${activeTab === "chat" ? "primary" : ""}`} onClick={() => setActiveTab("chat")}>Chat</button>
                                     <button className={`btn ${activeTab === "docs" ? "primary" : ""}`} onClick={() => setActiveTab("docs")}>Docs</button>
+                                    <button className={`btn ${activeTab === "memory" ? "primary" : ""}`} onClick={() => setActiveTab("memory")}>API</button>
                                     <button className={`btn ${activeTab === "logs" ? "primary" : ""}`} onClick={() => setActiveTab("logs")}>Logs ({systemLogs.length})</button>
                                     <button className="btn" onClick={newConv}>New</button>
                                     <button className="btn" onClick={exportConv} disabled={!allMessages.length}>Export</button>
