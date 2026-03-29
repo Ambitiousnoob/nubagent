@@ -45,7 +45,7 @@ vercel.json       Vercel routing and build config
 
 - Node.js 18+
 - npm
-- `GEMINI_API_KEYS` (comma-separated list)
+- `GEMINI_API_KEY` or `GEMINI_API_KEYS` (single key or comma-separated list)
 - `DATABASE_URL`
 - Vercel CLI if you want to deploy from the terminal
 
@@ -55,7 +55,7 @@ Frontend only:
 
 ```bash
 npm install
-export GEMINI_API_KEYS="your-keys-here"
+export GEMINI_API_KEY="your-key-here"
 npm run dev
 ```
 
@@ -81,7 +81,7 @@ npm run lint:regex
 
 Required:
 
-- `GEMINI_API_KEYS` - backend keys used by `api/chat.js`
+- `GEMINI_API_KEY` or `GEMINI_API_KEYS` - backend key(s) used by `api/chat.js`
 - `DATABASE_URL` - MySQL/TiDB connection string used for app state and scoped memory
 
 Optional:
@@ -311,7 +311,7 @@ Deploy:
 npx -y vercel --prod
 ```
 
-Make sure `GEMINI_API_KEYS` is configured in the target Vercel project before deploying.
+Make sure `GEMINI_API_KEY` or `GEMINI_API_KEYS` is configured in the target Vercel project before deploying.
 
 ## Current Gaps
 

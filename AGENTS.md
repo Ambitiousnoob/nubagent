@@ -31,7 +31,7 @@
 - Keep diffs small; prefer follow-up PRs for large refactors.
 
 ## Security & Configuration Tips
-- Required envs: `GEMINI_API_KEYS`, `DATABASE_URL`; optional per-request `apiKey` override. Load `dotenv` before importing the AI client.
+- Required envs: `GEMINI_API_KEY` or `GEMINI_API_KEYS`, `DATABASE_URL`; optional per-request `apiKey` override. Load `dotenv` before importing the AI client.
 - Functions are stateless; persist memory in the database (`agent_memory` table) and keep secrets out of client bundles.
 
 ## Agent-Specific Notes
