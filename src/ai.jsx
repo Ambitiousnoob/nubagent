@@ -151,12 +151,13 @@ const getModelTokenProfile = (model) => {
     };
 };
 
-const buildOpenRouterRequestBody = ({ model, maxTokens, messages, stream }) => ({
+const buildOpenRouterRequestBody = ({ model, maxTokens, messages, stream, extra = {} }) => ({
     model: typeof model === "string" ? model : model?.id,
     max_tokens: maxTokens,
     messages,
     temperature: 0.2,
     stream,
+    ...(extra && typeof extra === "object" ? extra : {}),
 });
 
 const readApiErrorText = async (response) => {
@@ -1679,7 +1680,15 @@ RULES:
 6. Final answers should be complete, structured, and use markdown.
 7. Do NOT use JSON for tool calls, ONLY use the exact <tool_call> XML format.`;
 
-async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MAX_COMPLETION_TOKENS, log, clientTimeoutMs = 70000, onToolCall, onThought } = {}) {
+async function callLLMStream(messages, model, signal, onUpdate, {
+    maxTokens = MAX_COMPLETION_TOKENS,
+    log,
+    clientTimeoutMs = 70000,
+    onToolCall,
+    onThought,
+    requestHeaders = {},
+    requestBodyExtra = {},
+} = {}) {
     const ensureBrandedMessages = (msgs = []) => (
         Array.isArray(msgs) && msgs.some(m => m?.role === "system")
             ? msgs
@@ -1710,12 +1719,13 @@ async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MA
             const timeoutId = setTimeout(() => controller.abort(), clientTimeoutMs);
                 const res = await fetch(getToolApiUrl(HOSTED_CHAT_API_PATH), {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: { "Content-Type": "application/json", ...(requestHeaders || {}) },
                     body: JSON.stringify(buildOpenRouterRequestBody({
                         model,
                         maxTokens,
                         messages: brandedMessages,
                         stream: true,
+                        extra: requestBodyExtra,
                     })),
                     credentials: "include",
                     cache: "no-store",
@@ -1777,12 +1787,13 @@ async function callLLMStream(messages, model, signal, onUpdate, { maxTokens = MA
                 log?.("Stream returned no chunks; retrying once as non-stream.");
                 const fallbackRes = await fetch(getToolApiUrl(HOSTED_CHAT_API_PATH), {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: { "Content-Type": "application/json", ...(requestHeaders || {}) },
                     body: JSON.stringify(buildOpenRouterRequestBody({
                         model,
                         maxTokens,
                         messages: brandedMessages,
                         stream: false,
+                        extra: requestBodyExtra,
                     })),
                     credentials: "include",
                     cache: "no-store",
@@ -2899,6 +2910,9 @@ export default function AgentFramework() {
         if (semanticRecall.hits.length) {
             pushRunLog("Memory", `Semantic recall injected ${semanticRecall.hits.length} indexed chunk(s) into the latest prompt.`, "var(--text-dim)");
         }
+        if (usingMemoryApiKey) {
+            pushRunLog("Memory", "API-key DB memory active: only the latest turn is dispatched and prior context is restored server-side.", "var(--text-dim)");
+        }
 
         pushRunLog("System", "Agentic tools enabled; backend may call calculate/web_search/web_fetch.", "var(--text-dim)");
 
@@ -2910,7 +2924,15 @@ export default function AgentFramework() {
                 pushRunLog("System", "Fast mode enabled: using the low-latency model path with thinking disabled.", "var(--text-dim)");
             }
             const thinkPrompt = effectiveThinkAloud ? [{ role: "system", content: "Think step by step. Show a concise <thought> plan before answering." }] : [];
-            const chatMessages = [...historyMessages, ...thinkPrompt, { role: "user", content: modelUserContent }];
+            const memoryScopedRequestHeaders = usingMemoryApiKey
+                ? buildStateRequestHeaders({ memoryApiKey: normalizedMemoryApiKey })
+                : {};
+            const memoryScopedRequestBody = usingMemoryApiKey
+                ? { use_persistent_memory: true, save_persistent_memory: true }
+                : {};
+            const chatMessages = usingMemoryApiKey
+                ? [...thinkPrompt, { role: "user", content: modelUserContent }]
+                : [...historyMessages, ...thinkPrompt, { role: "user", content: modelUserContent }];
 
             if (!effectiveMultiThink) {
                 const { text: fastText, toolsUsed = [] } = await callLLMStream(chatMessages, primaryModel.id, signal, (text) => {
@@ -2918,6 +2940,8 @@ export default function AgentFramework() {
                 }, {
                     maxTokens: MAX_COMPLETION_TOKENS,
                     log: (msg) => pushRunLog("System", msg, "var(--text-dim)"),
+                    requestHeaders: memoryScopedRequestHeaders,
+                    requestBodyExtra: memoryScopedRequestBody,
                     onThought: (thought) => {
                         pushRunLog("Thought", thought, "var(--accent-2)");
                         const [step] = buildThoughtSteps(`<thought>${thought}</thought>`, "", { includePartial: true });
