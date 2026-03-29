@@ -1641,12 +1641,6 @@ function createTools() {
             description: "Search the web for relevant images and return up to 10 image URLs/snippets.",
             example: "search_images: solar eclipse nasa photo",
         },
-        facebook_page_lookup: {
-            category: "Research",
-            icon: "",
-            description: "Fetch public Facebook page data through Apify from a page URL, handle, or person/page name. Prefer it for who-is queries about non-famous people.",
-            example: "facebook_page_lookup: Prince Keith Andrei",
-        },
         view_image: {
             category: "Search",
             icon: "",
@@ -1694,12 +1688,11 @@ The answer is 100.
 RULES:
 1. ALWAYS write a <thought> before taking an action or answering.
 2. Use tools for any factual, computational, or data-retrieval need.
-3. If the user asks who a person is and the name does not clearly match a globally well-known public figure, prefer facebook_page_lookup before generic web_search.
-4. Uploaded attachments are already in the conversation context. Never invent placeholder URLs like example.com for uploaded files. Use view_image only for real http(s) image URLs explicitly provided by the user.
-5. If a tool errors, adapt: try different params or tools.
-6. Before finalizing, make sure the critical objectives are satisfied or explicitly state what is still missing.
-7. Final answers should be complete, structured, and use markdown.
-8. Do NOT use JSON for tool calls, ONLY use the exact <tool_call> XML format.`;
+3. Uploaded attachments are already in the conversation context. Never invent placeholder URLs like example.com for uploaded files. Use view_image only for real http(s) image URLs explicitly provided by the user.
+4. If a tool errors, adapt: try different params or tools.
+5. Before finalizing, make sure the critical objectives are satisfied or explicitly state what is still missing.
+6. Final answers should be complete, structured, and use markdown.
+7. Do NOT use JSON for tool calls, ONLY use the exact <tool_call> XML format.`;
 
 async function callLLMStream(messages, model, signal, onUpdate, {
     maxTokens = MAX_COMPLETION_TOKENS,
