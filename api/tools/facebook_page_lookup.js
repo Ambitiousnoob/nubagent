@@ -73,9 +73,34 @@ const compactObject = (value) => Object.fromEntries(
         if (entry === null || entry === undefined) return false;
         if (typeof entry === "string") return Boolean(entry.trim());
         if (Array.isArray(entry)) return entry.length > 0;
+        if (typeof entry === "object") return Object.keys(entry).length > 0;
         return true;
     })
 );
+
+const normalizeDetailText = (value, max = 240) => {
+    if (Array.isArray(value)) {
+        const text = value
+            .map((item) => (
+                typeof item === "string"
+                    ? item
+                    : truncate(JSON.stringify(item), max)
+            ))
+            .filter(Boolean)
+            .join(", ");
+        return truncate(text, max);
+    }
+    return truncate(value, max);
+};
+
+const normalizeBoolean = (value) => {
+    if (typeof value === "boolean") return value;
+    const text = normalizeText(value).toLowerCase();
+    if (!text) return null;
+    if (["true", "yes", "verified", "public"].includes(text)) return true;
+    if (["false", "no", "unverified", "private"].includes(text)) return false;
+    return null;
+};
 
 const normalizeFacebookPageInput = (value) => {
     const raw = normalizeText(value);
@@ -226,6 +251,23 @@ const extractLatestPosts = (item) => {
     return singlePost ? [singlePost] : [];
 };
 
+const extractProfileInfo = (item, website) => compactObject({
+    intro: normalizeDetailText(pickFirst(item, ["intro", "tagline", "headline"]), 400),
+    bio: normalizeDetailText(pickFirst(item, ["bio", "about", "description", "summary"]), 800),
+    hometown: normalizeDetailText(pickFirst(item, ["hometown", "homeTown", "home_town"]), 180),
+    current_city: normalizeDetailText(pickFirst(item, ["currentCity", "current_city", "city", "locationName"]), 180),
+    work: normalizeDetailText(pickFirst(item, ["work", "workplace", "occupation", "jobTitle"]), 240),
+    education: normalizeDetailText(pickFirst(item, ["education", "school", "schools"]), 240),
+    relationship_status: normalizeDetailText(pickFirst(item, ["relationshipStatus", "relationship_status"]), 180),
+    joined: normalizeDetailText(pickFirst(item, ["joined", "joinedDate", "joined_date", "pageCreatedAt"]), 120),
+    birthday: normalizeDetailText(pickFirst(item, ["birthday", "birthDate", "birth_date"]), 120),
+    gender: normalizeDetailText(pickFirst(item, ["gender"]), 80),
+    verified: normalizeBoolean(pickFirst(item, ["verified", "isVerified", "is_verified"])),
+    profile_picture: normalizeUrl(pickFirst(item, ["profilePicture", "profileImage", "image", "photo", "avatar"])) || "",
+    cover_photo: normalizeUrl(pickFirst(item, ["coverPhoto", "coverImage", "cover"])) || "",
+    website,
+});
+
 const summarizeActorItem = (item, pageUrl, rank) => {
     const url = normalizeUrl(pickFirst(item, [
         "url",
@@ -237,6 +279,7 @@ const summarizeActorItem = (item, pageUrl, rank) => {
     ])) || pageUrl;
     const website = normalizeUrl(pickFirst(item, ["website", "web", "externalUrl", "site"])) || "";
     const latestPosts = extractLatestPosts(item);
+    const profileInfo = extractProfileInfo(item, website);
 
     return compactObject({
         rank,
@@ -245,12 +288,14 @@ const summarizeActorItem = (item, pageUrl, rank) => {
         username: truncate(pickFirst(item, ["username", "userName", "handle", "pageHandle"]), 120),
         category: truncate(pickFirst(item, ["category", "categories", "pageCategory"]), 240),
         followers: toNumber(pickFirst(item, ["followers", "pageFollowers", "followCount"])),
+        friends: toNumber(pickFirst(item, ["friends", "friendCount", "friendsCount", "friend_count", "friends_count"])),
         likes: toNumber(pickFirst(item, ["likes", "pageLikes", "likeCount"])),
         description: truncate(pickFirst(item, ["description", "about", "bio", "intro", "summary"]), 1200),
         website,
         phone: truncate(pickFirst(item, ["phone", "phoneNumber", "contactPhone"]), 120),
         email: truncate(pickFirst(item, ["email", "contactEmail"]), 200),
         address: truncate(pickFirst(item, ["address", "location", "contactAddress"]), 240),
+        profile_info: profileInfo,
         latest_posts: latestPosts,
         raw_keys: Object.keys(item || {}).slice(0, 12),
     });
