@@ -1,4 +1,5 @@
 const { normalizeUrl } = require("../../lib/web");
+const { handler: webSearchHandler } = require("./web_search");
 
 const APIFY_ACTOR = "apify~facebook-pages-scraper";
 const APIFY_ENDPOINT = `https://api.apify.com/v2/acts/${APIFY_ACTOR}/run-sync-get-dataset-items`;
@@ -6,6 +7,35 @@ const REQUEST_TIMEOUT_MS = 25000;
 const MAX_RESULTS = 5;
 const MAX_TEXT_CHARS = 1200;
 const MAX_POSTS = 3;
+const RESERVED_FACEBOOK_SEGMENTS = new Set([
+    "groups",
+    "watch",
+    "events",
+    "event",
+    "share",
+    "sharer",
+    "story.php",
+    "photo.php",
+    "photos",
+    "posts",
+    "reel",
+    "reels",
+    "videos",
+    "permalink.php",
+    "login",
+    "plugins",
+    "marketplace",
+    "hashtag",
+    "search",
+    "help",
+    "games",
+    "messages",
+    "business",
+    "ads",
+    "privacy",
+    "about",
+    "public",
+]);
 
 const normalizeText = (value) => (
     String(value ?? "")
@@ -67,6 +97,80 @@ const normalizeFacebookPageInput = (value) => {
         throw new Error("page must be a Facebook page URL or page handle");
     }
     return `https://www.facebook.com/${handle}`;
+};
+
+const canonicalizeFacebookSearchUrl = (value) => {
+    const normalized = normalizeUrl(value);
+    if (!normalized) return "";
+
+    try {
+        const parsed = new URL(normalized);
+        const host = parsed.hostname.toLowerCase();
+        if (!(host === "facebook.com" || host.endsWith(".facebook.com"))) return "";
+
+        if (parsed.pathname === "/profile.php") {
+            const id = normalizeText(parsed.searchParams.get("id"));
+            return id ? `https://www.facebook.com/profile.php?id=${encodeURIComponent(id)}` : "";
+        }
+
+        const segments = parsed.pathname.split("/").filter(Boolean);
+        if (!segments.length) return "";
+
+        const first = segments[0].toLowerCase();
+        if (first === "pages" && segments.length >= 3) {
+            return `https://www.facebook.com/pages/${segments[1]}/${segments[2]}`;
+        }
+        if (first === "people" && segments.length >= 3) {
+            return `https://www.facebook.com/people/${segments[1]}/${segments[2]}`;
+        }
+        if (RESERVED_FACEBOOK_SEGMENTS.has(first)) return "";
+
+        return `https://www.facebook.com/${segments[0]}`;
+    } catch {
+        return "";
+    }
+};
+
+const resolveFacebookPageUrl = async (value) => {
+    const raw = normalizeText(value);
+    if (!raw) return "";
+
+    if (/^https?:\/\//i.test(raw)) {
+        return normalizeFacebookPageInput(raw);
+    }
+
+    const handleCandidate = raw.replace(/^@/, "").replace(/^\/+|\/+$/g, "");
+    if (/^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/.test(handleCandidate) && !/\s/.test(handleCandidate)) {
+        return normalizeFacebookPageInput(handleCandidate);
+    }
+
+    const searchResult = await webSearchHandler({ query: `${raw} site:facebook.com` });
+    if (typeof searchResult !== "string") {
+        throw new Error("Facebook page resolution failed");
+    }
+    if (searchResult.startsWith("Error:")) {
+        throw new Error(searchResult);
+    }
+    if (searchResult.startsWith("No results")) {
+        throw new Error(`No public Facebook page found for "${raw}"`);
+    }
+
+    let items;
+    try {
+        items = JSON.parse(searchResult);
+    } catch {
+        throw new Error("Could not parse Facebook page search results");
+    }
+
+    const resolvedUrl = (Array.isArray(items) ? items : [])
+        .map((item) => canonicalizeFacebookSearchUrl(item?.url))
+        .find(Boolean);
+
+    if (!resolvedUrl) {
+        throw new Error(`No public Facebook page found for "${raw}"`);
+    }
+
+    return resolvedUrl;
 };
 
 const normalizePostEntry = (value) => {
@@ -199,13 +303,13 @@ module.exports = {
         function: {
             name: "facebook_page_lookup",
             strict: true,
-            description: "Fetch public Facebook page data for a person, creator, brand, or organization page using Apify. Use when the user provides a Facebook page URL or handle and you need page facts, about text, contact info, or recent posts. This is for public pages, not private profiles.",
+            description: "Fetch public Facebook page data for a person, creator, brand, or organization page using Apify. Use when you need page facts, about text, contact info, or recent posts. Accepts a Facebook page URL, page handle, or a person/page name that should be resolved to a public Facebook page. This is for public pages, not private profiles.",
             parameters: {
                 type: "object",
                 properties: {
                     page: {
                         type: "string",
-                        description: "Public Facebook page URL or page handle, for example https://www.facebook.com/zuck or zuck.",
+                        description: "Public Facebook page URL, page handle, or person/page name, for example https://www.facebook.com/zuck, zuck, or Prince Keith Andrei.",
                     },
                     limit: {
                         type: "integer",
@@ -221,7 +325,7 @@ module.exports = {
     },
     handler: async (args) => {
         try {
-            const pageUrl = normalizeFacebookPageInput(args?.page);
+            const pageUrl = await resolveFacebookPageUrl(args?.page);
             const limit = clamp(parseInt(args?.limit, 10) || 3, 1, MAX_RESULTS);
             if (!pageUrl) return "Error: page is required";
 

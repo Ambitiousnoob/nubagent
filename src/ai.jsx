@@ -1644,8 +1644,8 @@ function createTools() {
         facebook_page_lookup: {
             category: "Research",
             icon: "",
-            description: "Fetch public Facebook page data through Apify when the user provides a Facebook page URL or handle.",
-            example: "facebook_page_lookup: https://www.facebook.com/zuck",
+            description: "Fetch public Facebook page data through Apify from a page URL, handle, or person/page name.",
+            example: "facebook_page_lookup: Prince Keith Andrei",
         },
         view_image: {
             category: "Search",
