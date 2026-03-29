@@ -23,6 +23,10 @@
       "dest": "/api/messenger.js"
     },
     {
+      "src": "/api/memory",
+      "dest": "/api/memory.js"
+    },
+    {
       "src": "/api/state",
       "dest": "/api/state.js"
     },

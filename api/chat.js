@@ -14,7 +14,7 @@ const {
 } = require("../lib/chat-memory");
 const {
     saveApiKeyMemoryEntries,
-    searchApiKeyMemory,
+    searchApiKeyMemoryDetailed,
     formatApiKeyMemoryContext,
 } = require("../lib/api-key-memory");
 
@@ -75,9 +75,10 @@ module.exports = async (req, res) => {
     try {
         const scopedMemory = await loadScopedChatMemory(req).catch(() => null);
         const latestUserText = getLatestUserText(body.messages);
-        const apiKeyMemoryHits = scopedMemory?.scope === "api_key" && latestUserText
-            ? await searchApiKeyMemory(scopedMemory.stateKey, latestUserText).catch(() => [])
-            : [];
+        const apiKeyMemorySearch = scopedMemory?.scope === "api_key" && latestUserText
+            ? await searchApiKeyMemoryDetailed(scopedMemory.stateKey, latestUserText).catch(() => ({ results: [], meta: null }))
+            : { results: [], meta: null };
+        const apiKeyMemoryHits = apiKeyMemorySearch.results || [];
         const apiKeyMemoryContext = formatApiKeyMemoryContext(apiKeyMemoryHits);
         const shouldUseMemory = Boolean(scopedMemory?.dbKey) && shouldUseScopedChatMemory(body);
         const requestBody = shouldUseMemory
@@ -126,6 +127,9 @@ module.exports = async (req, res) => {
                     summary: Boolean(activeMemory?.summary),
                     recent_messages: Array.isArray(activeMemory?.recentMessages) ? activeMemory.recentMessages.length : 0,
                     related_entries: apiKeyMemoryHits.length,
+                    search_strategy: apiKeyMemorySearch.meta?.strategy || null,
+                    search_provider: apiKeyMemorySearch.meta?.provider || null,
+                    search_model: apiKeyMemorySearch.meta?.model || null,
                 };
             } else if (scopedMemory?.dbKey) {
                 memoryMeta = {
@@ -134,6 +138,9 @@ module.exports = async (req, res) => {
                     summary: Boolean(scopedMemory.memory?.summary),
                     recent_messages: Array.isArray(scopedMemory.memory?.recentMessages) ? scopedMemory.memory.recentMessages.length : 0,
                     related_entries: apiKeyMemoryHits.length,
+                    search_strategy: apiKeyMemorySearch.meta?.strategy || null,
+                    search_provider: apiKeyMemorySearch.meta?.provider || null,
+                    search_model: apiKeyMemorySearch.meta?.model || null,
                 };
             }
 

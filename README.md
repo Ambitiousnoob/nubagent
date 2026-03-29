@@ -1,12 +1,12 @@
-# gemini-3-flash
+# nub-agent
 
-`gemini-3-flash` is a Vite + React chat app with a Vercel serverless backend for tool-using AI workflows.
+`nub-agent` is a Vite + React chat app with a Vercel serverless backend for tool-using AI workflows.
 
-The frontend exposes a branded assistant experience. The backend routes requests to Google Gemini, executes a small toolset, and returns normalized responses for chat, web reading, and crawling.
+The frontend exposes a branded assistant experience. The backend routes requests to Google Gemini, executes a small toolset, and returns normalized responses for chat, web reading, crawling, and scoped memory APIs. When configured, a Cerebras Qwen helper reranks API-key memory matches before the primary model answers.
 
 ## Features
 
-- Branded assistant surface exposed as `gemini-3-flash`
+- Branded assistant surface exposed as `nub-agent`
 - React chat UI with conversation history, session memory, and live activity logs
 - Terminal-style agent activity view with tool call tracing
 - Sandboxed live preview for generated HTML UI snippets
@@ -18,6 +18,7 @@ The frontend exposes a branded assistant experience. The backend routes requests
   - `search_images`
   - `view_image`
 - Standalone reader and crawler endpoints:
+  - `/api/memory`
   - `/api/read`
   - `/api/crawl`
 - Regex validation script for catching invalid regex literals before deploy
@@ -26,7 +27,7 @@ The frontend exposes a branded assistant experience. The backend routes requests
 
 - Frontend: React 17, Vite
 - Backend: Vercel Serverless Functions
-- Model provider: Google Gemini
+- Model provider: Google Gemini (primary) with optional Cerebras Qwen memory reranking
 - OCR: `tesseract.js`
 
 ## Repository Layout
@@ -45,6 +46,7 @@ vercel.json       Vercel routing and build config
 - Node.js 18+
 - npm
 - `GEMINI_API_KEYS` (comma-separated list)
+- `DATABASE_URL`
 - Vercel CLI if you want to deploy from the terminal
 
 ## Local Development
@@ -80,9 +82,12 @@ npm run lint:regex
 Required:
 
 - `GEMINI_API_KEYS` - backend keys used by `api/chat.js`
+- `DATABASE_URL` - MySQL/TiDB connection string used for app state and scoped memory
 
 Optional:
 
+- `CEREBRAS_API_KEY` - enables Cerebras-assisted API-key memory reranking
+- `CEREBRAS_MEMORY_MODEL` - overrides the retrieval helper model (defaults to `qwen-3-235b-a22b-instruct-2507`)
 - `PAGE_ACCESS_TOKEN` - Facebook Page access token used by `api/messenger.js`
 - `VERIFY_TOKEN` or `MESSENGER_VERIFY_TOKEN` - token used by Facebook webhook verification
 - `FB_GRAPH_API` - overrides the Graph API origin/version. Defaults to `https://graph.facebook.com/v21.0`
@@ -151,6 +156,44 @@ Behavior notes:
 - Tool turns run in non-stream mode for deterministic tool handling.
 - If you send `X-API-Key` or `Authorization: Bearer <key>`, the server stores memory rows for that key in the database and searches them for related context on later requests.
 - For lower token usage, reuse the same memory key and send only the latest user turn; the backend searches the key's memory table and injects only the relevant matches.
+- When `CEREBRAS_API_KEY` is configured, the backend uses a Qwen helper on Cerebras to rerank the candidate memory rows before injecting them.
+
+### `GET /api/memory`
+
+Returns metadata for the API-key memory endpoint.
+
+### `POST /api/memory`
+
+Supports `insert` and `search` actions for API-key-scoped memory.
+
+Insert example:
+
+```bash
+curl -sS -X POST http://localhost:3000/api/memory \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: demo-memory-key-123" \
+  -d '{
+    "action": "insert",
+    "entries": [
+      { "role": "user", "content": "My favorite database is TiDB." },
+      { "role": "assistant", "content": "Understood. Favorite database is TiDB." }
+    ]
+  }'
+```
+
+Search example:
+
+```bash
+curl -sS -X POST http://localhost:3000/api/memory \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: demo-memory-key-123" \
+  -d '{
+    "action": "search",
+    "query": "what is my favorite database",
+    "limit": 4,
+    "include_context": true
+  }'
+```
 
 ### `GET /api/state`
 
