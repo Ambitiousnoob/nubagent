@@ -962,7 +962,6 @@ export default function SearchEngine() {
     const [activeId, setActiveId] = useState(null);
     const [streaming, setStreaming] = useState(false);
     const [input, setInput] = useState("");
-    const [navActive, setNavActive] = useState("search");
     const [pendingUploads, setPendingUploads] = useState([]);
     const [uploadStatus, setUploadStatus] = useState("");
     const [showLibrary, setShowLibrary] = useState(false);
@@ -1464,13 +1463,6 @@ export default function SearchEngine() {
         if (input.trim() || pendingUploads.length) runSearch(input.trim(), pendingUploads);
     };
 
-    const NAV = [
-        { id: "search", icon: "⊙", label: "Search", onClick: () => setShowLibrary(false) },
-        { id: "library", icon: "⊟", label: "Library", onClick: () => setShowLibrary(true) },
-    ];
-
-    const NAV_BOTTOM = [];
-
     return (
         <div className="se">
             <style>{`
@@ -1720,30 +1712,7 @@ html,body,#root{height:100%;background:var(--bg)}
                 >
                     ＋
                 </button>
-                {NAV.map((item) => (
-                    <button
-                        key={item.id}
-                        className={`nb ${navActive === item.id ? "nb--on" : ""}`}
-                        title={item.label}
-                        onClick={() => {
-                            setNavActive(item.id);
-                            item.onClick?.();
-                        }}
-                    >
-                        {item.icon}
-                    </button>
-                ))}
                 <div className="sb__sp" />
-                {NAV_BOTTOM.map((item) => (
-                    <button
-                        key={item.id}
-                        className="nb"
-                        title={item.label}
-                        onClick={() => item.onClick?.()}
-                    >
-                        {item.icon}
-                    </button>
-                ))}
             </aside>
 
             <div className="mn">
