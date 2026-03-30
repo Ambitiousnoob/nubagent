@@ -1,5 +1,5 @@
 const { readBody } = require("../lib/web");
-const { handler: webSearchHandler } = require("./tools/web_search");
+const { handler: webSearchHandler } = require("../lib/tools/web_search");
 const { rerankSourcesForQuery } = require("../lib/rag");
 
 const writeCorsHeaders = (res) => {

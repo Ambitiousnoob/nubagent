@@ -1,3 +1,3 @@
-import handler from "./utils-handler.cjs";
+const handler = require("./utils-handler.cjs");
 
-export default handler;
+module.exports = handler;
