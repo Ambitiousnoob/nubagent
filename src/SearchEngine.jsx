@@ -1447,18 +1447,14 @@ export default function SearchEngine() {
     };
 
     const NAV = [
-        { id: "search", icon: "⊙", label: "Search" },
-        { id: "library", icon: "⊟", label: "Library" },
-        { id: "discover", icon: "◫", label: "Discover" },
-        { id: "watcher", icon: "⊞", label: "Watcher" },
-        { id: "finance", icon: "⊠", label: "Finance" },
+        { id: "search", icon: "⊙", label: "Search", onClick: () => {} },
+        { id: "library", icon: "⊟", label: "Library", onClick: () => alert("Library: Coming soon — view your saved research sessions") },
+        { id: "discover", icon: "◫", label: "Discover", onClick: () => alert("Discover: Coming soon — explore trending topics") },
+        { id: "watcher", icon: "⊞", label: "Watcher", onClick: () => alert("Watcher: Coming soon — set up research alerts") },
+        { id: "finance", icon: "⊠", label: "Finance", onClick: () => alert("Finance: Coming soon — financial research tools") },
     ];
 
-    const NAV_BOTTOM = [
-        { id: "pro", icon: "♛", label: "Pro" },
-        { id: "settings", icon: "⚙", label: "Settings" },
-        { id: "account", icon: "◉", label: "Account" },
-    ];
+    const NAV_BOTTOM = [];
 
     return (
         <div className="se">
@@ -1710,21 +1706,44 @@ html,body,#root{height:100%;background:var(--bg)}
                     ＋
                 </button>
                 {NAV.map((item) => (
-                    <button key={item.id} className={`nb ${navActive === item.id ? "nb--on" : ""}`} title={item.label} onClick={() => setNavActive(item.id)}>
+                    <button
+                        key={item.id}
+                        className={`nb ${navActive === item.id ? "nb--on" : ""}`}
+                        title={item.label}
+                        onClick={() => {
+                            setNavActive(item.id);
+                            item.onClick?.();
+                        }}
+                    >
                         {item.icon}
                     </button>
                 ))}
                 <div className="sb__sp" />
-                {NAV_BOTTOM.map((item) => <button key={item.id} className="nb" title={item.label}>{item.icon}</button>)}
+                {NAV_BOTTOM.map((item) => (
+                    <button
+                        key={item.id}
+                        className="nb"
+                        title={item.label}
+                        onClick={() => item.onClick?.()}
+                    >
+                        {item.icon}
+                    </button>
+                ))}
             </aside>
 
             <div className="mn">
                 {!isLanding && (
                     <div className="tb">
                         <div className="tb__q">{active?.query || ""}</div>
-                        <button className="tb__up">⬆ Upgrade to Pro</button>
-                        <button className="tb__b">···</button>
-                        <button className="tb__b">⬆ Share</button>
+                        <button className="tb__b" onClick={() => alert("Menu: Coming soon — session options and more")}>···</button>
+                        <button className="tb__b" onClick={() => {
+                            const url = window.location.href;
+                            navigator.clipboard?.writeText(url).then(() => {
+                                alert("Link copied to clipboard!");
+                            }).catch(() => {
+                                prompt("Copy this link:", url);
+                            });
+                        }}>⬆ Share</button>
                     </div>
                 )}
 
@@ -1779,15 +1798,15 @@ html,body,#root{height:100%;background:var(--bg)}
                                 )}
                             </form>
                             <div className="bot__bar">
-                                <button className="bb bb--on">🔍 Search</button>
-                                <button className="bb">🔧</button>
-                                <button className="bb">🔔</button>
+                                <button className="bb bb--on" onClick={() => alert("Search mode: Active — web research with query expansion")}>🔍 Search</button>
+                                <button className="bb" onClick={() => alert("Tools: Coming soon — advanced research tools and operators")}>🔧</button>
+                                <button className="bb" onClick={() => alert("Notifications: Coming soon — research alerts and updates")}>🔔</button>
                                 <div className="bb__sp" />
                                 <button className="ib" title="Attach" onClick={openFilePicker} disabled={streaming}>📎</button>
                                 {streaming ? (
                                     <button className="ib" style={{ color: "var(--red)" }} onClick={() => abortRef.current?.abort()}>■</button>
                                 ) : (
-                                    <button className="ib" title="Voice">🎙</button>
+                                    <button className="ib" title="Voice" onClick={() => alert("Voice input: Coming soon — speak your queries")}>🎙</button>
                                 )}
                             </div>
                         </div>
