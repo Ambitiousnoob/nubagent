@@ -109,7 +109,7 @@ export default function App() {
             {/* Sidebar */}
             <aside
               ref={sidebarRef}
-              className={`sidebar ${sidebar.isOpen ? 'sidebar--open' : 'sidebar--closed'} ${sidebar.isCollapsed ? 'sidebar--collapsed' : ''}`}
+              className={`sidebar ${isMobile && sidebar.isOpen ? 'sidebar--open' : ''} ${sidebar.isCollapsed ? 'sidebar--collapsed' : ''}`}
             >
               <div className="sidebar__header">
                 <div className="sidebar__logo">
