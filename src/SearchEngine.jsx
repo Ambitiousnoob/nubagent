@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import Company, { prepareSearchQuery, finalizeResearchAnswer } from "./lib/index.js";
+import { saveSession, getSessionById } from "./lib/library.js";
+import Library from "./Library.jsx";
 
 const CHAT_API = "/api/chat";
 const SEARCH_API = "/api/search";
@@ -963,6 +965,7 @@ export default function SearchEngine() {
     const [navActive, setNavActive] = useState("search");
     const [pendingUploads, setPendingUploads] = useState([]);
     const [uploadStatus, setUploadStatus] = useState("");
+    const [showLibrary, setShowLibrary] = useState(false);
 
     const abortRef = useRef(null);
     const bottomRef = useRef(null);
@@ -972,6 +975,7 @@ export default function SearchEngine() {
 
     const active = sessions.find((session) => session.id === activeId);
     const isLanding = !active && !streaming;
+    const isLibraryView = showLibrary;
 
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1053,7 +1057,21 @@ export default function SearchEngine() {
             searchDone: true,
             ...extraPatch,
         });
-    }, [patchLastBot]);
+
+        // Auto-save session to library
+        const session = sessions.find(s => s.id === sessionId);
+        if (session) {
+            const researchMeta = extraPatch?.researchMeta || {};
+            saveSession({
+                id: sessionId,
+                query: session.query,
+                heading,
+                body: body || heading,
+                sources,
+                researchMeta,
+            });
+        }
+    }, [patchLastBot, sessions]);
 
     const handleFileUpload = useCallback(async (event) => {
         const files = Array.from(event.target.files || []);
@@ -1447,8 +1465,8 @@ export default function SearchEngine() {
     };
 
     const NAV = [
-        { id: "search", icon: "⊙", label: "Search", onClick: () => {} },
-        { id: "library", icon: "⊟", label: "Library", onClick: () => alert("Library: Coming soon — view your saved research sessions") },
+        { id: "search", icon: "⊙", label: "Search", onClick: () => setShowLibrary(false) },
+        { id: "library", icon: "⊟", label: "Library", onClick: () => setShowLibrary(true) },
         { id: "discover", icon: "◫", label: "Discover", onClick: () => alert("Discover: Coming soon — explore trending topics") },
         { id: "watcher", icon: "⊞", label: "Watcher", onClick: () => alert("Watcher: Coming soon — set up research alerts") },
         { id: "finance", icon: "⊠", label: "Finance", onClick: () => alert("Finance: Coming soon — financial research tools") },
@@ -1732,85 +1750,121 @@ html,body,#root{height:100%;background:var(--bg)}
             </aside>
 
             <div className="mn">
-                {!isLanding && (
-                    <div className="tb">
-                        <div className="tb__q">{active?.query || ""}</div>
-                        <button className="tb__b" onClick={() => alert("Menu: Coming soon — session options and more")}>···</button>
-                        <button className="tb__b" onClick={() => {
-                            const url = window.location.href;
-                            navigator.clipboard?.writeText(url).then(() => {
-                                alert("Link copied to clipboard!");
-                            }).catch(() => {
-                                prompt("Copy this link:", url);
-                            });
-                        }}>⬆ Share</button>
-                    </div>
-                )}
+                {isLibraryView ? (
+                    <Library
+                        onBack={() => setShowLibrary(false)}
+                        onViewSession={(session) => {
+                            // Load session from library into active view
+                            const loadedSession = {
+                                id: session.id,
+                                query: session.query,
+                                messages: [
+                                    { id: createId(), role: "user", text: session.query, attachments: [] },
+                                    {
+                                        id: createId(),
+                                        role: "bot",
+                                        heading: session.heading,
+                                        body: session.body,
+                                        sources: session.sources || [],
+                                        showPlanning: false,
+                                        showSearching: false,
+                                        searchDone: true,
+                                        researchMeta: session.researchMeta,
+                                    },
+                                ],
+                            };
+                            setSessions(prev => [...prev, loadedSession]);
+                            setActiveId(loadedSession.id);
+                            setShowLibrary(false);
+                        }}
+                        onNewSearch={() => {
+                            setShowLibrary(false);
+                            inputRef.current?.focus();
+                        }}
+                    />
+                ) : (
+                    <>
+                        {!isLanding && (
+                            <div className="tb">
+                                <div className="tb__q">{active?.query || ""}</div>
+                                <button className="tb__b" onClick={() => alert("Menu: Coming soon — session options and more")}>···</button>
+                                <button className="tb__b" onClick={() => {
+                                    const url = window.location.href;
+                                    navigator.clipboard?.writeText(url).then(() => {
+                                        alert("Link copied to clipboard!");
+                                    }).catch(() => {
+                                        prompt("Copy this link:", url);
+                                    });
+                                }}>⬆ Share</button>
+                            </div>
+                        )}
 
-                <div className="chat">
-                    {isLanding ? (
-                        <Landing
-                            onSearch={runSearch}
-                            uploads={pendingUploads}
-                            onOpenUpload={openFilePicker}
-                            onRemoveUpload={removePendingUpload}
-                            uploadStatus={uploadStatus}
-                        />
-                    ) : (
-                        <div className="chat__in">
-                            {active?.messages.map((message, index) => (
-                                message.role === "user"
-                                    ? <UserMsg key={message.id} text={message.text} attachments={message.attachments} />
-                                    : <BotMsg key={message.id} msg={message} isLast={index === active.messages.length - 1} streaming={streaming} sessionQuery={active.query} />
-                            ))}
-                            <div ref={bottomRef} />
-                        </div>
-                    )}
-                </div>
-
-                {!isLanding && (
-                    <div className="bot">
-                        <div className="bot__wrap">
-                            {(pendingUploads.length || uploadStatus) && (
-                                <div className="bot__uploads">
-                                    <AttachmentList attachments={pendingUploads} onRemove={removePendingUpload} compact />
-                                    {uploadStatus ? <div className="upload-status">{uploadStatus}</div> : null}
+                        <div className="chat">
+                            {isLanding ? (
+                                <Landing
+                                    onSearch={runSearch}
+                                    uploads={pendingUploads}
+                                    onOpenUpload={openFilePicker}
+                                    onRemoveUpload={removePendingUpload}
+                                    uploadStatus={uploadStatus}
+                                />
+                            ) : (
+                                <div className="chat__in">
+                                    {active?.messages.map((message, index) => (
+                                        message.role === "user"
+                                            ? <UserMsg key={message.id} text={message.text} attachments={message.attachments} />
+                                            : <BotMsg key={message.id} msg={message} isLast={index === active.messages.length - 1} streaming={streaming} sessionQuery={active.query} />
+                                    ))}
+                                    <div ref={bottomRef} />
                                 </div>
                             )}
-                            <form className="bot__row" onSubmit={handleSubmit}>
-                                <input
-                                    ref={inputRef}
-                                    className="bot__in"
-                                    value={input}
-                                    onChange={(event) => setInput(event.target.value)}
-                                    placeholder={pendingUploads.length ? "Ask about the uploaded files or continue research..." : "Ask a new question..."}
-                                    disabled={streaming}
-                                    autoComplete="off"
-                                />
-                                {streaming ? (
-                                    <button type="button" className="stop-btn" onClick={() => abortRef.current?.abort()} title="Stop">■</button>
-                                ) : (
-                                    <button type="submit" className="send-btn" disabled={!input.trim() && !pendingUploads.length}>
-                                        <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-                                            <path d="M7.5 2L13 7.5L7.5 13M1 7.5H13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                                        </svg>
-                                    </button>
-                                )}
-                            </form>
-                            <div className="bot__bar">
-                                <button className="bb bb--on" onClick={() => alert("Search mode: Active — web research with query expansion")}>🔍 Search</button>
-                                <button className="bb" onClick={() => alert("Tools: Coming soon — advanced research tools and operators")}>🔧</button>
-                                <button className="bb" onClick={() => alert("Notifications: Coming soon — research alerts and updates")}>🔔</button>
-                                <div className="bb__sp" />
-                                <button className="ib" title="Attach" onClick={openFilePicker} disabled={streaming}>📎</button>
-                                {streaming ? (
-                                    <button className="ib" style={{ color: "var(--red)" }} onClick={() => abortRef.current?.abort()}>■</button>
-                                ) : (
-                                    <button className="ib" title="Voice" onClick={() => alert("Voice input: Coming soon — speak your queries")}>🎙</button>
-                                )}
-                            </div>
                         </div>
-                    </div>
+
+                        {!isLanding && (
+                            <div className="bot">
+                                <div className="bot__wrap">
+                                    {(pendingUploads.length || uploadStatus) && (
+                                        <div className="bot__uploads">
+                                            <AttachmentList attachments={pendingUploads} onRemove={removePendingUpload} compact />
+                                            {uploadStatus ? <div className="upload-status">{uploadStatus}</div> : null}
+                                        </div>
+                                    )}
+                                    <form className="bot__row" onSubmit={handleSubmit}>
+                                        <input
+                                            ref={inputRef}
+                                            className="bot__in"
+                                            value={input}
+                                            onChange={(event) => setInput(event.target.value)}
+                                            placeholder={pendingUploads.length ? "Ask about the uploaded files or continue research..." : "Ask a new question..."}
+                                            disabled={streaming}
+                                            autoComplete="off"
+                                        />
+                                        {streaming ? (
+                                            <button type="button" className="stop-btn" onClick={() => abortRef.current?.abort()} title="Stop">■</button>
+                                        ) : (
+                                            <button type="submit" className="send-btn" disabled={!input.trim() && !pendingUploads.length}>
+                                                <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+                                                    <path d="M7.5 2L13 7.5L7.5 13M1 7.5H13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                                                </svg>
+                                            </button>
+                                        )}
+                                    </form>
+                                    <div className="bot__bar">
+                                        <button className="bb bb--on" onClick={() => alert("Search mode: Active — web research with query expansion")}>🔍 Search</button>
+                                        <button className="bb" onClick={() => alert("Tools: Coming soon — advanced research tools and operators")}>🔧</button>
+                                        <button className="bb" onClick={() => alert("Notifications: Coming soon — research alerts and updates")}>🔔</button>
+                                        <div className="bb__sp" />
+                                        <button className="ib" title="Attach" onClick={openFilePicker} disabled={streaming}>📎</button>
+                                        {streaming ? (
+                                            <button className="ib" style={{ color: "var(--red)" }} onClick={() => abortRef.current?.abort()}>■</button>
+                                        ) : (
+                                            <button className="ib" title="Voice" onClick={() => alert("Voice input: Coming soon — speak your queries")}>🎙</button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </>
                 )}
                 <input
                     ref={fileInputRef}
