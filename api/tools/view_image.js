@@ -1,3 +1,8 @@
+/**
+ * View Image Tool
+ * Analyzes a specific image URL and describes what is in it
+ */
+
 const IMAGE_TIMEOUT_MS = 15000;
 const MAX_READER_CHARS = 6000;
 
@@ -79,78 +84,91 @@ const fetchReaderAnalysis = async (url, signal) => {
     };
 };
 
-module.exports = {
-    definition: {
-        type: "function",
-        function: {
-            name: "view_image",
-            strict: true,
-            description: "Analyze a specific image URL and describe what is in it, including text when available. Use this for screenshots, charts, memes, product photos, or any image the user wants inspected.",
-            parameters: {
-                type: "object",
-                properties: {
-                    url: { type: "string", description: "HTTP/HTTPS image URL to inspect" },
-                },
-                required: ["url"],
-                additionalProperties: false,
+/**
+ * Tool definition for function calling
+ */
+const definition = {
+    type: "function",
+    function: {
+        name: "view_image",
+        strict: true,
+        description: "Analyze a specific image URL and describe what is in it, including text when available. Use this for screenshots, charts, memes, product photos, or any image the user wants inspected.",
+        parameters: {
+            type: "object",
+            properties: {
+                url: { type: "string", description: "HTTP/HTTPS image URL to inspect" },
             },
+            required: ["url"],
+            additionalProperties: false,
         },
     },
-    handler: async (args) => {
-        const url = String(args.url || "").trim();
-        if (!/^https?:\/\//i.test(url)) return "Error: url must start with http or https";
+};
 
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), IMAGE_TIMEOUT_MS);
+/**
+ * View image handler function
+ * @param {object} args - View arguments
+ * @param {string} args.url - Image URL to inspect
+ * @returns {Promise<string>} JSON string of analysis or error message
+ */
+const handler = async (args) => {
+    const url = String(args.url || "").trim();
+    if (!/^https?:\/\//i.test(url)) return "Error: url must start with http or https";
 
-        try {
-            const [metadataResult, analysisResult] = await Promise.allSettled([
-                fetchMetadata(url, controller.signal),
-                fetchReaderAnalysis(url, controller.signal),
-            ]);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), IMAGE_TIMEOUT_MS);
 
-            const metadata = metadataResult.status === "fulfilled"
-                ? metadataResult.value
-                : {
-                    contentType: "unknown",
-                    sizeBytes: null,
-                    reachable: false,
-                    metadataError: metadataResult.reason?.message || "metadata fetch failed",
-                };
+    try {
+        const [metadataResult, analysisResult] = await Promise.allSettled([
+            fetchMetadata(url, controller.signal),
+            fetchReaderAnalysis(url, controller.signal),
+        ]);
 
-            const analysis = analysisResult.status === "fulfilled"
-                ? analysisResult.value
-                : {
-                    raw: "",
-                    captions: [],
-                    summary: "",
-                    analysisError: analysisResult.reason?.message || "analysis fetch failed",
-                };
-
-            clearTimeout(timer);
-
-            if (!metadata.reachable && !analysis.summary && !analysis.captions.length && !analysis.raw) {
-                return `Error: image inspection failed (${analysis.analysisError || metadata.metadataError || "unreachable"})`;
-            }
-
-            const response = {
-                url,
-                ...metadata,
-                summary: analysis.summary || null,
-                captions: analysis.captions || [],
-                readerOutput: analysis.raw || null,
+        const metadata = metadataResult.status === "fulfilled"
+            ? metadataResult.value
+            : {
+                contentType: "unknown",
+                sizeBytes: null,
+                reachable: false,
+                metadataError: metadataResult.reason?.message || "metadata fetch failed",
             };
 
-            if (analysis.analysisError) response.analysisError = analysis.analysisError;
-            if (metadata.metadataError) response.metadataError = metadata.metadataError;
+        const analysis = analysisResult.status === "fulfilled"
+            ? analysisResult.value
+            : {
+                raw: "",
+                captions: [],
+                summary: "",
+                analysisError: analysisResult.reason?.message || "analysis fetch failed",
+            };
 
-            return JSON.stringify(response);
-        } catch (e) {
-            clearTimeout(timer);
-            if (e.name === "AbortError") {
-                return `Error: image inspection timed out after ${IMAGE_TIMEOUT_MS / 1000}s`;
-            }
-            return `Error: image inspection failed (${e.message})`;
+        clearTimeout(timer);
+
+        if (!metadata.reachable && !analysis.summary && !analysis.captions.length && !analysis.raw) {
+            return `Error: image inspection failed (${analysis.analysisError || metadata.metadataError || "unreachable"})`;
         }
-    },
+
+        const response = {
+            url,
+            ...metadata,
+            summary: analysis.summary || null,
+            captions: analysis.captions || [],
+            readerOutput: analysis.raw || null,
+        };
+
+        if (analysis.analysisError) response.analysisError = analysis.analysisError;
+        if (metadata.metadataError) response.metadataError = metadata.metadataError;
+
+        return JSON.stringify(response);
+    } catch (e) {
+        clearTimeout(timer);
+        if (e.name === "AbortError") {
+            return `Error: image inspection timed out after ${IMAGE_TIMEOUT_MS / 1000}s`;
+        }
+        return `Error: image inspection failed (${e.message})`;
+    }
+};
+
+module.exports = {
+    definition,
+    handler,
 };

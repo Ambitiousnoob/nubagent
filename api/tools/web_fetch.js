@@ -178,125 +178,141 @@ const fetchWithFallback = async (url, format, maxChars) => {
     }
 };
 
-module.exports = {
-    definition: {
-        type: "function",
-        function: {
-            name: "web_fetch",
-            strict: true,
-            description: "Fetches a webpage and returns its main content as clean Markdown. Handles JavaScript-heavy pages, paywalls, and anti-bot measures. Use for articles, documentation, research papers, or any URL needing content extraction.",
-            parameters: {
-                type: "object",
-                properties: {
-                    url: {
-                        type: "string",
-                        description: "The exact HTTP/HTTPS URL to fetch. Must be publicly accessible.",
-                    },
-                    format: {
-                        type: "string",
-                        enum: ["markdown", "text", "html"],
-                        description: "Output format. 'markdown' (default): clean MD with headings/links. 'text': plain text only. 'html': raw HTML.",
-                    },
-                    max_chars: {
-                        type: "number",
-                        description: "Maximum characters to return. Default: 20000. Max: 80000. Use lower for summaries, higher for full articles.",
-                    },
-                    extract_links: {
-                        type: "boolean",
-                        description: "If true, includes a summary of outbound links at the end.",
-                    },
+/**
+ * Tool definition for function calling
+ */
+const definition = {
+    type: "function",
+    function: {
+        name: "web_fetch",
+        strict: true,
+        description: "Fetches a webpage and returns its main content as clean Markdown. Handles JavaScript-heavy pages, paywalls, and anti-bot measures. Use for articles, documentation, research papers, or any URL needing content extraction.",
+        parameters: {
+            type: "object",
+            properties: {
+                url: {
+                    type: "string",
+                    description: "The exact HTTP/HTTPS URL to fetch. Must be publicly accessible.",
                 },
-                required: ["url"],
-                additionalProperties: false,
+                format: {
+                    type: "string",
+                    enum: ["markdown", "text", "html"],
+                    description: "Output format. 'markdown' (default): clean MD with headings/links. 'text': plain text only. 'html': raw HTML.",
+                },
+                max_chars: {
+                    type: "number",
+                    description: "Maximum characters to return. Default: 20000. Max: 80000. Use lower for summaries, higher for full articles.",
+                },
+                extract_links: {
+                    type: "boolean",
+                    description: "If true, includes a summary of outbound links at the end.",
+                },
             },
+            required: ["url"],
+            additionalProperties: false,
         },
     },
-    handler: async (args) => {
-        const url = normalizeText(args.url);
-        const format = args.format === "text" ? "text" : (args.format === "html" ? "html" : "markdown");
-        const maxChars = Math.min(Number(args.max_chars) || DEFAULT_MAX_CHARS, HARD_MAX_CHARS);
-        const extractLinks = Boolean(args.extract_links);
+};
 
-        // URL validation
-        if (!url) {
-            return "Error: URL is required";
-        }
+/**
+ * Web fetch handler function
+ * @param {object} args - Fetch arguments
+ * @param {string} args.url - URL to fetch
+ * @param {string} [args.format] - Output format (markdown, text, html)
+ * @param {number} [args.max_chars] - Maximum characters to return
+ * @param {boolean} [args.extract_links] - Whether to extract links
+ * @returns {Promise<string>} Markdown content or error message
+ */
+const handler = async (args) => {
+    const url = normalizeText(args.url);
+    const format = args.format === "text" ? "text" : (args.format === "html" ? "html" : "markdown");
+    const maxChars = Math.min(Number(args.max_chars) || DEFAULT_MAX_CHARS, HARD_MAX_CHARS);
+    const extractLinks = Boolean(args.extract_links);
 
-        if (!/^https?:\/\//i.test(url)) {
-            return "Error: URL must start with http:// or https://";
+    // URL validation
+    if (!url) {
+        return "Error: URL is required";
+    }
+
+    if (!/^https?:\/\//i.test(url)) {
+        return "Error: URL must start with http:// or https://";
+    }
+
+    try {
+        // Validate URL format
+        new URL(url);
+    } catch {
+        return "Error: Invalid URL format";
+    }
+
+    let lastError = null;
+    let result = null;
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (attempt > 0) {
+            // Exponential backoff
+            await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
         }
 
         try {
-            // Validate URL format
-            new URL(url);
-        } catch {
-            return "Error: Invalid URL format";
+            result = await fetchWithFallback(url, format, maxChars);
+            break;
+        } catch (error) {
+            lastError = error.message;
         }
+    }
 
-        let lastError = null;
-        let result = null;
+    if (!result) {
+        return `Error: web_fetch failed after ${MAX_RETRIES + 1} attempts. Last error: ${lastError}`;
+    }
 
-        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-            if (attempt > 0) {
-                // Exponential backoff
-                await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
-            }
+    // Build response
+    const content = result.content;
+    const estTokens = Math.round(content.length / 4);
+    const truncated = content.length >= maxChars;
 
-            try {
-                result = await fetchWithFallback(url, format, maxChars);
-                break;
-            } catch (error) {
-                lastError = error.message;
-            }
-        }
+    const meta = [
+        `<!-- Source: ${result.url} -->`,
+        `<!-- Title: ${result.title || "Untitled"} -->`,
+        `<!-- Format: ${format} | Characters: ${content.length} | Est. tokens: ~${estTokens}${truncated ? ` | Truncated from ${result.content.length} chars` : ""} -->`,
+        `<!-- Fetched via: ${result.via} -->`,
+    ];
 
-        if (!result) {
-            return `Error: web_fetch failed after ${MAX_RETRIES + 1} attempts. Last error: ${lastError}`;
-        }
+    if (result.description) {
+        meta.push(`<!-- Description: ${result.description.slice(0, 200)} -->`);
+    }
 
-        // Build response
-        const content = result.content;
-        const estTokens = Math.round(content.length / 4);
-        const truncated = content.length >= maxChars;
+    if (result.publishedTime) {
+        meta.push(`<!-- Published: ${result.publishedTime} -->`);
+    }
 
-        const meta = [
-            `<!-- Source: ${result.url} -->`,
-            `<!-- Title: ${result.title || "Untitled"} -->`,
-            `<!-- Format: ${format} | Characters: ${content.length} | Est. tokens: ~${estTokens}${truncated ? ` | Truncated from ${result.content.length} chars` : ""} -->`,
-            `<!-- Fetched via: ${result.via} -->`,
-        ];
+    let finalContent = `${meta.join("\n")}\n\n`;
 
-        if (result.description) {
-            meta.push(`<!-- Description: ${result.description.slice(0, 200)} -->`);
-        }
+    if (format === "markdown" && result.title) {
+        finalContent += `# ${result.title}\n\n`;
+    }
 
-        if (result.publishedTime) {
-            meta.push(`<!-- Published: ${result.publishedTime} -->`);
-        }
+    finalContent += content;
 
-        let finalContent = `${meta.join("\n")}\n\n`;
-
-        if (format === "markdown" && result.title) {
-            finalContent += `# ${result.title}\n\n`;
-        }
-
-        finalContent += content;
-
-        if (extractLinks && format === "markdown") {
-            try {
-                const rawHtml = await fetch(url, { method: "GET" }).then((r) => r.text()).catch(() => "");
-                const links = extractLinks(rawHtml, url).slice(0, 20);
-                if (links.length) {
-                    finalContent += "\n\n---\n\n## Outbound Links\n\n";
-                    for (const link of links) {
-                        finalContent += `- ${link}\n`;
-                    }
+    if (extractLinks && format === "markdown") {
+        try {
+            const rawHtml = await fetch(url, { method: "GET" }).then((r) => r.text()).catch(() => "");
+            const links = extractLinks(rawHtml, url).slice(0, 20);
+            if (links.length) {
+                finalContent += "\n\n---\n\n## Outbound Links\n\n";
+                for (const link of links) {
+                    finalContent += `- ${link}\n`;
                 }
-            } catch {
-                // Ignore link extraction errors
             }
+        } catch {
+            // Ignore link extraction errors
         }
+    }
 
-        return finalContent;
-    },
+    return finalContent;
+};
+
+module.exports = {
+    definition,
+    handler,
 };

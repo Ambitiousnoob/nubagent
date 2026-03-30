@@ -1,7 +1,7 @@
 /**
  * Content Endpoint
  * Consolidated content fetching endpoints: fetch, read, crawl
- * 
+ *
  * Usage:
  * - /api/content?action=fetch (POST) - Simple URL fetch using web_fetch tool
  * - /api/content?action=read (POST) - Smart content extraction with modes
@@ -66,7 +66,7 @@ module.exports = async (req, res) => {
         case 'crawl':
             return handleCrawl(req, res);
         default:
-            sendJson(res, 400, { 
+            sendJson(res, 400, {
                 error: 'Unknown action. Use action=fetch, action=read, or action=crawl',
                 validActions: ['fetch', 'read', 'crawl'],
             });

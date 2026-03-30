@@ -383,100 +383,113 @@ const formatResults = (query, combined, settledResults) => {
         : `No results for "${query}"`;
 };
 
-module.exports = {
-    definition: {
-        type: "function",
-        function: {
-            name: "web_search",
-            strict: true,
-            description: "Search the web with multiple backends. Supports Google dork operators: site:domain.com, filetype:pdf, intitle:keyword, inurl:keyword, intext:keyword, after:YYYY-MM-DD, before:YYYY-MM-DD, exact phrases, -exclude, OR. Auto-routes to Google when operators detected. Returns up to 30 ranked results with titles, URLs, descriptions, and dates.",
-            parameters: {
-                type: "object",
-                properties: {
-                    query: {
-                        type: "string",
-                        description: "The search query. Include timezone/location for time-sensitive queries.",
-                    },
+/**
+ * Tool definition for function calling
+ */
+const definition = {
+    type: "function",
+    function: {
+        name: "web_search",
+        strict: true,
+        description: "Search the web with multiple backends. Supports Google dork operators: site:domain.com, filetype:pdf, intitle:keyword, inurl:keyword, intext:keyword, after:YYYY-MM-DD, before:YYYY-MM-DD, exact phrases, -exclude, OR. Auto-routes to Google when operators detected. Returns up to 30 ranked results with titles, URLs, descriptions, and dates.",
+        parameters: {
+            type: "object",
+            properties: {
+                query: {
+                    type: "string",
+                    description: "The search query. Include timezone/location for time-sensitive queries.",
                 },
-                required: ["query"],
-                additionalProperties: false,
             },
+            required: ["query"],
+            additionalProperties: false,
         },
     },
-    handler: async (args) => {
-        const query = String(args.query || "").trim();
-        if (!query) return "Error: query is required";
+};
 
-        const usesOperators = hasDorkOperators(query);
-        const requiresGoogle = needsGoogle(query);
-        const hasSerper = getSerperApiKeys().length > 0;
-        const hasBrave = getBraveApiKeys().length > 0;
+/**
+ * Web search handler function
+ * @param {object} args - Search arguments
+ * @param {string} args.query - Search query
+ * @returns {Promise<string>} JSON string of results or error message
+ */
+const handler = async (args) => {
+    const query = String(args.query || "").trim();
+    if (!query) return "Error: query is required";
 
-        let searches;
+    const usesOperators = hasDorkOperators(query);
+    const requiresGoogle = needsGoogle(query);
+    const hasSerper = getSerperApiKeys().length > 0;
+    const hasBrave = getBraveApiKeys().length > 0;
 
-        // Google operators detected + Serper available
-        if (requiresGoogle && hasSerper) {
-            searches = await Promise.allSettled([
-                fetchSerperResults(query, MAX_RESULTS),
-            ]);
-            const [serper] = searches;
-            return formatResults(
-                query,
-                mergeResults(
-                    serper.status === "fulfilled" ? serper.value : [],
-                ).slice(0, MAX_RESULTS),
-                searches,
-            );
-        }
+    let searches;
 
-        // Dork operators + Serper available
-        if (usesOperators && hasSerper) {
-            searches = await Promise.allSettled([
-                fetchSerperResults(query, MAX_RESULTS),
-                fetchDuckDuckGoResults(query, MAX_RESULTS),
-            ]);
-            const [serper, duckDuckGo] = searches;
-            return formatResults(
-                query,
-                mergeResults(
-                    serper.status === "fulfilled" ? serper.value : [],
-                    duckDuckGo.status === "fulfilled" ? duckDuckGo.value : [],
-                ).slice(0, MAX_RESULTS),
-                searches,
-            );
-        }
-
-        // Standard search with all available backends
-        const promises = [
-            fetchDuckDuckGoResults(query, MAX_RESULTS),
-            fetchTavilyResults(query, MAX_RESULTS),
-        ];
-
-        if (hasSerper) {
-            promises.push(fetchSerperResults(query, 10));
-        }
-
-        if (getJinaApiKeys().length) {
-            promises.push(fetchJinaResults(query, 10));
-        }
-
-        if (hasBrave) {
-            promises.push(fetchBraveResults(query, 10));
-        }
-
-        searches = await Promise.allSettled(promises);
-
-        const [duckDuckGo, tavily, serper, jina, brave] = searches;
+    // Google operators detected + Serper available
+    if (requiresGoogle && hasSerper) {
+        searches = await Promise.allSettled([
+            fetchSerperResults(query, MAX_RESULTS),
+        ]);
+        const [serper] = searches;
         return formatResults(
             query,
             mergeResults(
-                duckDuckGo.status === "fulfilled" ? duckDuckGo.value : [],
-                tavily.status === "fulfilled" ? tavily.value : [],
-                serper?.status === "fulfilled" ? serper.value : [],
-                jina?.status === "fulfilled" ? jina.value : [],
-                brave?.status === "fulfilled" ? brave.value : [],
+                serper.status === "fulfilled" ? serper.value : [],
             ).slice(0, MAX_RESULTS),
             searches,
         );
-    },
+    }
+
+    // Dork operators + Serper available
+    if (usesOperators && hasSerper) {
+        searches = await Promise.allSettled([
+            fetchSerperResults(query, MAX_RESULTS),
+            fetchDuckDuckGoResults(query, MAX_RESULTS),
+        ]);
+        const [serper, duckDuckGo] = searches;
+        return formatResults(
+            query,
+            mergeResults(
+                serper.status === "fulfilled" ? serper.value : [],
+                duckDuckGo.status === "fulfilled" ? duckDuckGo.value : [],
+            ).slice(0, MAX_RESULTS),
+            searches,
+        );
+    }
+
+    // Standard search with all available backends
+    const promises = [
+        fetchDuckDuckGoResults(query, MAX_RESULTS),
+        fetchTavilyResults(query, MAX_RESULTS),
+    ];
+
+    if (hasSerper) {
+        promises.push(fetchSerperResults(query, 10));
+    }
+
+    if (getJinaApiKeys().length) {
+        promises.push(fetchJinaResults(query, 10));
+    }
+
+    if (hasBrave) {
+        promises.push(fetchBraveResults(query, 10));
+    }
+
+    searches = await Promise.allSettled(promises);
+
+    const [duckDuckGo, tavily, serper, jina, brave] = searches;
+    return formatResults(
+        query,
+        mergeResults(
+            duckDuckGo.status === "fulfilled" ? duckDuckGo.value : [],
+            tavily.status === "fulfilled" ? tavily.value : [],
+            serper?.status === "fulfilled" ? serper.value : [],
+            jina?.status === "fulfilled" ? jina.value : [],
+            brave?.status === "fulfilled" ? brave.value : [],
+        ).slice(0, MAX_RESULTS),
+        searches,
+    );
+};
+
+module.exports = {
+    definition,
+    handler,
 };
