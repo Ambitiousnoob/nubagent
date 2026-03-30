@@ -1,9 +1,21 @@
-const { normalizeUrl, extractTitle, extractMetaDescription, extractCanonical, extractHeadings, extractLinks, fetchTextResource } = require("../../lib/web");
+const {
+    assertPublicHttpUrl,
+    normalizeUrl,
+    extractTitle,
+    extractMetaDescription,
+    extractPublishedTime,
+    extractCanonical,
+    extractReadableHtml,
+    extractLinks: extractPageLinks,
+    stripHtml,
+} = require("../../lib/web");
 
 const DEFAULT_MAX_CHARS = 20000;
 const HARD_MAX_CHARS = 80000;
 const TIMEOUT_MS = 15000;
 const MAX_RETRIES = 2;
+const MAX_REDIRECTS = 5;
+const MAX_ERROR_DETAIL_CHARS = 240;
 
 const JINA_READER_URL = "https://r.jina.ai/";
 const FIRECRAWL_URL = "https://api.firecrawl.dev/v1/scrape";
@@ -14,12 +26,148 @@ const getFirecrawlApiKey = () => {
     return keys[0] || null;
 };
 
+let jinaApiKeyIndex = 0;
+
+const getJinaApiKeys = () => (
+    String(process.env.JINA_API_KEYS || process.env.JINA_API_KEY || "")
+        .split(",")
+        .map((key) => key.trim())
+        .filter(Boolean)
+);
+
+const getJinaApiKey = () => {
+    const keys = getJinaApiKeys();
+    if (!keys.length) return null;
+    const nextKey = keys[jinaApiKeyIndex % keys.length];
+    jinaApiKeyIndex = (jinaApiKeyIndex + 1) % keys.length;
+    return nextKey;
+};
+
 const normalizeText = (value) => String(value ?? "").replace(/\u0000/g, "").trim();
+
+const getErrorMessage = (error, timeoutMs = TIMEOUT_MS) => {
+    if (!error) return "unknown error";
+    if (error.name === "AbortError") return `timed out after ${timeoutMs}ms`;
+    return normalizeText(error.message || String(error)) || "unknown error";
+};
+
+const withTimeoutSignal = async (worker, timeoutMs = TIMEOUT_MS) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        return await worker(controller.signal);
+    } finally {
+        clearTimeout(timer);
+    }
+};
 
 const extractMarkdownTitle = (content) => {
     const match = content.match(/^#\s+(.+)$/m);
     return match ? match[1].trim() : "";
 };
+
+const collectUniqueLinks = (links = [], limit = 20) => {
+    const unique = [];
+    const seen = new Set();
+    for (const link of links) {
+        const normalized = normalizeUrl(link);
+        if (!normalized || seen.has(normalized)) continue;
+        seen.add(normalized);
+        unique.push(normalized);
+        if (unique.length >= limit) break;
+    }
+    return unique;
+};
+
+const extractLinksFromMarkdown = (content, baseUrl) => {
+    const links = [];
+    const text = String(content || "");
+
+    for (const match of text.matchAll(/\[[^\]]*]\((https?:\/\/[^)\s]+)\)/gi)) {
+        links.push(match[1]);
+    }
+
+    for (const match of text.matchAll(/\bhttps?:\/\/[^\s)<>"']+/gi)) {
+        links.push(match[0].replace(/[),.;:!?]+$/, ""));
+    }
+
+    return collectUniqueLinks(
+        links.map((link) => normalizeUrl(link, baseUrl)).filter(Boolean),
+    );
+};
+
+const renderHtmlAsMarkdown = (html, baseUrl) => {
+    const readableHtml = extractReadableHtml(html);
+    const outboundLinks = collectUniqueLinks(extractPageLinks(readableHtml, baseUrl));
+    const withMarkdownLinks = String(readableHtml || "").replace(
+        /<a\b[^>]*href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))[^>]*>([\s\S]*?)<\/a>/gi,
+        (_, hrefA, hrefB, hrefC, inner) => {
+            const href = normalizeUrl(hrefA || hrefB || hrefC || "", baseUrl);
+            const label = normalizeText(stripHtml(inner));
+            if (href && label) return `[${label}](${href})`;
+            return href || label || "";
+        },
+    );
+
+    const markdown = stripHtml(
+        withMarkdownLinks
+            .replace(/<pre\b[^>]*>([\s\S]*?)<\/pre>/gi, (_, inner) => `\n\n\`\`\`\n${stripHtml(inner)}\n\`\`\`\n\n`)
+            .replace(/<code\b[^>]*>([\s\S]*?)<\/code>/gi, (_, inner) => `\`${normalizeText(stripHtml(inner))}\``)
+            .replace(/<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi, (_, level, inner) => {
+                const heading = normalizeText(stripHtml(inner));
+                if (!heading) return "\n\n";
+                return `\n\n${"#".repeat(Math.min(Number(level), 6))} ${heading}\n\n`;
+            })
+            .replace(/<li\b[^>]*>([\s\S]*?)<\/li>/gi, (_, inner) => {
+                const item = normalizeText(stripHtml(inner));
+                return item ? `\n- ${item}` : "\n";
+            })
+            .replace(/<blockquote\b[^>]*>([\s\S]*?)<\/blockquote>/gi, (_, inner) => {
+                const quote = normalizeText(stripHtml(inner));
+                return quote ? `\n\n> ${quote.replace(/\n+/g, "\n> ")}\n\n` : "\n\n";
+            })
+            .replace(/<br\s*\/?>/gi, "\n")
+            .replace(/<\/?(?:p|div|section|article|main|header|footer|aside|nav|ul|ol|table|tr|td|th)\b[^>]*>/gi, "\n"),
+    )
+        .replace(/[ \t]+\n/g, "\n")
+        .replace(/\n[ \t]+/g, "\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+
+    return {
+        markdown,
+        readableHtml,
+        outboundLinks,
+    };
+};
+
+const readErrorDetail = async (response) => {
+    try {
+        const contentType = response.headers.get("content-type") || "";
+        if (/json/i.test(contentType)) {
+            const data = await response.json();
+            const detail = normalizeText(
+                data?.error
+                || data?.message
+                || data?.detail
+                || data?.details
+                || data?.statusText,
+            );
+            return detail.slice(0, MAX_ERROR_DETAIL_CHARS);
+        }
+
+        const detail = normalizeText(await response.text());
+        return detail.slice(0, MAX_ERROR_DETAIL_CHARS);
+    } catch {
+        return "";
+    }
+};
+
+const isTextLikeContent = (contentType = "") => (
+    !contentType ||
+    /(text\/|application\/(json|xml|xhtml\+xml|javascript|ld\+json))/i.test(contentType)
+);
 
 const parseJinaResponse = (text) => {
     const lines = text.split("\n");
@@ -63,7 +211,7 @@ const fetchWithJina = async (url, format, maxChars, signal) => {
         "X-With-Links-Summary": "true",
     };
 
-    const apiKey = process.env.JINA_API_KEY;
+    const apiKey = getJinaApiKey();
     if (apiKey) {
         headers["Authorization"] = `Bearer ${apiKey}`;
     }
@@ -75,19 +223,23 @@ const fetchWithJina = async (url, format, maxChars, signal) => {
     });
 
     if (!response.ok) {
-        throw new Error(`Jina returned HTTP ${response.status}`);
+        const detail = await readErrorDetail(response);
+        throw new Error(`Jina returned HTTP ${response.status}${detail ? `: ${detail}` : ""}`);
     }
 
     const raw = await response.text();
     const parsed = parseJinaResponse(raw);
+    const content = parsed.content.slice(0, maxChars);
 
     return {
         title: parsed.meta.title,
         url: parsed.meta.url || url,
-        content: parsed.content.slice(0, maxChars),
+        content,
+        fullLength: parsed.content.length,
         description: "",
         publishedTime: parsed.meta.publishedTime,
         via: "jina",
+        outboundLinks: extractLinksFromMarkdown(content, parsed.meta.url || url),
     };
 };
 
@@ -112,70 +264,121 @@ const fetchWithFirecrawl = async (url, format, maxChars, signal) => {
     });
 
     if (!response.ok) {
-        throw new Error(`Firecrawl returned HTTP ${response.status}`);
+        const detail = await readErrorDetail(response);
+        throw new Error(`Firecrawl returned HTTP ${response.status}${detail ? `: ${detail}` : ""}`);
     }
 
     const data = await response.json();
     if (!data.success || !data.markdown) {
-        throw new Error("Firecrawl returned no content");
+        const detail = normalizeText(data?.error || data?.message || "Firecrawl returned no content");
+        throw new Error(detail);
     }
+
+    const content = String(data.markdown || "").slice(0, maxChars);
 
     return {
         title: extractMarkdownTitle(data.markdown) || data.metadata?.title || "",
         url: data.metadata?.sourceURL || url,
-        content: data.markdown.slice(0, maxChars),
+        content,
+        fullLength: String(data.markdown || "").length,
         description: data.metadata?.description || "",
         publishedTime: data.metadata?.date || "",
         via: "firecrawl",
+        outboundLinks: extractLinksFromMarkdown(content, data.metadata?.sourceURL || url),
+    };
+};
+
+const fetchDirectly = async (url, format, maxChars, signal, redirectCount = 0) => {
+    const normalized = await assertPublicHttpUrl(url);
+    const response = await fetch(normalized, {
+        method: "GET",
+        redirect: "manual",
+        signal,
+        headers: {
+            "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,application/json;q=0.9,application/xml;q=0.8,*/*;q=0.5",
+            "User-Agent": "nub-agent/1.0",
+        },
+    });
+
+    if (response.status >= 300 && response.status < 400) {
+        if (redirectCount >= MAX_REDIRECTS) {
+            throw new Error("Too many redirects");
+        }
+
+        const location = response.headers.get("location");
+        if (!location) {
+            throw new Error(`Redirect ${response.status} without location`);
+        }
+
+        return fetchDirectly(new URL(location, normalized).toString(), format, maxChars, signal, redirectCount + 1);
+    }
+
+    if (!response.ok) {
+        const detail = await readErrorDetail(response);
+        throw new Error(`Direct fetch returned HTTP ${response.status}${detail ? `: ${detail}` : ""}`);
+    }
+
+    const contentType = response.headers.get("content-type") || "";
+    if (!isTextLikeContent(contentType)) {
+        throw new Error(`Unsupported content-type: ${contentType || "unknown"}`);
+    }
+
+    const rawText = await response.text();
+    const isHtml = /html|xhtml/i.test(contentType);
+    const readable = isHtml ? renderHtmlAsMarkdown(rawText, normalized) : {
+        markdown: normalizeText(rawText),
+        readableHtml: "",
+        outboundLinks: [],
+    };
+    const plainText = isHtml ? normalizeText(stripHtml(readable.readableHtml || rawText)) : normalizeText(rawText);
+    const content = format === "html"
+        ? rawText
+        : (format === "markdown" ? readable.markdown : plainText);
+
+    return {
+        title: extractTitle(rawText) || "",
+        url: extractCanonical(rawText, normalized) || normalized,
+        content: content.slice(0, maxChars),
+        fullLength: content.length,
+        description: extractMetaDescription(rawText) || "",
+        publishedTime: extractPublishedTime(rawText) || "",
+        via: "direct",
+        outboundLinks: isHtml ? readable.outboundLinks : extractLinksFromMarkdown(content, normalized),
     };
 };
 
 const fetchWithFallback = async (url, format, maxChars) => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    const steps = [];
 
-    try {
-        // Try Jina first (most reliable)
-        const jinaResult = await fetchWithJina(url, format, maxChars, controller.signal);
-        clearTimeout(timer);
-        return jinaResult;
-    } catch (jinaError) {
-        // Try Firecrawl if configured
-        const firecrawlKey = getFirecrawlApiKey();
-        if (firecrawlKey) {
-            try {
-                const firecrawlResult = await fetchWithFirecrawl(url, format, maxChars, controller.signal);
-                clearTimeout(timer);
-                return firecrawlResult;
-            } catch (firecrawlError) {
-                // Continue to direct fetch
-            }
+    if (format !== "html") {
+        steps.push({
+            name: "Jina",
+            run: (signal) => fetchWithJina(url, format, maxChars, signal),
+        });
+
+        if (getFirecrawlApiKey()) {
+            steps.push({
+                name: "Firecrawl",
+                run: (signal) => fetchWithFirecrawl(url, format, maxChars, signal),
+            });
         }
-
-        // Direct fetch with lib/web.js
-        try {
-            const directResult = await fetchTextResource(url, TIMEOUT_MS);
-            clearTimeout(timer);
-
-            let content = directResult.text;
-            if (directResult.isHtml) {
-                content = content; // Already processed by lib/web.js
-            }
-
-            return {
-                title: directResult.titleHint || extractTitle(content) || "",
-                url: directResult.finalUrl || url,
-                content: content.slice(0, maxChars),
-                description: extractMetaDescription(content) || "",
-                publishedTime: directResult.publishedTime || "",
-                via: "direct",
-            };
-        } catch (directError) {
-            throw new Error(`All fetch methods failed: Jina (${jinaError.message}), Firecrawl (${firecrawlKey ? firecrawlError.message : "not configured"}), Direct (${directError.message})`);
-        }
-    } finally {
-        clearTimeout(timer);
     }
+
+    steps.push({
+        name: "Direct",
+        run: (signal) => fetchDirectly(url, format, maxChars, signal),
+    });
+
+    const errors = [];
+    for (const step of steps) {
+        try {
+            return await withTimeoutSignal((signal) => step.run(signal));
+        } catch (error) {
+            errors.push(`${step.name} (${getErrorMessage(error)})`);
+        }
+    }
+
+    throw new Error(`All fetch methods failed: ${errors.join(", ")}`);
 };
 
 /**
@@ -227,7 +430,7 @@ const handler = async (args) => {
     const url = normalizeText(args.url);
     const format = args.format === "text" ? "text" : (args.format === "html" ? "html" : "markdown");
     const maxChars = Math.min(Number(args.max_chars) || DEFAULT_MAX_CHARS, HARD_MAX_CHARS);
-    const extractLinks = Boolean(args.extract_links);
+    const includeLinks = Boolean(args.extract_links);
 
     // URL validation
     if (!url) {
@@ -258,7 +461,7 @@ const handler = async (args) => {
             result = await fetchWithFallback(url, format, maxChars);
             break;
         } catch (error) {
-            lastError = error.message;
+            lastError = getErrorMessage(error);
         }
     }
 
@@ -267,14 +470,15 @@ const handler = async (args) => {
     }
 
     // Build response
-    const content = result.content;
-    const estTokens = Math.round(content.length / 4);
-    const truncated = content.length >= maxChars;
+    const content = String(result.content || "");
+    const fullLength = Number.isFinite(Number(result.fullLength)) ? Number(result.fullLength) : content.length;
+    const estTokens = Math.round(fullLength / 4);
+    const truncated = fullLength > content.length;
 
     const meta = [
         `<!-- Source: ${result.url} -->`,
         `<!-- Title: ${result.title || "Untitled"} -->`,
-        `<!-- Format: ${format} | Characters: ${content.length} | Est. tokens: ~${estTokens}${truncated ? ` | Truncated from ${result.content.length} chars` : ""} -->`,
+        `<!-- Format: ${format} | Characters: ${content.length} | Est. tokens: ~${estTokens}${truncated ? ` | Truncated from ${fullLength} chars` : ""} -->`,
         `<!-- Fetched via: ${result.via} -->`,
     ];
 
@@ -294,18 +498,15 @@ const handler = async (args) => {
 
     finalContent += content;
 
-    if (extractLinks && format === "markdown") {
-        try {
-            const rawHtml = await fetch(url, { method: "GET" }).then((r) => r.text()).catch(() => "");
-            const links = extractLinks(rawHtml, url).slice(0, 20);
-            if (links.length) {
-                finalContent += "\n\n---\n\n## Outbound Links\n\n";
-                for (const link of links) {
-                    finalContent += `- ${link}\n`;
-                }
+    if (includeLinks && format === "markdown") {
+        const links = collectUniqueLinks(
+            Array.isArray(result.outboundLinks) ? result.outboundLinks : [],
+        );
+        if (links.length) {
+            finalContent += "\n\n---\n\n## Outbound Links\n\n";
+            for (const link of links) {
+                finalContent += `- ${link}\n`;
             }
-        } catch {
-            // Ignore link extraction errors
         }
     }
 

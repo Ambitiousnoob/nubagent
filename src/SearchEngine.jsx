@@ -1,15 +1,19 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import Company, { prepareSearchQuery, finalizeResearchAnswer } from "./lib/index.js";
+import { buildAttributedSourcesFromEvidence, findSourceForCitation, getDisplaySourceNumber } from "./lib/citations.js";
+import { buildSearchQueries } from "./lib/searchPlanner.js";
 import { saveSession, getSessionById } from "./lib/library.js";
 import Library from "./Library.jsx";
 
 const CHAT_API = "/api/chat";
 const SEARCH_API = "/api/search";
-const FETCH_API = "/api/fetch";
+const READ_API = "/api/read";
 const MODEL_NAME = "nub-agent";
 const SOURCE_TARGET = 60;
 const FETCH_TARGET = 24;
-const SEARCH_SWARM_SIZE = 3;
+const FETCH_PLAN_BUFFER = 8;
+const SEARCH_SWARM_SIZE = 4;
+const SEARCH_VARIANT_RESULT_TARGET = 18;
 const SYNTHESIS_SWARM_SIZE = 3;
 const FETCH_CONCURRENCY = 4;
 const MAX_UPLOAD_FILES = 6;
@@ -240,29 +244,6 @@ const extractAnswerParts = (text = "") => {
     };
 };
 
-const extractCitationNumbers = (text = "") => ([
-    ...new Set(
-        [...String(text || "").matchAll(/\[(\d+)\]/g)]
-            .map((match) => Number(match[1]))
-            .filter((value) => Number.isInteger(value) && value > 0),
-    ),
-]);
-
-const buildAttributedSources = (answerText = "", evidenceEntries = []) => {
-    const successfulEntries = (Array.isArray(evidenceEntries) ? evidenceEntries : []).filter((entry) => stripFetchMeta(entry?.content || "").trim());
-    const byCitation = new Map(
-        successfulEntries
-            .map((entry) => [Number(entry?.source?.citationIndex), entry?.source])
-            .filter((entry) => Number.isInteger(entry[0]) && entry[0] > 0 && entry[1]?.url),
-    );
-    const citedSources = extractCitationNumbers(answerText)
-        .map((citationIndex) => byCitation.get(citationIndex))
-        .filter(Boolean);
-
-    if (citedSources.length) return dedupeSources(citedSources, FETCH_TARGET);
-    return dedupeSources(successfulEntries.map((entry) => entry.source).filter(Boolean), FETCH_TARGET);
-};
-
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const normalizeTextBlock = (value) => String(value ?? "").replace(/\u0000/g, "").replace(/\r\n?/g, "\n").trim();
@@ -326,45 +307,10 @@ const postJson = async (url, payload, signal) => {
     return response.json();
 };
 
-const buildSwarmQueries = (query) => {
-    const base = String(query || "").trim();
-    const operatorHeavy = /\b(site:|filetype:|intitle:|inurl:|after:|before:)\b/i.test(base);
-    const variants = operatorHeavy
-        ? [
-            base,
-            `${base} analysis`,
-            `${base} evidence`,
-            `${base} expert commentary`,
-            `${base} latest`,
-        ]
-        : [
-            base,
-            `${base} overview`,
-            `${base} evidence`,
-            `${base} latest`,
-            `${base} expert analysis`,
-        ];
-
-    return [...new Set(variants.map((item) => item.trim()).filter(Boolean))].slice(0, SEARCH_SWARM_SIZE);
-};
+const buildSwarmQueries = (query) => buildSearchQueries(query, { maxQueries: SEARCH_SWARM_SIZE });
 
 const dedupeSources = (items = [], limit = SOURCE_TARGET) => {
-    const seen = new Set();
-    const merged = [];
-    for (const item of Array.isArray(items) ? items : []) {
-        const url = String(item?.url || "").trim();
-        if (!url || seen.has(url)) continue;
-        seen.add(url);
-        merged.push({
-            title: item?.title || getDomain(url),
-            url,
-            description: item?.description || item?.snippet || "",
-            date: item?.date || null,
-            source: item?.source || null,
-        });
-        if (merged.length >= limit) break;
-    }
-    return merged;
+    return Company.rag.mergeSourcesByCanonicalUrl(items, { limit });
 };
 
 const chunkArray = (items = [], size = 1) => {
@@ -481,16 +427,44 @@ const runConcurrent = async (items, limit, worker) => {
     return results;
 };
 
+const collectSuccessfulResults = async (items, target, limit, worker) => {
+    const values = Array.isArray(items) ? items : [];
+    const successTarget = Math.max(1, Number(target) || values.length || 1);
+    const concurrency = Math.max(1, limit || 1);
+    const results = [];
+    let cursor = 0;
+
+    const runNext = async () => {
+        while (results.length < successTarget) {
+            const current = cursor;
+            if (current >= values.length) return;
+            cursor += 1;
+
+            const nextValue = await worker(values[current], current);
+            if (nextValue) {
+                results.push(nextValue);
+            }
+        }
+    };
+
+    await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, runNext));
+    return results.slice(0, successTarget);
+};
+
 const renderInlineMarkup = (str, sources = []) => {
     const parts = String(str || "").split(/(\*\*[^*]+\*\*|`[^`]+`|\[\d+\])/g);
     return parts.map((part, index) => {
         if (/^\*\*[^*]+\*\*$/.test(part)) return <strong key={index}>{part.slice(2, -2)}</strong>;
         if (/^`[^`]+`$/.test(part)) return <code key={index} className="ic">{part.slice(1, -1)}</code>;
         if (/^\[\d+\]$/.test(part)) {
-            const sourceIndex = Number(part.slice(1, -1)) - 1;
+            const source = findSourceForCitation(part.slice(1, -1), sources);
+            const label = part.slice(1, -1);
+            if (!source?.url) {
+                return <span key={index} className="cite">{label}</span>;
+            }
             return (
-                <a key={index} href={sources[sourceIndex]?.url || "#"} target="_blank" rel="noopener noreferrer" className="cite">
-                    {part.slice(1, -1)}
+                <a key={index} href={source.url} target="_blank" rel="noopener noreferrer" className="cite">
+                    {label}
                 </a>
             );
         }
@@ -571,6 +545,21 @@ const formatGeneratedAt = (value) => {
         .replace(/\.\d{3}Z$/, " UTC");
 };
 
+const getSourceSignals = (source = {}) => {
+    const signals = [];
+    const providerCount = Number(source?.providerCount || 0);
+    const queryHitCount = Number(source?.queryHitCount || 0);
+
+    if (providerCount > 1) {
+        signals.push(`${providerCount} providers`);
+    }
+    if (queryHitCount > 1) {
+        signals.push(`${queryHitCount} query variants`);
+    }
+
+    return signals;
+};
+
 const buildCoverageRows = (query, researchMeta = {}, sources = []) => {
     const normalizedQuery = String(query || "").trim();
     const operatorMode = /\b(site:|filetype:|intitle:|inurl:|after:|before:)\b/i.test(normalizedQuery);
@@ -578,7 +567,11 @@ const buildCoverageRows = (query, researchMeta = {}, sources = []) => {
     const queryCount = Number(researchMeta?.searchCount || 0);
     const rankedSites = Number(researchMeta?.rankedSites || 0);
     const fetchedSites = Number(researchMeta?.fetchedSites || 0);
+    const fetchPlanned = Number(researchMeta?.fetchPlanned || 0);
+    const fetchAttempts = Number(researchMeta?.fetchAttempts || fetchedSites);
     const synthesisWorkers = Number(researchMeta?.synthesisWorkers || 0);
+    const crossCheckedSources = sources.filter((source) => Number(source?.providerCount || 0) > 1).length;
+    const multiQuerySources = sources.filter((source) => Number(source?.queryHitCount || 0) > 1).length;
     const subagents = Array.isArray(researchMeta?.subagents) ? researchMeta.subagents.filter(Boolean) : [];
     const dedicatedSubagentCount = countSubagentAssignments(subagents);
     const rows = [
@@ -596,6 +589,12 @@ const buildCoverageRows = (query, researchMeta = {}, sources = []) => {
             label: "Sites ranked",
             spec: `${Math.max(rankedSites, sources.length)} unique site${Math.max(rankedSites, sources.length) === 1 ? "" : "s"} kept after dedupe`,
         },
+        ...(fetchPlanned
+            ? [{
+                label: "Fetch plan",
+                spec: `${fetchPlanned} candidate page${fetchPlanned === 1 ? "" : "s"} selected with domain diversity before fetch`,
+            }]
+            : []),
         ...(researchMeta?.ragLexical
             ? [{
                 label: "Retrieval (RAG)",
@@ -603,13 +602,19 @@ const buildCoverageRows = (query, researchMeta = {}, sources = []) => {
             }]
             : []),
         {
-            label: "Pages fetched",
-            spec: `${fetchedSites} page${fetchedSites === 1 ? "" : "s"} read for evidence extraction`,
+            label: "Readable pages",
+            spec: `${fetchedSites} page${fetchedSites === 1 ? "" : "s"} kept after ${Math.max(fetchAttempts, fetchedSites)} fetch attempt${Math.max(fetchAttempts, fetchedSites) === 1 ? "" : "s"}`,
         },
         {
             label: "Cited sources",
             spec: `${sources.length} source${sources.length === 1 ? "" : "s"} carried into the final answer`,
         },
+        ...((crossCheckedSources || multiQuerySources)
+            ? [{
+                label: "Consensus signals",
+                spec: `${crossCheckedSources} source${crossCheckedSources === 1 ? "" : "s"} matched across providers; ${multiQuerySources} source${multiQuerySources === 1 ? "" : "s"} returned across multiple query variants`,
+            }]
+            : []),
         {
             label: "Synthesis",
             spec: `${Math.max(synthesisWorkers, 1)} summarization worker${Math.max(synthesisWorkers, 1) === 1 ? "" : "s"} merged into one final response`,
@@ -790,7 +795,7 @@ function SourcePills({ sources }) {
                             }}
                         />
                     )}
-                    <span className="pill__n">{index + 1}</span>
+                    <span className="pill__n">{getDisplaySourceNumber(source, index)}</span>
                     <span className="pill__domain">{getDomain(source.url)}</span>
                 </a>
             ))}
@@ -830,10 +835,13 @@ function LibertySourceTable({ sources = [] }) {
                 <tbody>
                     {rows.map((source, index) => (
                         <tr key={source.url || `${index}`}>
-                            <td className="col-num">{index + 1}</td>
+                            <td className="col-num">{getDisplaySourceNumber(source, index)}</td>
                             <td className="col-source">
                                 <div className="la-source-name">{source.title || getDomain(source.url)}</div>
                                 <div className="la-source-ref">{getDomain(source.url)}</div>
+                                {getSourceSignals(source).length ? (
+                                    <div className="la-source-ref">{getSourceSignals(source).join(" • ")}</div>
+                                ) : null}
                                 <a href={source.url} target="_blank" rel="noopener noreferrer" className="la-source-url">
                                     ↗ {source.url}
                                 </a>
@@ -1499,14 +1507,22 @@ export default function SearchEngine() {
             });
 
             const searchSettled = await Promise.allSettled(
-                swarmQueries.map((workerQuery) => postJson(SEARCH_API, { query: workerQuery }, signal)),
+                swarmQueries.map((workerQuery) => postJson(SEARCH_API, {
+                    query: workerQuery,
+                    maxResults: SEARCH_VARIANT_RESULT_TARGET,
+                }, signal)),
             );
 
             const mergedSources = Company.rag.rankSourcesWithRag(
                 searchQuery,
                 dedupeSources(
-                    searchSettled.flatMap((item) => (
-                        item.status === "fulfilled" ? item.value.results || [] : []
+                    searchSettled.flatMap((item, index) => (
+                        item.status === "fulfilled"
+                            ? (item.value.results || []).map((source) => ({
+                                ...source,
+                                queryVariant: swarmQueries[index],
+                            }))
+                            : []
                     )),
                     SOURCE_TARGET,
                 ),
@@ -1516,54 +1532,82 @@ export default function SearchEngine() {
                 throw new Error("No searchable sources were found.");
             }
 
+            const fetchPlan = Company.rag.selectSourcesForFetch(searchQuery, mergedSources, {
+                limit: Math.min(mergedSources.length, FETCH_TARGET + FETCH_PLAN_BUFFER),
+                perDomainLimit: 2,
+            });
+
             patchLastBot(sessionId, {
                 showPlanning: false,
-                statusText: formatSubagentStatus("sourceRanker", `ranked ${mergedSources.length} site${mergedSources.length === 1 ? "" : "s"}. Fetch Coordinator starting ${FETCH_CONCURRENCY} fetch worker${FETCH_CONCURRENCY === 1 ? "" : "s"}...`),
+                statusText: formatSubagentStatus("sourceRanker", `ranked ${mergedSources.length} site${mergedSources.length === 1 ? "" : "s"}. Fetch Coordinator selected ${fetchPlan.length} diverse candidate page${fetchPlan.length === 1 ? "" : "s"}...`),
                 sources: mergedSources,
             });
 
+            const fetchGoal = Math.min(FETCH_TARGET, fetchPlan.length || FETCH_TARGET);
+            let fetchAttempts = 0;
             let fetchedCount = 0;
-            const evidenceEntries = await runConcurrent(mergedSources, FETCH_CONCURRENCY, async (source) => {
+            const fetchedEvidenceEntries = await collectSuccessfulResults(fetchPlan, fetchGoal, FETCH_CONCURRENCY, async (source) => {
                 try {
-                    const fetchResult = await postJson(FETCH_API, {
+                    const fetchResult = await postJson(READ_API, {
                         url: source.url,
-                        format: "text",
-                        max_chars: Company.rag.RAG_FETCH_MAX_CHARS,
+                        mode: "article",
+                        maxChars: Company.rag.RAG_FETCH_MAX_CHARS,
                     }, signal);
+
+                    fetchAttempts += 1;
+                    const resolvedUrl = Company.rag.canonicalizeSourceUrl(
+                        fetchResult?.canonicalUrl || fetchResult?.finalUrl || source.url,
+                    );
+                    const enrichedSource = {
+                        ...source,
+                        url: resolvedUrl || source.url,
+                        title: fetchResult?.title || source.title,
+                        description: source.description || fetchResult?.description || "",
+                        contentType: fetchResult?.contentType || source.contentType || null,
+                        via: fetchResult?.via || source.via || null,
+                    };
+                    const content = fetchResult?.content || "";
+                    if (!stripFetchMeta(content).trim()) {
+                        patchLastBot(sessionId, {
+                            statusText: formatSubagentStatus("fetchCoordinator", `kept ${fetchedCount}/${fetchGoal} readable page${fetchGoal === 1 ? "" : "s"} after ${fetchAttempts} fetch attempt${fetchAttempts === 1 ? "" : "s"}. Backfilling lower-ranked sources...`),
+                        });
+                        return null;
+                    }
 
                     fetchedCount += 1;
                     patchLastBot(sessionId, {
-                        statusText: formatSubagentStatus("fetchCoordinator", `fetched ${fetchedCount}/${mergedSources.length} site${mergedSources.length === 1 ? "" : "s"}. Evidence Curator is building the evidence graph...`),
+                        statusText: formatSubagentStatus("fetchCoordinator", `kept ${fetchedCount}/${fetchGoal} readable page${fetchGoal === 1 ? "" : "s"} after ${fetchAttempts} fetch attempt${fetchAttempts === 1 ? "" : "s"}. Evidence Curator is building the evidence graph...`),
                     });
 
                     return {
-                        source,
-                        content: fetchResult?.content || "",
+                        source: enrichedSource,
+                        content,
                     };
                 } catch (error) {
                     if (error?.name === "AbortError") throw error;
-                    fetchedCount += 1;
+                    fetchAttempts += 1;
                     patchLastBot(sessionId, {
-                        statusText: formatSubagentStatus("fetchCoordinator", `fetched ${fetchedCount}/${mergedSources.length} site${mergedSources.length === 1 ? "" : "s"}. Some fetches were skipped.`),
+                        statusText: formatSubagentStatus("fetchCoordinator", `kept ${fetchedCount}/${fetchGoal} readable page${fetchGoal === 1 ? "" : "s"} after ${fetchAttempts} fetch attempt${fetchAttempts === 1 ? "" : "s"}. Some fetches were skipped.`),
                     });
-                    return {
-                        source,
-                        content: "",
-                        error: error?.message || "Fetch failed.",
-                    };
+                    return null;
                 }
             });
 
-            const fetchedEvidenceEntries = evidenceEntries.filter((entry) => stripFetchMeta(entry?.content || "").trim()).slice(0, FETCH_TARGET);
-            if (!fetchedEvidenceEntries.length) {
+            const rankedEvidenceEntries = Company.rag
+                .rankEvidenceEntriesForQuery(
+                    searchQuery,
+                    fetchedEvidenceEntries,
+                )
+                .slice(0, fetchGoal);
+            if (!rankedEvidenceEntries.length) {
                 throw new Error("No readable source content was fetched.");
             }
 
-            const chunkSize = Math.max(1, Math.ceil(fetchedEvidenceEntries.length / SYNTHESIS_SWARM_SIZE));
-            const evidenceChunks = chunkArray(fetchedEvidenceEntries, chunkSize).slice(0, SYNTHESIS_SWARM_SIZE);
+            const chunkSize = Math.max(1, Math.ceil(rankedEvidenceEntries.length / SYNTHESIS_SWARM_SIZE));
+            const evidenceChunks = chunkArray(rankedEvidenceEntries, chunkSize).slice(0, SYNTHESIS_SWARM_SIZE);
 
             patchLastBot(sessionId, {
-                statusText: formatSubagentStatus("draftSynthesizer", `running ${evidenceChunks.length} synthesis worker${evidenceChunks.length === 1 ? "" : "s"} over ${fetchedEvidenceEntries.length} fetched site${fetchedEvidenceEntries.length === 1 ? "" : "s"}...`),
+                statusText: formatSubagentStatus("draftSynthesizer", `running ${evidenceChunks.length} synthesis worker${evidenceChunks.length === 1 ? "" : "s"} over ${rankedEvidenceEntries.length} fetched site${rankedEvidenceEntries.length === 1 ? "" : "s"}...`),
             });
 
             const draftSettled = await Promise.allSettled(
@@ -1603,7 +1647,7 @@ export default function SearchEngine() {
                 throw new Error("Research workers did not produce a final digest.");
             }
 
-            const sourceIndex = fetchedEvidenceEntries
+            const sourceIndex = rankedEvidenceEntries
                 .map((entry) => {
                     const source = entry.source || {};
                     return `[${source.citationIndex}] ${source.title} — ${source.url}`;
@@ -1633,13 +1677,15 @@ export default function SearchEngine() {
 
             const fullText = finalizeResearchAnswer(getChatText(finalPayload));
             await delay(250);
-            const attributedSources = buildAttributedSources(fullText, fetchedEvidenceEntries);
+            const attributedSources = buildAttributedSourcesFromEvidence(fullText, rankedEvidenceEntries, FETCH_TARGET);
             const researchMeta = {
                 attachments: attachments.length,
                 generatedAt: new Date().toISOString(),
                 searchCount: swarmQueries.length,
                 rankedSites: mergedSources.length,
-                fetchedSites: fetchedEvidenceEntries.length,
+                fetchPlanned: fetchPlan.length,
+                fetchedSites: rankedEvidenceEntries.length,
+                fetchAttempts,
                 synthesisWorkers: evidenceChunks.length,
                 ragLexical: true,
                 subagents: buildResearchSubagents({
@@ -1647,7 +1693,7 @@ export default function SearchEngine() {
                     attachmentCount: attachments.length,
                     searchCount: swarmQueries.length,
                     rankedSites: mergedSources.length,
-                    fetchedSites: fetchedEvidenceEntries.length,
+                    fetchedSites: rankedEvidenceEntries.length,
                     synthesisWorkers: evidenceChunks.length,
                     citedSources: attributedSources.length,
                 }),

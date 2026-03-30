@@ -3,6 +3,12 @@
 This repo uses dedicated subagent ownership down to the smallest meaningful part.
 If a request touches code, docs, tests, or release notes, assign each touched slice to a named subagent before editing.
 
+These owners exist to make NubAgent a better information finder first:
+
+- improve trustworthy search coverage before adding cosmetic complexity
+- improve evidence extraction and citation traceability before adding answer polish
+- prefer changes that make uncertainty, source quality, and verification more explicit to the user
+
 ## Core Rules
 
 - Every meaningful work slice gets exactly one dedicated subagent owner.
@@ -38,6 +44,15 @@ Use these as the default owners for the live search-first product surface:
 - `.codex/agents/nub_state_owner.toml`
   Scope: persisted UI state, state namespaces, remote/local state coordination.
 
+## Support UI Ownership
+
+- `.codex/agents/nub_app_shell_owner.toml`
+  Scope: `src/App.jsx`, top-level view switching, shell layout, and PWA prompt behavior.
+- `.codex/agents/nub_settings_owner.toml`
+  Scope: settings UI, API key and model preferences, theme selection, and settings-side validation.
+- `.codex/agents/nub_shared_ui_owner.toml`
+  Scope: shared UI primitives, theme providers, toast or modal infrastructure, and base styling tokens.
+
 ## Backend And Tool Ownership
 
 - `.codex/agents/nub_chat_backend_owner.toml`
@@ -45,7 +60,7 @@ Use these as the default owners for the live search-first product surface:
 - `.codex/agents/nub_search_backend_owner.toml`
   Scope: `/api/search`, search-provider routing, search backend behavior.
 - `.codex/agents/nub_content_backend_owner.toml`
-  Scope: `/api/fetch`, `/api/read`, `/api/crawl`, backend content retrieval paths.
+  Scope: `/api/content` plus the `/api/fetch`, `/api/read`, and `/api/crawl` aliases, backend content retrieval paths.
 - `.codex/agents/nub_search_tool_owner.toml`
   Scope: search tool implementations and provider-specific logic.
 - `.codex/agents/nub_fetch_tool_owner.toml`
@@ -62,7 +77,7 @@ Use these as the default owners for the live search-first product surface:
 - `.codex/agents/nub_test_engineer.toml`
   Scope: tests, verification commands, regression coverage.
 - `.codex/agents/nub_code_reviewer.toml`
-  Scope: defect review, correctness, regressions, code quality.
+  Scope: defect review, correctness, regressions, code quality, and evidence-path risk.
 - `.codex/agents/nub_docs_owner.toml`
   Scope: README, API docs, architecture notes, operator guidance.
 - `.codex/agents/nub_docs_sync.toml`

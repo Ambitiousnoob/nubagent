@@ -10,6 +10,10 @@ import { ExternalLink, Calendar, Tag } from 'lucide-react';
  * @param {function} onClick - Click handler
  */
 export function SearchResultCard({ source, index, onClick }) {
+  const displayIndex = Number.isInteger(Number(source?.citationIndex)) && Number(source?.citationIndex) > 0
+    ? Number(source.citationIndex)
+    : (index + 1);
+
   const getDomain = (url) => {
     try {
       return new URL(url).hostname.replace(/^www\./, '');
@@ -89,7 +93,7 @@ export function SearchResultCard({ source, index, onClick }) {
       </div>
 
       <h3 className="search-result-card__title">
-        <span className="search-result-card__index">{index + 1}</span>
+        <span className="search-result-card__index">{displayIndex}</span>
         {source.title || domain}
       </h3>
 

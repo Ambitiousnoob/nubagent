@@ -8,7 +8,7 @@
  * - /api/content?action=crawl (POST) - Multi-page crawling
  */
 
-const { readBody } = require('../lib/web');
+const { readBody, parseFetchToolPayload } = require('../lib/web');
 const { handler: webFetchHandler } = require('./tools/web_fetch');
 
 const writeCorsHeaders = (res) => {
@@ -96,10 +96,17 @@ async function handleFetch(req, res) {
             return;
         }
 
+        const parsed = parseFetchToolPayload(raw);
+
         sendJson(res, 200, {
             ok: true,
             url,
-            content: String(raw || ""),
+            finalUrl: parsed.finalUrl || url,
+            title: parsed.title || "",
+            description: parsed.description || "",
+            publishedTime: parsed.publishedTime || "",
+            via: parsed.via || "",
+            content: parsed.content || "",
         });
     } catch (error) {
         sendJson(res, 500, { error: error?.message || "Fetch request failed." });

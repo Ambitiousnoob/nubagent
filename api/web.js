@@ -1,7 +1,7 @@
-const { readBody } = require("../lib/web");
+const { readBody, parseFetchToolPayload, stripFetchMeta } = require("../lib/web");
 const { handler: webSearchHandler } = require("./tools/web_search");
 const { handler: webFetchHandler } = require("./tools/web_fetch");
-const { rerankSourcesForQuery, rankSourcesWithRag, buildRagEvidenceBlock, RAG_FETCH_MAX_CHARS, RAG_EXCERPT_MAX_CHARS } = require("../lib/rag");
+const { rerankSourcesForQuery, rankSourcesWithRag, selectSourcesForFetch, rankEvidenceEntriesForQuery, buildRagEvidenceBlock, RAG_FETCH_MAX_CHARS } = require("../lib/rag");
 
 const writeCorsHeaders = (res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -17,6 +17,11 @@ const sendJson = (res, status, payload) => {
 
 const FETCH_CONCURRENCY = 4;
 const FETCH_TARGET = 12;
+
+const hasMeaningfulDescription = (value = "") => {
+    const normalized = String(value || "").trim().toLowerCase();
+    return Boolean(normalized) && normalized !== "no description available";
+};
 
 const runConcurrent = async (items, limit, worker) => {
     const values = Array.isArray(items) ? items : [];
@@ -35,12 +40,6 @@ const runConcurrent = async (items, limit, worker) => {
     await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, runNext));
     return results;
 };
-
-const stripFetchMeta = (content = "") => (
-    String(content || "")
-        .replace(/^<!--[\s\S]*?-->\s*/g, "")
-        .trim()
-);
 
 /**
  * POST /api/web
@@ -70,7 +69,7 @@ const handleWebResearch = async (req, res) => {
 
         // Step 1: Search if query provided
         if (query) {
-            const searchRaw = await webSearchHandler({ query });
+            const searchRaw = await webSearchHandler({ query, maxResults });
             let searchResults = [];
 
             if (typeof searchRaw === "string" && !searchRaw.startsWith("Error:")) {
@@ -83,15 +82,19 @@ const handleWebResearch = async (req, res) => {
 
             result.sources = Array.isArray(searchResults) ? searchResults.slice(0, maxResults) : [];
 
-            // RAG re-ranking
-            if (ragEnabled && result.sources.length) {
-                result.sources = rankSourcesWithRag(query, result.sources);
+            if (result.sources.length) {
+                result.sources = ragEnabled
+                    ? rankSourcesWithRag(query, result.sources)
+                    : rerankSourcesForQuery(query, result.sources);
             }
         }
 
         // Step 2: Fetch content if requested
         if (fetchContent && result.sources.length) {
-            const sourcesToFetch = result.sources.slice(0, FETCH_TARGET);
+            const sourcesToFetch = selectSourcesForFetch(query, result.sources, {
+                limit: FETCH_TARGET,
+                perDomainLimit: 2,
+            });
             const fetchedEntries = await runConcurrent(sourcesToFetch, FETCH_CONCURRENCY, async (source) => {
                 try {
                     const fetchRaw = await webFetchHandler({
@@ -108,9 +111,19 @@ const handleWebResearch = async (req, res) => {
                         };
                     }
 
+                    const parsed = parseFetchToolPayload(fetchRaw);
+                    const enrichedSource = {
+                        ...source,
+                        url: parsed.finalUrl || source.url,
+                        title: parsed.title || source.title,
+                        description: parsed.description || source.description,
+                        date: parsed.publishedTime || source.date,
+                        via: parsed.via || source.via,
+                    };
+
                     return {
-                        source,
-                        content: String(fetchRaw || ""),
+                        source: enrichedSource,
+                        content: parsed.content || "",
                     };
                 } catch (error) {
                     return {
@@ -121,11 +134,18 @@ const handleWebResearch = async (req, res) => {
                 }
             });
 
-            result.fetched = fetchedEntries.filter((e) => stripFetchMeta(e?.content || "").trim());
+            const successfulFetched = fetchedEntries.filter((entry) => stripFetchMeta(entry?.content || "").trim());
+            const usableEvidenceEntries = fetchedEntries.filter((entry) => (
+                stripFetchMeta(entry?.content || "").trim() || hasMeaningfulDescription(entry?.source?.description)
+            ));
+            result.fetched = query
+                ? rankEvidenceEntriesForQuery(query, successfulFetched)
+                : successfulFetched;
+            result.snippetFallbacks = usableEvidenceEntries.filter((entry) => !stripFetchMeta(entry?.content || "").trim()).length;
 
             // Step 3: Build RAG evidence blocks
-            if (ragEnabled && result.fetched.length) {
-                result.evidence = result.fetched.map((entry) =>
+            if (ragEnabled && usableEvidenceEntries.length) {
+                result.evidence = rankEvidenceEntriesForQuery(query, usableEvidenceEntries).map((entry) =>
                     buildRagEvidenceBlock(entry, query)
                 );
             }
@@ -140,10 +160,16 @@ const handleWebResearch = async (req, res) => {
                         format: "markdown",
                         max_chars: RAG_FETCH_MAX_CHARS,
                     });
+                    const parsed = parseFetchToolPayload(fetchRaw);
 
                     return {
                         url,
-                        content: String(fetchRaw || ""),
+                        finalUrl: parsed.finalUrl || url,
+                        title: parsed.title || "",
+                        description: parsed.description || "",
+                        publishedTime: parsed.publishedTime || "",
+                        via: parsed.via || "",
+                        content: parsed.content || "",
                         success: !String(fetchRaw || "").startsWith("Error:"),
                     };
                 } catch (error) {

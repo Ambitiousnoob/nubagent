@@ -11,13 +11,18 @@ import {
   expandLiteratureQuery,
 } from "./researchSummaryPrompt.js";
 import {
+  canonicalizeSourceUrl,
+  mergeSourcesByCanonicalUrl,
   extractQueryTerms,
   scoreTextForTerms,
   domainAuthorityBoost,
   rerankSourcesForQuery,
+  getSourceDomain,
+  selectSourcesForFetch,
   splitIntoUnits,
   selectRelevantExcerpt,
   rankSourcesWithRag,
+  rankEvidenceEntriesForQuery,
   buildRagEvidenceBlock,
   RAG_FETCH_MAX_CHARS,
   RAG_EXCERPT_MAX_CHARS,
@@ -62,12 +67,17 @@ export const Company = {
 
   /** RAG: rank URLs, compress pages to relevant spans, build evidence blocks */
   rag: {
+    canonicalizeSourceUrl,
+    mergeSourcesByCanonicalUrl,
     scoreTextForTerms,
     domainAuthorityBoost,
     rerankSourcesForQuery,
+    getSourceDomain,
+    selectSourcesForFetch,
     splitIntoUnits,
     selectRelevantExcerpt,
     rankSourcesWithRag,
+    rankEvidenceEntriesForQuery,
     buildRagEvidenceBlock,
     RAG_FETCH_MAX_CHARS,
     RAG_EXCERPT_MAX_CHARS,

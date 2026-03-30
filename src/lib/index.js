@@ -21,13 +21,18 @@ export {
 export { sanitizeSummaryText } from "./sanitizeSummaryText.js";
 
 export {
+  canonicalizeSourceUrl,
+  mergeSourcesByCanonicalUrl,
   extractQueryTerms,
   scoreTextForTerms,
   domainAuthorityBoost,
   rerankSourcesForQuery,
+  getSourceDomain,
+  selectSourcesForFetch,
   splitIntoUnits,
   selectRelevantExcerpt,
   rankSourcesWithRag,
+  rankEvidenceEntriesForQuery,
   buildRagEvidenceBlock,
   RAG_FETCH_MAX_CHARS,
   RAG_EXCERPT_MAX_CHARS,

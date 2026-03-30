@@ -74,7 +74,11 @@ export function SearchResultsList({ sources = [], onSourceClick, isLoading = fal
           className="search-results-list__item"
           onClick={() => onSourceClick?.(source)}
         >
-          <span className="search-results-list__index">{index + 1}</span>
+          <span className="search-results-list__index">
+            {Number.isInteger(Number(source?.citationIndex)) && Number(source?.citationIndex) > 0
+              ? Number(source.citationIndex)
+              : (index + 1)}
+          </span>
           <div className="search-results-list__content">
             <h4 className="search-results-list__title">{source.title}</h4>
             <p className="search-results-list__url">{source.url}</p>
