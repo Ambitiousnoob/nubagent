@@ -142,35 +142,16 @@ export default function Docs() {
   const totalSubagents = SUBAGENT_GROUPS.reduce((count, group) => count + group.agents.length, 0);
   const frameworkPhases = RESEARCH_FRAMEWORK_V3_PHASES.filter((phase) => phase.phase !== 'X');
   const crossCuttingLayers = RESEARCH_FRAMEWORK_V3_PHASES.filter((phase) => phase.phase === 'X');
-  const totalFrameworkLayers = frameworkPhases.length + crossCuttingLayers.length;
-  const docsSignals = [
-    {
-      title: 'Implementation-first docs',
-      body: 'Every surface is arranged for operators who need ownership, contracts, and next-file navigation fast.',
-    },
-    {
-      title: 'Research runtime map',
-      body: `${totalFrameworkLayers} layers document the orchestration path from planning through delivery and safety.`,
-    },
-    {
-      title: 'Agent-aware reading',
-      body: `${totalSubagents} named owners keep docs, runtime, search, verification, and delivery boundaries explicit.`,
-    },
-  ];
 
   return (
     <div className="docs-page docs-page--refined">
       <div className="docs-page__hero">
         <div className="docs-page__hero-copy">
           <div className="docs-page__eyebrow">NubAgent Docs</div>
-          <h1 className="docs-page__title">API reference, endpoint creation, and the full subagent map</h1>
+          <h1 className="docs-page__title">Runtime, API, and ownership reference</h1>
           <p className="docs-page__lead">
-            This is the web-facing operator guide for NubAgent. It pulls the important repo knowledge into one place:
-            what the APIs do, how new endpoints should be created, and which subagents own each part of the product.
+            Operator-facing docs for the API surface, research runtime, and the owners behind each part of the system.
           </p>
-          <div className="docs-page__hero-note">
-            Read it like an editorial field manual: boundaries first, operating model second, ownership always visible.
-          </div>
         </div>
 
         <div className="docs-page__stats">
@@ -189,32 +170,6 @@ export default function Docs() {
         </div>
       </div>
 
-      <section className="docs-page__signal-grid" aria-label="Docs operating notes">
-        {docsSignals.map((signal) => (
-          <article key={signal.title} className="docs-page__signal-card">
-            <h2 className="docs-page__signal-title">{signal.title}</h2>
-            <p className="docs-page__signal-body">{signal.body}</p>
-          </article>
-        ))}
-      </section>
-
-      <div className="docs-page__overview-grid">
-        <ShortCard
-          title="Runtime atlas"
-          body={`${totalFrameworkLayers} runtime layers, from orchestration to adaptive delivery and the cross-cutting safety module.`}
-        />
-        <ShortCard
-          title="API boundary map"
-          body={`${totalEndpoints} public paths documented so endpoint ownership and implementation shape stay traceable.`}
-          tone="success"
-        />
-        <ShortCard
-          title="Operator posture"
-          body="The docs are organized for implementation work, not passive reading: jump fast, inspect details, and land back in the owning code."
-          tone="warning"
-        />
-      </div>
-
       <nav className="docs-page__jump-nav" aria-label="Docs sections">
         <a href="#api-reference">API Reference</a>
         <a href="#api-creation">API Creation</a>
@@ -229,19 +184,18 @@ export default function Docs() {
             <h2 className="docs-section__title">API reference</h2>
           </div>
           <p className="docs-section__body">
-            The current runtime mixes dedicated endpoints with alias-based shared boundaries. Use these cards to see what
-            exists, what each path is for, and which files own the implementation.
+            Use these cards to see which public paths exist, what they do, and which files own them.
           </p>
         </header>
 
         <div className="docs-section__intro-grid">
           <div className="docs-section__intro-card">
-            <span>Surface map</span>
-            <strong>Dedicated endpoints + shared alias boundaries</strong>
+            <span>What this covers</span>
+            <strong>Dedicated endpoints, shared aliases, and the current public contract.</strong>
           </div>
           <div className="docs-section__intro-card">
-            <span>Use this when</span>
-            <strong>You need the owning files, request shape, and current public contract quickly.</strong>
+            <span>Use it for</span>
+            <strong>Fast lookup of owning files, request shape, and response shape.</strong>
           </div>
         </div>
 
@@ -259,19 +213,18 @@ export default function Docs() {
             <h2 className="docs-section__title">API creation playbook</h2>
           </div>
           <p className="docs-section__body">
-            Use this when you need to add or reshape a public endpoint inside NubAgent. The main rule is to choose the
-            right boundary first, then keep metadata, aliases, tests, and docs aligned.
+            Use this when you need to add or reshape a public endpoint. Pick the right boundary first, then keep aliases, tests, and docs aligned.
           </p>
         </header>
 
         <div className="docs-section__intro-grid">
           <div className="docs-section__intro-card">
             <span>Primary rule</span>
-            <strong>Choose the right boundary first, then align aliases, tests, and docs.</strong>
+            <strong>Choose the right boundary first.</strong>
           </div>
           <div className="docs-section__intro-card">
             <span>Outcome</span>
-            <strong>New public work lands in a predictable place and stays legible to future maintainers.</strong>
+            <strong>New API work lands in a predictable place and stays easy to maintain.</strong>
           </div>
         </div>
 
@@ -328,19 +281,18 @@ export default function Docs() {
             <h2 className="docs-section__title">Research Framework v3.0 — The Living Research Intelligence</h2>
           </div>
           <p className="docs-section__body">
-            v3.0 moves the system from a fixed smart pipeline to a living research collaborator with dynamic graph execution,
-            adversarial evidence collection, dialectical synthesis, recursive quality control, and adaptive delivery.
+            The research runtime is organized as a compiled graph with verification, synthesis, and delivery stages that can be steered as work progresses.
           </p>
         </header>
 
         <div className="docs-section__intro-grid">
           <div className="docs-section__intro-card">
             <span>Core shift</span>
-            <strong>From a smart linear pipeline to a research collaborator with debate, memory, and adaptive delivery.</strong>
+            <strong>From a fixed pipeline to a steerable research runtime.</strong>
           </div>
           <div className="docs-section__intro-card">
             <span>Runtime shape</span>
-            <strong>Dynamic graph execution, recursive verification, and explicit steering checkpoints.</strong>
+            <strong>Compiled graph execution, recursive verification, and explicit checkpoints.</strong>
           </div>
         </div>
 
@@ -432,15 +384,14 @@ export default function Docs() {
             <h2 className="docs-section__title">NubAgent subagent catalog</h2>
           </div>
           <p className="docs-section__body">
-            Every meaningful slice in NubAgent has a dedicated owner. This catalog is the web view of the local
-            `nub_*` roster so you can see who owns orchestration, search, fetch, answer verification, docs, and release.
+            This is the web view of the local `nub_*` roster so you can see who owns orchestration, search, fetch, verification, docs, and release.
           </p>
         </header>
 
         <div className="docs-section__intro-grid">
           <div className="docs-section__intro-card">
             <span>Catalog purpose</span>
-            <strong>Every meaningful surface has a named owner so orchestration and maintenance stay explicit.</strong>
+            <strong>Every meaningful surface has a named owner.</strong>
           </div>
           <div className="docs-section__intro-card">
             <span>Reading mode</span>

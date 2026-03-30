@@ -86,6 +86,13 @@ export function SessionCard({
     }
     onView?.(session);
   };
+  const handleFocus = () => {
+    setShowActions(true);
+  };
+  const handleBlur = (event) => {
+    if (event.currentTarget.contains(event.relatedTarget)) return;
+    setShowActions(false);
+  };
 
   return (
     <div
@@ -93,8 +100,8 @@ export function SessionCard({
       onClick={handleCardActivate}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
-      onFocus={() => setShowActions(true)}
-      onBlur={() => setShowActions(false)}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
       role="button"
       tabIndex={0}
       aria-pressed={isSelectionMode ? isSelected : undefined}
@@ -110,6 +117,7 @@ export function SessionCard({
           type="checkbox"
           className="session-card__checkbox"
           checked={isSelected}
+          aria-label={`Select ${session.query}`}
           onChange={(e) => {
             e.stopPropagation();
             onSelect?.(session.id);
@@ -119,10 +127,6 @@ export function SessionCard({
       )}
 
       <div className="session-card__header">
-        <div className="session-card__eyebrow-row">
-          <div className="session-card__eyebrow">Saved run</div>
-          <div className="session-card__state">{sourceCount > 0 ? 'Evidence attached' : 'Transcript only'}</div>
-        </div>
         <div className="session-card__meta">
           <span className="session-card__date">
             <Calendar size={12} />
@@ -137,9 +141,10 @@ export function SessionCard({
           {hasAttachments && (
             <span className="session-card__attachments">
               <Paperclip size={12} />
-              {session.attachments.length}
+              {attachmentCount}
             </span>
           )}
+          <span className="session-card__state">{sourceCount > 0 ? 'Sources attached' : 'Saved only'}</span>
         </div>
       </div>
 
@@ -149,11 +154,6 @@ export function SessionCard({
         {cleanedPreview.slice(0, 150)}
         {cleanedPreview.length > 150 ? '...' : ''}
       </p>
-
-      <div className="session-card__signal-row">
-        <span className="session-card__signal-chip">{sourceCount} source{sourceCount !== 1 ? 's' : ''}</span>
-        <span className="session-card__signal-chip">{hasAttachments ? `${attachmentCount} attachment${attachmentCount === 1 ? '' : 's'}` : 'No attachments'}</span>
-      </div>
 
       {firstSource?.url && (
         <div className="session-card__source">
@@ -179,9 +179,9 @@ export function SessionCard({
       <div className="session-card__footer">
         <span className="session-card__open">Open session</span>
         {hasAttachments ? (
-          <span className="session-card__footer-note">{session.attachments.length} attachment{session.attachments.length === 1 ? '' : 's'} attached</span>
+          <span className="session-card__footer-note">{attachmentCount} attachment{attachmentCount === 1 ? '' : 's'}</span>
         ) : (
-          <span className="session-card__footer-note">Research transcript and saved answer</span>
+          <span className="session-card__footer-note">Saved answer</span>
         )}
       </div>
 
@@ -190,6 +190,7 @@ export function SessionCard({
           className="session-card__action session-card__action--share"
           onClick={handleShare}
           title="Share"
+          aria-label={`Share ${session.query}`}
         >
           <Share2 size={14} />
         </button>
@@ -197,6 +198,7 @@ export function SessionCard({
           className="session-card__action session-card__action--edit"
           onClick={handleEdit}
           title="Edit"
+          aria-label={`Edit ${session.query}`}
         >
           <Edit2 size={14} />
         </button>
@@ -204,6 +206,7 @@ export function SessionCard({
           className="session-card__action session-card__action--delete"
           onClick={handleDelete}
           title="Delete"
+          aria-label={`Delete ${session.query}`}
         >
           <Trash2 size={14} />
         </button>
@@ -215,6 +218,7 @@ export function SessionCard({
             className="session-card__action session-card__action--external"
             onClick={(e) => e.stopPropagation()}
             title="Open source"
+            aria-label={`Open source for ${session.query}`}
           >
             <ExternalLink size={14} />
           </a>

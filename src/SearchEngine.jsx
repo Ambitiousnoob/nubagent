@@ -1033,6 +1033,7 @@ function SubagentOwnershipTable({ researchMeta = {} }) {
 function LibertyResultCard({ query, heading, body, sources = [], searchCount = 0, researchMeta = {} }) {
     const visibleSources = sources.slice(0, 20);
     const summary = buildResultSummary(body);
+    const answerCopy = summary || body;
     const points = extractHighlightPoints(body, 4);
     const topDomains = [...new Set(visibleSources.map((source) => getDomain(source.url)).filter(Boolean))];
     const modeLabel = researchMeta?.outputMode?.label || "State-of-the-Field";
@@ -1045,59 +1046,38 @@ function LibertyResultCard({ query, heading, body, sources = [], searchCount = 0
     return (
         <div className="la-result">
             <div className="la-header">
-                <div className="la-header-main">
-                    <div className="la-logo">✳</div>
-                    <div className="la-header-copy">
-                        <span className="la-brand">nub-agent</span>
-                        <span className="la-kicker">Research synthesis</span>
-                    </div>
+                <div className="la-header-copy">
+                    <span className="la-kicker">Research answer</span>
+                    <div className="la-summary-title">{renderInlineMarkup(heading, sources)}</div>
                 </div>
                 <div className="la-header-badges">
-                    {frameworkLabel ? <span className="la-badge">{frameworkLabel}</span> : null}
                     <span className="la-badge">{modeLabel}</span>
-                    <span className="la-badge">{sources.length} Source{sources.length === 1 ? "" : "s"}</span>
+                    {frameworkLabel ? <span className="la-badge">{frameworkLabel}</span> : null}
+                    {convergenceLabel ? <span className="la-badge">{convergenceLabel}</span> : null}
+                    <span className="la-badge">{sources.length} source{sources.length === 1 ? "" : "s"}</span>
                 </div>
             </div>
 
             <div className="la-body">
-                <div className="la-hero">
-                    <div className="la-hero-copy">
-                        <div className="la-query">Research Question</div>
-                        <div className="la-question">{renderInlineMarkup(query || heading, sources)}</div>
+                {query ? (
+                    <div className="la-question-block">
+                        <div className="la-query">Question</div>
+                        <div className="la-question">{renderInlineMarkup(query, sources)}</div>
                     </div>
-                    <div className="la-hero-stats">
-                        <div className="la-stat">
-                            <span className="la-stat__label">Mode</span>
-                            <strong>{modeLabel}</strong>
-                        </div>
-                        <div className="la-stat">
-                            <span className="la-stat__label">Search Lanes</span>
-                            <strong>{Math.max(searchCount, 1)}</strong>
-                        </div>
-                        <div className="la-stat">
-                            <span className="la-stat__label">Pareto</span>
-                            <strong>{paretoLabel}</strong>
-                        </div>
-                        {convergenceLabel ? (
-                            <div className="la-stat">
-                                <span className="la-stat__label">Convergence</span>
-                                <strong>{convergenceLabel}</strong>
-                            </div>
-                        ) : null}
-                    </div>
+                ) : null}
+
+                <div className="la-meta-row">
+                    <span className="la-meta-pill">Mode: {modeLabel}</span>
+                    <span className="la-meta-pill">Searches: {Math.max(searchCount, 1)}</span>
+                    <span className="la-meta-pill">Depth: {paretoLabel}</span>
+                    {convergenceLabel ? <span className="la-meta-pill">{convergenceLabel}</span> : null}
                 </div>
-                <div className="la-divider" />
 
-                <div className="la-summary-label">Synthesized Answer</div>
-                <div className="la-summary-title">{renderInlineMarkup(heading, sources)}</div>
-                {summary ? <div className="la-summary-text">{renderInlineMarkup(summary, sources)}</div> : null}
-
-                {topDomains.length ? (
-                    <div className="la-domain-strip">
-                        {topDomains.slice(0, 6).map((domain) => (
-                            <span key={domain} className="la-domain-pill">{domain}</span>
-                        ))}
-                    </div>
+                {answerCopy ? (
+                    <>
+                        <div className="la-summary-label">Summary</div>
+                        <div className="la-summary-text">{renderInlineMarkup(answerCopy, sources)}</div>
+                    </>
                 ) : null}
 
                 {points.length ? (
@@ -1282,42 +1262,27 @@ function Landing({ onSearch, uploads = [], onOpenUpload, onRemoveUpload, uploadS
     const examples = [
         {
             label: "Threat analysis",
-            detail: "Cross-check a fast-moving technical risk with cited evidence.",
             query: "How does quantum computing threaten modern encryption?",
         },
         {
             label: "Operator search",
-            detail: "Use web operators to force a narrower evidence set.",
             query: 'site:arxiv.org "retrieval augmented generation" after:2024-01-01',
         },
         {
             label: "Market scan",
-            detail: "Survey the current field and surface the strongest contenders.",
             query: "Best open source LLMs benchmark 2025",
         },
         {
             label: "Incident research",
-            detail: "Investigate a vulnerability with prioritised source retrieval.",
             query: "intitle:CVE Apache Log4j critical vulnerability",
         },
-    ];
-    const capabilities = [
-        "Compiled research DAG",
-        "Verifier swarm and tribunal scoring",
-        "Streaming checkpoints with live steering",
     ];
 
     return (
         <div className="land">
-            <div className="land__eyebrow">Research Framework v3.1</div>
-            <div className="land__logo"><span className="land__star">✳</span><span>nub-agent</span></div>
-            <h1 className="land__h1">Research the web like an operator, not a chatbot.</h1>
-            <p className="land__sub">Compiled search lanes, deep reading, verifier passes, and cited synthesis in one surface built for serious investigation.</p>
-            <div className="land__capabilities">
-                {capabilities.map((capability) => (
-                    <span key={capability} className="land__cap">{capability}</span>
-                ))}
-            </div>
+            <div className="land__eyebrow">Research</div>
+            <h1 className="land__h1">Ask anything. Get a clear answer with sources.</h1>
+            <p className="land__sub">Start with one question, add files if you need them, and keep the whole conversation in one simple thread.</p>
             <form className="land__form" onSubmit={submit}>
                 <button type="button" className="land__attach" onClick={onOpenUpload} title="Attach files">📎</button>
                 <input
@@ -1325,7 +1290,7 @@ function Landing({ onSearch, uploads = [], onOpenUpload, onRemoveUpload, uploadS
                     className="land__in"
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Ask anything or use site: filetype: intitle: operators..."
+                    placeholder="Ask a question or use site:, filetype:, or intitle: operators..."
                     autoComplete="off"
                 />
                 <button type="submit" className="land__btn" disabled={!query.trim() && !uploads.length}>
@@ -1340,33 +1305,14 @@ function Landing({ onSearch, uploads = [], onOpenUpload, onRemoveUpload, uploadS
                     {uploadStatus ? <div className="upload-status">{uploadStatus}</div> : null}
                 </div>
             )}
-            <div className="land__panels">
-                <div className="land__panel">
-                    <div className="land__panel-head">
-                        <div className="land__panel-eyebrow">Examples</div>
-                        <div className="land__panel-title">Start from a strong brief</div>
-                    </div>
-                    <div className="land__exs">
-                        {examples.map((example) => (
-                            <button key={example.query} className="land__ex" onClick={() => onSearch(example.query)}>
-                                <span className="land__ex-label">{example.label}</span>
-                                <span className="land__ex-detail">{example.detail}</span>
-                                <span className="land__ex-query">{example.query}</span>
-                            </button>
-                        ))}
-                    </div>
-                </div>
-                <div className="land__panel land__panel--summary">
-                    <div className="land__panel-head">
-                        <div className="land__panel-eyebrow">Workflow</div>
-                        <div className="land__panel-title">What the runtime does</div>
-                    </div>
-                    <div className="land__flow">
-                        <div className="land__flow-step"><span>01</span><strong>Decompose intent into domain, scope, and output mode.</strong></div>
-                        <div className="land__flow-step"><span>02</span><strong>Compile a dynamic search and evidence DAG.</strong></div>
-                        <div className="land__flow-step"><span>03</span><strong>Synthesize, verify, and stream checkpoints as they complete.</strong></div>
-                    </div>
-                </div>
+            <div className="land__helper">Try an example</div>
+            <div className="land__exs">
+                {examples.map((example) => (
+                    <button key={example.query} className="land__ex" onClick={() => onSearch(example.query)}>
+                        <span className="land__ex-label">{example.label}</span>
+                        <span className="land__ex-query">{example.query}</span>
+                    </button>
+                ))}
             </div>
         </div>
     );
@@ -2043,14 +1989,12 @@ export default function SearchEngine({ session = null, resetSignal = 0, onSessio
     const latestResearchMeta = latestBotMessage?.researchMeta || {};
     const activeOutputModeLabel = latestResearchMeta?.outputMode?.label || "State-of-the-Field";
     const activeSourceCount = latestBotMessage?.sources?.length || 0;
-    const activeSubagentCount = countSubagentAssignments(latestResearchMeta?.subagents || {});
     const activeStability = Number(latestResearchMeta?.convergence?.stability_score);
     const activeStabilityLabel = Number.isFinite(activeStability) ? `${Math.round(activeStability * 100)}% stability` : "";
-    const activeDagSummary = typeof latestResearchMeta?.dagSummary === "string" ? latestResearchMeta.dagSummary : "";
-    const composerModeLabel = streaming ? "Live steering" : "Research composer";
+    const composerModeLabel = streaming ? "Live controls" : "Follow-up";
     const composerTitle = streaming
-        ? "Adjust depth, output mode, and source policy while the runtime is still working."
-        : "Continue the active thread or launch a new cited search from this session.";
+        ? "Change pace, evidence, or output while the answer is still running."
+        : "Ask a follow-up or attach more context.";
 
     return (
         <div className="se se--studio">
@@ -2401,26 +2345,24 @@ html,body,#root{height:100%;background:var(--bg)}
 .se--studio .mn{min-height:0}
 .se--studio .tb{
   display:grid;
-  grid-template-columns:minmax(0,1fr) auto auto;
+  grid-template-columns:minmax(0,1fr) auto;
   align-items:center;
+  gap:12px;
 }
-.se--studio .tb__summary{display:flex;flex-direction:column;gap:10px;min-width:0}
+.se--studio .tb__summary{display:flex;flex-direction:column;gap:8px;min-width:0}
 .se--studio .tb__meta,
 .se--studio .tb__stats{display:flex;flex-wrap:wrap;gap:8px}
-.se--studio .tb__side{display:flex;flex-direction:column;align-items:flex-end;gap:10px}
-.se--studio .tb__hint{
-  max-width:320px;color:var(--studio-muted);font-size:11px;line-height:1.55;text-align:right
-}
+.se--studio .tb__eyebrow{display:none}
 .se--studio .tb__pill{
   display:inline-flex;align-items:center;justify-content:center;
-  min-height:34px;padding:0 12px;border-radius:999px;
+  min-height:28px;padding:0 11px;border-radius:999px;
   background:rgba(255,255,255,.045);border:1px solid var(--studio-border);
-  color:var(--studio-text);font-size:11px;font-weight:700;letter-spacing:.02em
+  color:var(--studio-text);font-size:10.5px;font-weight:600;letter-spacing:.01em
 }
 .se--studio .tb__pill--accent{
   background:rgba(255,158,76,.12);border-color:rgba(255,158,76,.24);color:#fff1dd
 }
-.se--studio .chat__in{gap:32px}
+.se--studio .chat__in{gap:24px}
 .se--studio .umsg{align-items:stretch;max-width:820px;margin-left:auto}
 .se--studio .umsg__body{
   border-radius:22px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.04);
@@ -2438,52 +2380,34 @@ html,body,#root{height:100%;background:var(--bg)}
   color:var(--studio-dim);font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase
 }
 .se--studio .umsg__acts{padding-top:12px}
-.se--studio .scard{box-shadow:0 18px 44px rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.04)}
+.se--studio .scard{box-shadow:0 12px 28px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.04)}
 .se--studio .la-header{
-  display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap
+  display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  padding-bottom:14px
 }
-.se--studio .la-header-main{display:flex;align-items:center;gap:14px}
-.se--studio .la-header-copy{display:flex;flex-direction:column;gap:3px}
+.se--studio .la-header-copy{display:flex;flex-direction:column;gap:8px;min-width:0}
 .se--studio .la-kicker{
   color:var(--studio-dim);font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase
 }
 .se--studio .la-header-badges{display:flex;flex-wrap:wrap;gap:8px}
-.se--studio .la-hero{
-  display:grid;grid-template-columns:minmax(0,1.7fr) minmax(260px,.9fr);gap:16px;margin-bottom:18px
+.se--studio .la-question-block{
+  padding:16px 18px;border-radius:18px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);
+  margin-bottom:14px
 }
-.se--studio .la-hero-copy{
-  padding:18px;border-radius:20px;
-  background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.025));
-  border:1px solid rgba(255,255,255,.05)
-}
-.se--studio .la-question{font-size:26px;line-height:1.05;letter-spacing:-.05em}
-.se--studio .la-hero-stats{
-  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px
-}
-.se--studio .la-stat{
-  padding:16px 15px;border-radius:18px;background:rgba(255,255,255,.04);
-  border:1px solid rgba(255,255,255,.05);display:flex;flex-direction:column;gap:8px;
-  min-height:104px;justify-content:space-between
-}
-.se--studio .la-stat__label{
-  color:var(--studio-dim);font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase
-}
-.se--studio .la-stat strong{
-  color:#fff9f0;font-family:'Space Grotesk',sans-serif;font-size:16px;line-height:1.15
+.se--studio .la-question{font-size:18px;line-height:1.4;letter-spacing:-.02em}
+.se--studio .la-meta-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.se--studio .la-meta-pill{
+  display:inline-flex;align-items:center;min-height:30px;padding:0 11px;border-radius:999px;
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);color:var(--studio-muted);
+  font-size:11px;font-weight:600
 }
 .se--studio .la-summary-title{
-  font-family:'Space Grotesk',sans-serif;font-size:32px;line-height:1.02;letter-spacing:-.05em
+  font-family:'Space Grotesk',sans-serif;font-size:26px;line-height:1.08;letter-spacing:-.04em
 }
-.se--studio .la-summary-text{font-size:15px;line-height:1.8;max-width:72ch}
-.se--studio .la-domain-strip{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 6px}
-.se--studio .la-domain-pill{
-  display:inline-flex;align-items:center;padding:6px 11px;border-radius:999px;
-  background:rgba(70,214,198,.08);border:1px solid rgba(70,214,198,.18);
-  color:#bdf7f0;font-size:11px;font-weight:700
-}
-.se--studio .la-points{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:20px}
+.se--studio .la-summary-text{font-size:15px;line-height:1.75;max-width:72ch}
+.se--studio .la-points{display:grid;grid-template-columns:1fr;gap:10px;margin-top:18px}
 .se--studio .la-point{
-  min-height:100%;padding:16px 16px 15px;border-radius:18px;border:1px solid rgba(255,255,255,.05)
+  min-height:100%;padding:14px 15px;border-radius:16px;border:1px solid rgba(255,255,255,.05)
 }
 .se--studio .la-tables{display:grid;gap:16px;margin-top:22px}
 .se--studio .la-card{
@@ -2492,77 +2416,38 @@ html,body,#root{height:100%;background:var(--bg)}
 }
 .se--studio .la-footer{padding-top:14px}
 .se--studio .land{
-  max-width:1180px;margin:0 auto;align-items:flex-start;text-align:left
+  max-width:820px;margin:0 auto;align-items:center;text-align:center;padding:56px 12px 188px
 }
 .se--studio .land__eyebrow{
   display:inline-flex;align-items:center;justify-content:center;
-  min-height:34px;padding:0 14px;border-radius:999px;
+  min-height:30px;padding:0 12px;border-radius:999px;
   background:rgba(255,158,76,.12);border:1px solid rgba(255,158,76,.22);
-  color:#ffd8b5;font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase
+  color:#ffd8b5;font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
+  width:max-content;margin:0 auto
 }
-.se--studio .land__logo{gap:12px}
-.se--studio .land__capabilities{display:flex;flex-wrap:wrap;gap:10px}
-.se--studio .land__cap{
-  display:inline-flex;align-items:center;padding:8px 12px;border-radius:999px;
-  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);
-  color:var(--studio-text);font-size:12px;font-weight:600
-}
+.se--studio .land__h1{max-width:12ch;margin:0 auto;font-size:clamp(38px,6vw,58px);line-height:1}
+.se--studio .land__sub{max-width:42rem;margin:0 auto;font-size:15px}
 .se--studio .land__form{width:100%}
-.se--studio .land__panels{
-  width:100%;display:grid;grid-template-columns:minmax(0,1.45fr) minmax(280px,.9fr);gap:16px
+.se--studio .land__helper{
+  width:100%;color:var(--studio-dim);font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin-top:6px;text-align:center
 }
-.se--studio .land__panel{
-  padding:20px;border-radius:24px;background:linear-gradient(160deg,var(--studio-panel),rgba(18,28,39,.92));
-  border:1px solid rgba(255,255,255,.06);box-shadow:0 18px 40px rgba(0,0,0,.2)
+.se--studio .land__exs{
+  width:100%;max-width:780px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px
 }
-.se--studio .land__panel-head{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
-.se--studio .land__panel-eyebrow{
-  color:var(--studio-dim);font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase
-}
-.se--studio .land__panel-title{
-  color:#fff8ee;font-family:'Space Grotesk',sans-serif;font-size:24px;line-height:1.02;letter-spacing:-.04em
-}
-.se--studio .land__exs{max-width:none}
 .se--studio .land__ex{
-  min-height:132px;display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:10px;
-  text-align:left
+  min-height:auto;display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:8px;
+  text-align:left;padding:12px 14px;border-radius:14px;background:rgba(255,255,255,.025)
 }
 .se--studio .land__ex-label{
-  color:#fff8ee;font-size:14px;font-weight:800;letter-spacing:-.02em
+  color:#fff8ee;font-size:14px;font-weight:700;letter-spacing:-.02em
 }
-.se--studio .land__ex-detail{color:var(--studio-muted);font-size:12px;line-height:1.55}
 .se--studio .land__ex-query{
   color:#ffd8b5;font-size:12px;line-height:1.55;font-family:var(--mono);word-break:break-word
 }
-.se--studio .land__flow{display:flex;flex-direction:column;gap:12px}
-.se--studio .land__flow-step{
-  display:flex;gap:12px;align-items:flex-start;padding:14px 0;border-top:1px solid rgba(255,255,255,.06)
-}
-.se--studio .land__flow-step:first-child{border-top:none;padding-top:0}
-.se--studio .land__flow-step span{
-  display:inline-flex;align-items:center;justify-content:center;
-  width:32px;height:32px;border-radius:10px;background:rgba(255,158,76,.14);
-  color:#ffd8b5;font-size:11px;font-weight:800;flex:0 0 32px
-}
-.se--studio .land__flow-step strong{color:#fff8ee;font-size:14px;line-height:1.55}
 .se--studio .bot{padding:0 28px 22px}
-.se--studio .bot__wrap{overflow:visible}
-.se--studio .bot__titlebar{
-  display:flex;align-items:flex-start;justify-content:space-between;gap:16px;
-  padding:16px 18px 0
-}
-.se--studio .bot__titlecopy{display:flex;flex-direction:column;gap:6px}
-.se--studio .bot__eyebrow{
-  color:var(--studio-dim);font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase
-}
-.se--studio .bot__title{color:#fff8ee;font-size:14px;line-height:1.55}
-.se--studio .bot__runtime{
-  display:inline-flex;align-items:center;justify-content:center;min-height:34px;
-  padding:0 12px;border-radius:999px;background:rgba(255,255,255,.04);
-  border:1px solid rgba(255,255,255,.06);color:var(--studio-muted);font-size:11px;font-weight:700
-}
+.se--studio .bot__wrap{overflow:visible;max-width:960px}
 .se--studio .bot__uploads{padding-top:12px}
-.se--studio .bot__row{padding-top:12px}
+.se--studio .bot__row{padding-top:10px}
 .se--studio .bot__steer{
   display:grid;grid-template-columns:repeat(3,max-content) minmax(220px,1fr) auto;gap:12px;align-items:end
 }
@@ -2574,13 +2459,14 @@ html,body,#root{height:100%;background:var(--bg)}
 .se--studio .bot__steer-status{
   min-height:42px;display:flex;align-items:center;justify-content:flex-end;text-align:right
 }
+.se--studio .bot__bar-copy{display:flex;flex-direction:column;gap:2px;min-width:0}
+.se--studio .bot__bar-title{
+  color:var(--studio-dim);font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase
+}
+.se--studio .bot__bar-note{
+  color:var(--studio-muted);font-size:11px;line-height:1.4
+}
 @media(max-width:1100px){
-  .se--studio .tb{grid-template-columns:minmax(0,1fr) auto;align-items:flex-start}
-  .se--studio .tb__summary{grid-column:1 / -1}
-  .se--studio .tb__side{grid-column:1 / -1;align-items:flex-start}
-  .se--studio .tb__hint{text-align:left;max-width:none}
-  .se--studio .la-hero{grid-template-columns:1fr}
-  .se--studio .land__panels{grid-template-columns:1fr}
   .se--studio .bot__steer{grid-template-columns:1fr}
   .se--studio .bot__steer-status{justify-content:flex-start;text-align:left}
 }
@@ -2588,16 +2474,12 @@ html,body,#root{height:100%;background:var(--bg)}
   .se--studio .sb{display:none}
   .se--studio .mn{padding:12px 12px 14px}
   .se--studio .tb{grid-template-columns:1fr}
-  .se--studio .tb__summary,.se--studio .tb__side{grid-column:auto}
   .se--studio .tb__b{width:100%}
-  .se--studio .la-points{grid-template-columns:1fr}
-  .se--studio .la-hero-stats{grid-template-columns:1fr 1fr}
+  .se--studio .land{padding:24px 0 188px}
   .se--studio .land__h1{max-width:11ch}
-  .se--studio .bot__titlebar{flex-direction:column;align-items:flex-start}
 }
 @media(max-width:560px){
   .se--studio .la-question,.se--studio .la-summary-title{font-size:24px}
-  .se--studio .la-hero-stats{grid-template-columns:1fr}
   .se--studio .land__exs{grid-template-columns:1fr}
 }
 `}</style>
@@ -2651,32 +2533,28 @@ html,body,#root{height:100%;background:var(--bg)}
                         {!isLanding && (
                             <div className="tb">
                                 <div className="tb__summary">
-                                    <div className="tb__eyebrow">Research session</div>
+                                    <div className="tb__eyebrow">{streaming ? "Research in progress" : "Research session"}</div>
                                     <div className="tb__q">{active?.query || ""}</div>
                                     <div className="tb__meta">
                                         <span className="tb__pill">{activeOutputModeLabel}</span>
-                                        {latestResearchMeta?.pareto?.mode ? <span className="tb__pill">Pareto: {latestResearchMeta.pareto.mode}</span> : null}
-                                        {activeSubagentCount ? <span className="tb__pill">{activeSubagentCount} subagents</span> : null}
                                         {activeSourceCount ? <span className="tb__pill">{activeSourceCount} cited source{activeSourceCount === 1 ? "" : "s"}</span> : null}
+                                        {latestResearchMeta?.pareto?.mode ? <span className="tb__pill">Depth: {latestResearchMeta.pareto.mode}</span> : null}
                                         {activeStabilityLabel ? <span className="tb__pill tb__pill--accent">{activeStabilityLabel}</span> : null}
                                     </div>
                                 </div>
-                                <div className="tb__side">
-                                    {activeDagSummary ? <div className="tb__hint">{activeDagSummary}</div> : null}
-                                    <button className="tb__b" onClick={() => {
-                                        const url = buildSessionShareUrl(active?.id) || window.location.href;
-                                        if (!navigator.clipboard?.writeText) {
-                                            promptToCopySessionUrl(url);
-                                            return;
-                                        }
+                                <button className="tb__b" onClick={() => {
+                                    const url = buildSessionShareUrl(active?.id) || window.location.href;
+                                    if (!navigator.clipboard?.writeText) {
+                                        promptToCopySessionUrl(url);
+                                        return;
+                                    }
 
-                                        navigator.clipboard.writeText(url).then(() => {
-                                            alert("Link copied to clipboard!");
-                                        }).catch(() => {
-                                            promptToCopySessionUrl(url);
-                                        });
-                                    }}>Share session</button>
-                                </div>
+                                    navigator.clipboard.writeText(url).then(() => {
+                                        alert("Link copied to clipboard!");
+                                    }).catch(() => {
+                                        promptToCopySessionUrl(url);
+                                    });
+                                }}>Share</button>
                             </div>
                         )}
 
@@ -2704,15 +2582,6 @@ html,body,#root{height:100%;background:var(--bg)}
                         {!isLanding && (
                             <div className="bot">
                                 <div className="bot__wrap">
-                                    <div className="bot__titlebar">
-                                        <div className="bot__titlecopy">
-                                            <div className="bot__eyebrow">{composerModeLabel}</div>
-                                            <div className="bot__title">{composerTitle}</div>
-                                        </div>
-                                        <div className="bot__runtime">
-                                            {latestResearchMeta?.frameworkVersion ? `Framework v${latestResearchMeta.frameworkVersion}` : "Research runtime"}
-                                        </div>
-                                    </div>
                                     {(pendingUploads.length || uploadStatus) && (
                                         <div className="bot__uploads">
                                             <AttachmentList attachments={pendingUploads} onRemove={removePendingUpload} compact />
@@ -2818,7 +2687,10 @@ html,body,#root{height:100%;background:var(--bg)}
                                         </div>
                                     )}
                                     <div className="bot__bar">
-                                        <button className="bb bb--on" onClick={() => alert("Search mode: Active — web research with query expansion")}>🔍 Search</button>
+                                        <div className="bot__bar-copy">
+                                            <span className="bot__bar-title">{composerModeLabel}</span>
+                                            <span className="bot__bar-note">{composerTitle}</span>
+                                        </div>
                                         <div className="bb__sp" />
                                         <button className="ib" title="Attach" onClick={openFilePicker} disabled={streaming}>📎</button>
                                         {streaming && (

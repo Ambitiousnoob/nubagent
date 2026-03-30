@@ -13,9 +13,6 @@ import {
   Plus,
   CheckSquare,
   Square,
-  Sparkles,
-  FileStack,
-  SlidersHorizontal,
 } from 'lucide-react';
 
 const triggerDownload = (filename, content, contentType) => {
@@ -71,33 +68,6 @@ export default function Library({ onBack, onViewSession, onNewSearch }) {
   const filteredSessions = getFilteredSessions();
   const totalSources = sessions.reduce((count, session) => count + (session.sources?.length || 0), 0);
   const totalAttachments = sessions.reduce((count, session) => count + (session.attachments?.length || 0), 0);
-  const activeFilterCount = [
-    filters.dateRange && filters.dateRange !== 'all',
-    Boolean(filters.hasAttachments),
-    filters.sortBy && filters.sortBy !== 'date',
-    filters.sortOrder && filters.sortOrder !== 'desc',
-  ].filter(Boolean).length;
-  const archiveModeLabel = isSelectionMode
-    ? `${selectedSessions.length} selected for bulk actions`
-    : `${filteredSessions.length} session${filteredSessions.length === 1 ? '' : 's'} in view`;
-  const archiveSignals = [
-    {
-      icon: <Sparkles size={16} />,
-      label: 'Curation posture',
-      value: activeFilterCount === 0 ? 'Broad review lane' : `${activeFilterCount} filters shaping the current slice`,
-    },
-    {
-      icon: <FileStack size={16} />,
-      label: 'Export readiness',
-      value: sessions.length === 0 ? 'No reusable runs yet' : 'Saved runs remain exportable as working artifacts',
-    },
-    {
-      icon: <SlidersHorizontal size={16} />,
-      label: 'Selection mode',
-      value: isSelectionMode ? 'Bulk actions armed for archive cleanup' : 'Single-session browsing is active',
-    },
-  ];
-
   // Reload sessions on mount
   useEffect(() => {
     loadSessions();
@@ -246,14 +216,11 @@ export default function Library({ onBack, onViewSession, onNewSearch }) {
     <div className="library-page library-page--refined">
       <section className="library-page__hero">
         <div className="library-page__hero-copy">
-          <div className="library-page__eyebrow">Knowledge archive</div>
-          <h1 className="library-page__hero-title">Research worth keeping, shaped into a working library.</h1>
+          <div className="library-page__eyebrow">Library</div>
+          <h1 className="library-page__hero-title">Saved research, ready to reopen.</h1>
           <p className="library-page__hero-body">
-            Re-open strong runs, refine saved answers, export useful work, and keep a cleaner signal path between active research and retained knowledge.
+            Reopen strong runs, export what matters, and get back to prior work without digging through old transcripts.
           </p>
-          <div className="library-page__hero-note">
-            Built for retrieval, review, and clean reuse instead of a flat pile of old transcripts.
-          </div>
         </div>
         <div className="library-page__hero-stats">
           <div className="library-page__hero-stat">
@@ -271,43 +238,7 @@ export default function Library({ onBack, onViewSession, onNewSearch }) {
         </div>
       </section>
 
-      <section className="library-page__signal-grid" aria-label="Library operating signals">
-        {archiveSignals.map((signal) => (
-          <article key={signal.label} className="library-page__signal-card">
-            <div className="library-page__signal-icon">{signal.icon}</div>
-            <div>
-              <div className="library-page__signal-label">{signal.label}</div>
-              <p className="library-page__signal-value">{signal.value}</p>
-            </div>
-          </article>
-        ))}
-      </section>
-
       <div className="library-page__workspace">
-        <div className="library-page__workspace-overview">
-          <div className="library-page__workspace-copy">
-            <div className="library-page__section-label">Archive control room</div>
-            <h2 className="library-page__workspace-title">Curate strong sessions, not just stored runs.</h2>
-            <p className="library-page__workspace-body">
-              Search by intent, tighten the view with filters, and move from passive storage to an actively usable research shelf.
-            </p>
-          </div>
-          <div className="library-page__workspace-metrics">
-            <div className="library-page__workspace-metric">
-              <span className="library-page__workspace-metric-label">View</span>
-              <strong>{archiveModeLabel}</strong>
-            </div>
-            <div className="library-page__workspace-metric">
-              <span className="library-page__workspace-metric-label">Filters</span>
-              <strong>{activeFilterCount === 0 ? 'Default' : `${activeFilterCount} active`}</strong>
-            </div>
-            <div className="library-page__workspace-metric">
-              <span className="library-page__workspace-metric-label">Attachments</span>
-              <strong>{totalAttachments} tracked</strong>
-            </div>
-          </div>
-        </div>
-
         <div className="library-page__header">
           <div className="library-page__title-section">
             <button className="library-page__back" onClick={onBack}>
@@ -315,7 +246,7 @@ export default function Library({ onBack, onViewSession, onNewSearch }) {
             </button>
             <div className="library-page__title-copy">
               <div className="library-page__section-label">Library</div>
-              <h1 className="library-page__title">Saved research sessions</h1>
+              <h2 className="library-page__title">Saved sessions</h2>
             </div>
           </div>
           <div className="library-page__actions">
@@ -347,7 +278,7 @@ export default function Library({ onBack, onViewSession, onNewSearch }) {
                 </Button>
                 <Button variant="primary" size="sm" onClick={onNewSearch}>
                   <Plus size={16} />
-                  New Search
+                  New Chat
                 </Button>
               </>
             )}
@@ -356,9 +287,9 @@ export default function Library({ onBack, onViewSession, onNewSearch }) {
 
         <div className="library-page__search-shell">
           <div className="library-page__search-intro">
-            <div className="library-page__section-label">Find and refine</div>
+            <div className="library-page__section-label">Find sessions</div>
             <p className="library-page__search-body">
-              Narrow by recency, attachments, or ordering, then jump back into any saved answer without losing the provenance around it.
+              Search saved sessions, then narrow the current slice with simple filters.
             </p>
           </div>
 
@@ -400,25 +331,6 @@ export default function Library({ onBack, onViewSession, onNewSearch }) {
             onClearSelection={clearSelection}
           />
         )}
-
-        <div className="library-page__results-head">
-          <div>
-            <div className="library-page__section-label">Archive view</div>
-            <h2 className="library-page__results-title">
-              {filteredSessions.length === 0 ? 'No sessions in the current slice' : `${filteredSessions.length} saved session${filteredSessions.length === 1 ? '' : 's'} ready to review`}
-            </h2>
-          </div>
-          <div className="library-page__results-copy">
-            <p className="library-page__results-body">
-              {searchQuery
-                ? `Showing matches for "${searchQuery}".`
-                : 'Sorted for quick re-entry into prior research, exports, and follow-up edits.'}
-            </p>
-            <div className="library-page__results-chip">
-              {isSelectionMode ? 'Bulk archive mode' : 'Single-session review'}
-            </div>
-          </div>
-        </div>
 
         <SessionList
           sessions={filteredSessions}

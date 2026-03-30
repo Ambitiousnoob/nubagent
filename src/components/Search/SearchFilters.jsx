@@ -82,22 +82,8 @@ export function SearchFilters({
         <div className="search-filters__summary-copy">
           <span className="search-filters__summary-eyebrow">Archive filters</span>
           <p className="search-filters__summary-body">
-            Adjust time, attachment presence, and list ordering without losing your place in the library.
+            Refine this view by time, attachments, and ordering.
           </p>
-        </div>
-        <div className="search-filters__summary-meta" aria-label="Current filter posture">
-          <div className="search-filters__summary-metric">
-            <span>Current view</span>
-            <strong>{hasActiveFilters ? `${activeFilters.length} active filter${activeFilters.length === 1 ? '' : 's'}` : 'Default library slice'}</strong>
-          </div>
-          <div className="search-filters__summary-metric">
-            <span>Window</span>
-            <strong>{dateRangeLabel}</strong>
-          </div>
-          <div className="search-filters__summary-metric">
-            <span>Ordering</span>
-            <strong>{sortByLabel} · {sortOrderLabel}</strong>
-          </div>
         </div>
         {activeFilters.length > 0 && (
           <div className="search-filters__active-pills" aria-label="Active filters">
@@ -121,14 +107,15 @@ export function SearchFilters({
           type="button"
           className={`search-filters__toggle ${isOpen ? 'search-filters__toggle--open' : ''}`}
           onClick={() => setIsOpen(!isOpen)}
+          aria-expanded={isOpen}
         >
           <div className="search-filters__toggle-copy">
             <span className="search-filters__toggle-label">
               <Filter size={16} />
-              Filters
+              Filter archive
             </span>
             <span className="search-filters__toggle-value">
-              {hasActiveFilters ? 'Refine this archive slice' : 'Open the control panel'}
+              {hasActiveFilters ? `${activeFilters.length} active · ${sortByLabel} · ${sortOrderLabel}` : 'Open controls'}
             </span>
           </div>
           {hasActiveFilters && <span className="search-filters__badge">{activeFilters.length}</span>}

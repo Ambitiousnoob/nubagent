@@ -38,7 +38,7 @@ describe('SearchEngine library persistence', () => {
 
     render(<SearchEngine />);
 
-    const input = screen.getByPlaceholderText(/ask anything or use site:/i);
+    const input = screen.getByPlaceholderText(/ask a question or use site:/i);
     fireEvent.change(input, { target: { value: 'best laptop battery life' } });
     fireEvent.submit(input.closest('form'));
 
@@ -60,7 +60,7 @@ describe('SearchEngine library persistence', () => {
 
     const view = render(<SearchEngine />);
 
-    const input = screen.getByPlaceholderText(/ask anything or use site:/i);
+    const input = screen.getByPlaceholderText(/ask a question or use site:/i);
     fireEvent.change(input, { target: { value: 'abort on unmount' } });
     fireEvent.submit(input.closest('form'));
 
@@ -79,7 +79,7 @@ describe('SearchEngine library persistence', () => {
 
     render(<SearchEngine />);
 
-    const input = screen.getByPlaceholderText(/ask anything or use site:/i);
+    const input = screen.getByPlaceholderText(/ask a question or use site:/i);
     fireEvent.change(input, { target: { value: 'search failure case' } });
     fireEvent.submit(input.closest('form'));
 
@@ -98,7 +98,7 @@ describe('SearchEngine library persistence', () => {
 
     const searchView = render(<SearchEngine />);
 
-    const input = screen.getByPlaceholderText(/ask anything or use site:/i);
+    const input = screen.getByPlaceholderText(/ask a question or use site:/i);
     fireEvent.change(input, { target: { value: 'library visibility check' } });
     fireEvent.submit(input.closest('form'));
 
@@ -146,7 +146,7 @@ describe('SearchEngine library persistence', () => {
     expect(await screen.findByText('original query')).toBeInTheDocument();
 
     fireEvent.click(screen.getByTitle('Edit'));
-    fireEvent.click(await screen.findByText('Edit Session'));
+    fireEvent.click(await screen.findByRole('button', { name: /edit session/i }));
 
     const queryInput = await screen.findByPlaceholderText('Search query');
     fireEvent.change(queryInput, { target: { value: 'updated query' } });

@@ -47,19 +47,14 @@ export function SessionList({
           <h3 className="session-list__empty-title">No sessions match this view</h3>
           <p className="session-list__empty-text">
             {selectable
-              ? 'Widen the current slice or leave selection mode to browse the full archive again.'
-              : 'Your strongest saved research will surface here once a run is worth keeping.'}
+              ? 'Widen the current slice or leave selection mode to see the rest of the archive.'
+              : 'Saved research shows up here once a run is worth keeping.'}
           </p>
-          <div className="session-list__empty-grid">
-            <div className="session-list__empty-card">
-              <span>Recovery path</span>
-              <strong>{selectable ? 'Relax filters or leave bulk mode.' : 'Run a search and save the answers worth reusing.'}</strong>
-            </div>
-            <div className="session-list__empty-card">
-              <span>What lives here</span>
-              <strong>Stored sessions keep query intent, answer body, attachments, and first-source provenance together.</strong>
-            </div>
-          </div>
+          <p className="session-list__empty-note">
+            {selectable
+              ? 'Relax filters or leave bulk mode.'
+              : 'Each saved session keeps the query, answer, attachments, and source trail together.'}
+          </p>
         </div>
       </div>
     );
@@ -75,15 +70,15 @@ export function SessionList({
           <h2 className="session-list__summary-title">{sessionCountLabel}</h2>
           <p className="session-list__summary-body">
             {selectable
-              ? 'Choose the runs you want to export, compare, or remove in one pass.'
-              : 'Open preserved answers quickly and keep the provenance around every saved result visible.'}
+              ? 'Choose the sessions you want to export or remove.'
+              : 'Open saved answers quickly with the source trail still attached.'}
           </p>
         </div>
 
         {selectable && selectedSessions.length > 0 && (
           <div className="session-list__selection-bar">
             <span>{selectedSessions.length} selected</span>
-            <small>Use bulk export or delete to manage this slice of the archive.</small>
+            <small>Bulk actions apply to the current selection.</small>
           </div>
         )}
       </div>

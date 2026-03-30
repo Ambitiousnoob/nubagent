@@ -138,7 +138,7 @@ export function SessionActions({
           <div className="session-actions__lead">
             <div className="session-actions__eyebrow">Session editor</div>
             <p className="session-actions__lead-copy">
-              Tighten the archive copy without changing the underlying transcript.
+              Update the saved label and summary without changing the transcript.
             </p>
           </div>
           <label className="session-actions__field">
@@ -187,7 +187,7 @@ export function SessionActions({
             <div className="session-actions__eyebrow">Saved session</div>
             <h3 className="session-actions__summary-title">{session.query}</h3>
             <p className="session-actions__summary-copy">
-              Share it, export it, refine the archive copy, or remove it from the library.
+              Share it, export it, edit the saved copy, or remove it.
             </p>
             {summaryPreview && (
               <p className="session-actions__summary-preview">
@@ -254,7 +254,7 @@ export function BulkActions({
     <div className="bulk-actions">
       <div className="bulk-actions__copy">
         <span className="bulk-actions__count">{selectedCount} selected</span>
-        <small className="bulk-actions__note">Apply archive actions to the current selection.</small>
+        <small className="bulk-actions__note">Apply actions to the current selection.</small>
       </div>
       <div className="bulk-actions__buttons">
         <Button variant="outline" size="sm" onClick={onClearSelection}>
