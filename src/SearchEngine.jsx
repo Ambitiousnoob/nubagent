@@ -4,11 +4,18 @@ const CHAT_API = "/api/chat";
 const SEARCH_API = "/api/search";
 const FETCH_API = "/api/fetch";
 const MODEL_NAME = "nub-agent";
-const SOURCE_TARGET = 100;
-const SEARCH_SWARM_SIZE = 5;
-const SYNTHESIS_SWARM_SIZE = 4;
-const FETCH_CONCURRENCY = 6;
+const SOURCE_TARGET = 60;
+const FETCH_TARGET = 24;
+const SEARCH_SWARM_SIZE = 3;
+const SYNTHESIS_SWARM_SIZE = 3;
+const FETCH_CONCURRENCY = 4;
 const FETCH_MAX_CHARS = 900;
+const MAX_UPLOAD_FILES = 6;
+const MAX_TEXT_ATTACHMENT_CHARS = 12000;
+const MAX_TOTAL_ATTACHMENT_CHARS = 32000;
+const MAX_IMAGE_UPLOAD_BYTES = 8 * 1024 * 1024;
+const TEXT_FILE_NAME_RE = /\.(txt|md|markdown|json|csv|js|mjs|cjs|ts|jsx|tsx|py|rb|go|rs|java|c|h|cpp|hpp|html|css|scss|sass|xml|yaml|yml|toml|ini|env|log)$/i;
+const IMAGE_FILE_NAME_RE = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
 
 const createId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
@@ -79,7 +86,67 @@ const extractAnswerParts = (text = "") => {
     };
 };
 
+const extractCitationNumbers = (text = "") => ([
+    ...new Set(
+        [...String(text || "").matchAll(/\[(\d+)\]/g)]
+            .map((match) => Number(match[1]))
+            .filter((value) => Number.isInteger(value) && value > 0),
+    ),
+]);
+
+const buildAttributedSources = (answerText = "", evidenceEntries = []) => {
+    const successfulEntries = (Array.isArray(evidenceEntries) ? evidenceEntries : []).filter((entry) => stripFetchMeta(entry?.content || "").trim());
+    const byCitation = new Map(
+        successfulEntries
+            .map((entry) => [Number(entry?.source?.citationIndex), entry?.source])
+            .filter((entry) => Number.isInteger(entry[0]) && entry[0] > 0 && entry[1]?.url),
+    );
+    const citedSources = extractCitationNumbers(answerText)
+        .map((citationIndex) => byCitation.get(citationIndex))
+        .filter(Boolean);
+
+    if (citedSources.length) return dedupeSources(citedSources, FETCH_TARGET);
+    return dedupeSources(successfulEntries.map((entry) => entry.source).filter(Boolean), FETCH_TARGET);
+};
+
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const normalizeTextBlock = (value) => String(value ?? "").replace(/\u0000/g, "").replace(/\r\n?/g, "\n").trim();
+
+const truncateText = (value, max = MAX_TEXT_ATTACHMENT_CHARS) => {
+    const text = String(value ?? "");
+    if (text.length <= max) return text;
+    const suffix = `\n...[truncated ${text.length - max} chars]`;
+    if (max <= suffix.length + 8) return text.slice(0, max);
+    return `${text.slice(0, max - suffix.length)}${suffix}`;
+};
+
+const formatBytes = (bytes = 0) => {
+    if (!Number.isFinite(Number(bytes))) return "0 B";
+    const value = Number(bytes);
+    if (value < 1024) return `${value} B`;
+    if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+    return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const isProbablyTextFile = (file) => {
+    const type = String(file?.type || "");
+    return TEXT_FILE_NAME_RE.test(file?.name || "")
+        || type.startsWith("text/")
+        || /(json|javascript|typescript|xml|yaml|csv)/i.test(type);
+};
+
+const isImageFile = (file) => {
+    const type = String(file?.type || "");
+    return type.startsWith("image/") || IMAGE_FILE_NAME_RE.test(file?.name || "");
+};
+
+const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error(`Failed to read ${file?.name || "file"}.`));
+    reader.readAsDataURL(file);
+});
 
 const postJson = async (url, payload, signal) => {
     const response = await fetch(url, {
@@ -174,6 +241,86 @@ const buildEvidenceBlock = (entry, index) => {
     return parts.join("\n");
 };
 
+const buildAttachmentBadge = (attachment) => {
+    if (!attachment) return "";
+    const parts = [attachment.kind === "image" ? "Image" : "Text", formatBytes(attachment.size)];
+    if (attachment.truncated) parts.push("truncated");
+    return parts.join(" • ");
+};
+
+const buildAttachmentManifest = (attachments = []) => (
+    attachments
+        .map((attachment) => `- ${attachment.kind === "image" ? "Image" : "Text"}: ${attachment.name} (${formatBytes(attachment.size)})${attachment.truncated ? " [truncated]" : ""}`)
+        .join("\n")
+);
+
+const buildTextAttachmentSections = (attachments = []) => (
+    attachments
+        .filter((attachment) => attachment?.kind === "text" && attachment?.textContent)
+        .map((attachment) => (
+            `--- File: ${attachment.name} (${formatBytes(attachment.size)})${attachment.truncated ? " [truncated]" : ""} ---\n${attachment.textContent}`
+        ))
+        .join("\n\n")
+);
+
+const buildAttachmentContext = (attachments = []) => {
+    if (!attachments.length) return "";
+    const sections = [`Attached files:\n${buildAttachmentManifest(attachments)}`];
+    const textSections = buildTextAttachmentSections(attachments);
+    if (textSections) sections.push(textSections);
+    return sections.join("\n\n").trim();
+};
+
+const getAttachmentAnalysisPrompt = (query, attachments = []) => {
+    const normalized = normalizeTextBlock(query);
+    if (normalized) return normalized;
+    return attachments.some((attachment) => attachment?.kind === "image")
+        ? "Analyze the attached image files."
+        : "Analyze the attached files.";
+};
+
+const getChatText = (payload = {}) => String(payload?.choices?.[0]?.message?.content || payload?.output_text || "").trim();
+
+const buildSessionAttachments = (attachments = []) => (
+    attachments.map((attachment) => ({
+        id: attachment.id || createId(),
+        name: attachment.name || "attachment",
+        kind: attachment.kind === "image" ? "image" : "text",
+        size: Number(attachment.size) || 0,
+        truncated: Boolean(attachment.truncated),
+        dataUrl: attachment.kind === "image" ? String(attachment.dataUrl || "") : "",
+        textContent: attachment.kind === "text" ? String(attachment.textContent || "") : "",
+    }))
+);
+
+const analyzeAttachments = async (query, attachments, signal) => {
+    if (!attachments.length) return "";
+
+    const imagePayloads = attachments
+        .filter((attachment) => attachment?.kind === "image" && attachment?.dataUrl)
+        .map((attachment) => attachment.dataUrl);
+    const attachmentContext = buildAttachmentContext(attachments);
+    const payload = {
+        model: MODEL_NAME,
+        stream: false,
+        use_tools: false,
+        messages: [
+            {
+                role: "system",
+                content: "You analyze uploaded files for a research interface. Start with a single H1 title. If images are attached, identify what is visible. If text files are attached, summarize the relevant facts. Be concrete and concise.",
+            },
+            {
+                role: "user",
+                content: `User request: ${getAttachmentAnalysisPrompt(query, attachments)}${attachmentContext ? `\n\n${attachmentContext}` : ""}`,
+            },
+        ],
+        ...(imagePayloads.length ? { images: imagePayloads } : {}),
+    };
+
+    const response = await postJson(CHAT_API, payload, signal);
+    return getChatText(response);
+};
+
 const runConcurrent = async (items, limit, worker) => {
     const values = Array.isArray(items) ? items : [];
     const concurrency = Math.max(1, limit || 1);
@@ -192,24 +339,78 @@ const runConcurrent = async (items, limit, worker) => {
     return results;
 };
 
-function Markdown({ text, sources = [] }) {
-    const renderInline = (str) => {
-        const parts = str.split(/(\*\*[^*]+\*\*|`[^`]+`|\[\d+\])/g);
-        return parts.map((part, index) => {
-            if (/^\*\*[^*]+\*\*$/.test(part)) return <strong key={index}>{part.slice(2, -2)}</strong>;
-            if (/^`[^`]+`$/.test(part)) return <code key={index} className="ic">{part.slice(1, -1)}</code>;
-            if (/^\[\d+\]$/.test(part)) {
-                const sourceIndex = Number(part.slice(1, -1)) - 1;
-                return (
-                    <a key={index} href={sources[sourceIndex]?.url || "#"} target="_blank" rel="noopener noreferrer" className="cite">
-                        {part.slice(1, -1)}
-                    </a>
-                );
-            }
-            return part;
-        });
-    };
+const renderInlineMarkup = (str, sources = []) => {
+    const parts = String(str || "").split(/(\*\*[^*]+\*\*|`[^`]+`|\[\d+\])/g);
+    return parts.map((part, index) => {
+        if (/^\*\*[^*]+\*\*$/.test(part)) return <strong key={index}>{part.slice(2, -2)}</strong>;
+        if (/^`[^`]+`$/.test(part)) return <code key={index} className="ic">{part.slice(1, -1)}</code>;
+        if (/^\[\d+\]$/.test(part)) {
+            const sourceIndex = Number(part.slice(1, -1)) - 1;
+            return (
+                <a key={index} href={sources[sourceIndex]?.url || "#"} target="_blank" rel="noopener noreferrer" className="cite">
+                    {part.slice(1, -1)}
+                </a>
+            );
+        }
+        return part;
+    });
+};
 
+const extractHighlightPoints = (text = "", limit = 4) => {
+    const bullets = String(text || "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => /^[-*]\s+/.test(line))
+        .map((line) => line.replace(/^[-*]\s+/, "").trim())
+        .filter(Boolean);
+    if (bullets.length) return bullets.slice(0, limit);
+
+    return String(text || "")
+        .replace(/\n+/g, " ")
+        .split(/(?<=[.!?])\s+/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .slice(0, limit);
+};
+
+const buildResultSummary = (text = "") => {
+    const cleaned = String(text || "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line && !/^[-*]\s+/.test(line) && !/^#{1,6}\s+/.test(line));
+    return cleaned.join(" ");
+};
+
+const SOURCE_COLOR_CLASSES = [
+    "blue", "sky", "red", "emerald", "purple", "amber", "stone", "cyan",
+    "indigo", "rose", "teal", "lime", "violet", "pink", "fuchsia", "orange", "yellow", "slate",
+];
+
+const POINT_STYLES = [
+    { className: "red", symbol: "!" },
+    { className: "amber", symbol: "↓" },
+    { className: "green", symbol: "✓" },
+    { className: "blue", symbol: "•" },
+];
+
+const getSourceBadge = (source, index) => {
+    const domain = getDomain(source?.url || "");
+    if (/(\.gov|\.mil|\.edu)\b/i.test(domain) || /(nist|europa|who|un\.org|cisa|gov$)/i.test(domain)) {
+        return { label: "Official", className: "official" };
+    }
+    if (index < 3) return { label: "Relevant", className: "relevant" };
+    return null;
+};
+
+const getSourceLetterMark = (source) => {
+    const domain = getDomain(source?.url || "");
+    const segments = domain.split(".").filter(Boolean);
+    const core = segments[0] || domain || "S";
+    const letters = core.replace(/[^a-z0-9]/gi, "").slice(0, 2).toUpperCase();
+    return letters || "S";
+};
+
+function Markdown({ text, sources = [] }) {
     const lines = String(text || "").split("\n");
     const elements = [];
     let list = [];
@@ -218,7 +419,7 @@ function Markdown({ text, sources = [] }) {
         if (!list.length) return;
         elements.push(
             <ul key={`ul${key}`} className="md-ul">
-                {list.map((item, index) => <li key={index}>{renderInline(item)}</li>)}
+                {list.map((item, index) => <li key={index}>{renderInlineMarkup(item, sources)}</li>)}
             </ul>,
         );
         list = [];
@@ -229,7 +430,7 @@ function Markdown({ text, sources = [] }) {
         if (heading) {
             flush(index);
             const level = heading[1].length;
-            const content = renderInline(heading[2]);
+            const content = renderInlineMarkup(heading[2], sources);
             if (level === 1) elements.push(<h1 key={index} className="md-h1">{content}</h1>);
             else if (level === 2) elements.push(<h2 key={index} className="md-h2">{content}</h2>);
             else elements.push(<h3 key={index} className="md-h3">{content}</h3>);
@@ -248,14 +449,21 @@ function Markdown({ text, sources = [] }) {
         }
 
         flush(index);
-        elements.push(<p key={index} className="md-p">{renderInline(line)}</p>);
+        elements.push(<p key={index} className="md-p">{renderInlineMarkup(line, sources)}</p>);
     });
 
     flush("end");
     return <>{elements}</>;
 }
 
-function SearchingCard({ queries, done, statusText = "" }) {
+function SearchingCard({
+    queries,
+    done,
+    statusText = "",
+    title = "Searching the web",
+    doneTitle = "Searched the web",
+    icon = "🌐",
+}) {
     const [shown, setShown] = useState(0);
     const [dot, setDot] = useState(0);
 
@@ -273,8 +481,8 @@ function SearchingCard({ queries, done, statusText = "" }) {
     return (
         <div className={`scard ${done ? "scard--done" : ""}`}>
             <div className="scard__head">
-                <span className="scard__icon">🌐</span>
-                <span className="scard__title">{done ? "Searched the web" : "Searching the web"}</span>
+                <span className="scard__icon">{icon}</span>
+                <span className="scard__title">{done ? doneTitle : title}</span>
             </div>
             {queries.length > 0 && (
                 <div className="scard__chips">
@@ -362,31 +570,118 @@ function SourcePills({ sources }) {
     );
 }
 
-function SourceList({ sources }) {
-    if (!sources.length) return null;
+function LibertyResultCard({ query, heading, body, sources = [], searchCount = 0 }) {
+    const visibleSources = sources.slice(0, 20);
+    const summary = buildResultSummary(body);
+    const points = extractHighlightPoints(body, 4);
+    const topDomains = [...new Set(visibleSources.map((source) => getDomain(source.url)).filter(Boolean))];
+
     return (
-        <details className="source-list">
-            <summary>Sources ({sources.length})</summary>
-            <div className="source-list__items">
-                {sources.map((source, index) => (
-                    <a key={source.url || `${index}`} href={source.url} target="_blank" rel="noopener noreferrer" className="source-list__item">
-                        <span className="source-list__idx">[{index + 1}]</span>
-                        <span className="source-list__title">{source.title || getDomain(source.url)}</span>
-                        <span className="source-list__domain">{getDomain(source.url)}</span>
-                    </a>
-                ))}
+        <div className="la-result">
+            <div className="la-header">
+                <div className="la-logo">✳</div>
+                <span className="la-brand">nub-agent</span>
+                <span className="la-badge">{sources.length} Source{sources.length === 1 ? "" : "s"}</span>
             </div>
-        </details>
+
+            <div className="la-body">
+                <div className="la-query">Query</div>
+                <div className="la-question">{renderInlineMarkup(query || heading, sources)}</div>
+                <div className="la-divider" />
+
+                <div className="la-summary-label">AI Summary</div>
+                <div className="la-summary-title">{renderInlineMarkup(heading, sources)}</div>
+                {summary ? <div className="la-summary-text">{renderInlineMarkup(summary, sources)}</div> : null}
+
+                {points.length ? (
+                    <div className="la-points">
+                        {points.map((point, index) => {
+                            const style = POINT_STYLES[index % POINT_STYLES.length];
+                            return (
+                                <div key={`${index}-${point.slice(0, 32)}`} className="la-point">
+                                    <div className={`la-point-icon ${style.className}`}>{style.symbol}</div>
+                                    <p>{renderInlineMarkup(point, sources)}</p>
+                                </div>
+                            );
+                        })}
+                    </div>
+                ) : null}
+
+                {visibleSources.length ? (
+                    <>
+                        <div className="la-sources-header">
+                            <span className="la-sources-title">All Sources</span>
+                            <span className="la-sources-count">from {Math.max(searchCount, 1)} search{Math.max(searchCount, 1) === 1 ? "" : "es"}</span>
+                        </div>
+                        <div className="la-sources">
+                            {visibleSources.map((source, index) => {
+                                const badge = getSourceBadge(source, index);
+                                const colorClass = SOURCE_COLOR_CLASSES[index % SOURCE_COLOR_CLASSES.length];
+                                return (
+                                    <a key={source.url || `${index}`} href={source.url} target="_blank" rel="noopener noreferrer" className="la-source">
+                                        <div className={`la-source-favicon ${colorClass}`}>{getSourceLetterMark(source)}</div>
+                                        <div className="la-source-content">
+                                            <div className="la-source-meta">
+                                                <span className="la-source-domain">{getDomain(source.url)}</span>
+                                                {badge ? <span className={`la-source-tag ${badge.className}`}>{badge.label}</span> : null}
+                                            </div>
+                                            <div className="la-source-title">{source.title || getDomain(source.url)}</div>
+                                            {source.description ? <div className="la-source-desc">{source.description}</div> : null}
+                                        </div>
+                                        <div className="la-source-arrow">↗</div>
+                                    </a>
+                                );
+                            })}
+                        </div>
+                    </>
+                ) : null}
+            </div>
+
+            {visibleSources.length ? (
+                <div className="la-footer">
+                    <span>{sources.length} source{sources.length === 1 ? "" : "s"} from {Math.max(searchCount, 1)} search{Math.max(searchCount, 1) === 1 ? "" : "es"}</span>
+                    <span>{topDomains.slice(0, 3).join(", ")}{topDomains.length > 3 ? ` +${topDomains.length - 3}` : ""}</span>
+                </div>
+            ) : null}
+        </div>
     );
 }
 
-function UserMsg({ text }) {
+function AttachmentList({ attachments = [], onRemove, compact = false }) {
+    if (!attachments.length) return null;
+
+    return (
+        <div className={`att-list ${compact ? "att-list--compact" : ""}`}>
+            {attachments.map((attachment) => (
+                <div key={attachment.id || attachment.name} className={`att-chip ${compact ? "att-chip--compact" : ""}`}>
+                    {attachment.kind === "image" && attachment.dataUrl ? (
+                        <img className="att-chip__thumb" src={attachment.dataUrl} alt={attachment.name} />
+                    ) : (
+                        <div className="att-chip__icon">{attachment.kind === "image" ? "🖼" : "📄"}</div>
+                    )}
+                    <div className="att-chip__meta">
+                        <div className="att-chip__name">{attachment.name}</div>
+                        <div className="att-chip__sub">{buildAttachmentBadge(attachment)}</div>
+                    </div>
+                    {typeof onRemove === "function" && (
+                        <button type="button" className="att-chip__remove" onClick={() => onRemove(attachment.id)} title={`Remove ${attachment.name}`}>
+                            ×
+                        </button>
+                    )}
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function UserMsg({ text, attachments = [] }) {
     return (
         <div className="umsg">
-            <div className="umsg__av"><span>W</span></div>
+            <div className="umsg__av"><span>U</span></div>
             <div className="umsg__body">
-                <div className="umsg__name">Winsley Saavedra</div>
-                <div className="umsg__text">{text}</div>
+                <div className="umsg__name">You</div>
+                {text ? <div className="umsg__text">{text}</div> : null}
+                <AttachmentList attachments={attachments} />
             </div>
             <div className="umsg__acts">
                 <button className="act-btn" title="Edit">✏</button>
@@ -396,30 +691,52 @@ function UserMsg({ text }) {
     );
 }
 
-function BotMsg({ msg, isLast, streaming }) {
-    const { heading, body, sources = [], showPlanning, showSearching, queries = [], searchDone, statusText = "" } = msg;
+function BotMsg({ msg, isLast, streaming, sessionQuery = "" }) {
+    const {
+        heading,
+        body,
+        sources = [],
+        showPlanning,
+        showSearching,
+        queries = [],
+        searchDone,
+        statusText = "",
+        activityTitle,
+        activityDoneTitle,
+        activityIcon,
+    } = msg;
     const active = isLast && streaming;
 
     return (
         <div className="bmsg">
             {showPlanning && <PlanningCard done={searchDone} />}
-            {showSearching && <SearchingCard queries={queries} done={searchDone} statusText={statusText} />}
+            {showSearching && (
+                <SearchingCard
+                    queries={queries}
+                    done={searchDone}
+                    statusText={statusText}
+                    title={activityTitle}
+                    doneTitle={activityDoneTitle}
+                    icon={activityIcon}
+                />
+            )}
             {(body || (active && !showSearching)) && (
                 <div className="bmsg__ans">
-                    {heading && <h2 className="bmsg__heading">{heading}</h2>}
-                    <div className="bmsg__body">
-                        <Markdown text={body || ""} sources={sources} />
-                        {active && <span className="caret">▍</span>}
-                    </div>
-                    <SourcePills sources={sources} />
-                    <SourceList sources={sources} />
+                    <LibertyResultCard
+                        query={sessionQuery}
+                        heading={heading}
+                        body={body || ""}
+                        sources={sources}
+                        searchCount={queries.length}
+                    />
+                    {active && !body && <div className="bmsg__body"><span className="caret">▍</span></div>}
                 </div>
             )}
         </div>
     );
 }
 
-function Landing({ onSearch }) {
+function Landing({ onSearch, uploads = [], onOpenUpload, onRemoveUpload, uploadStatus = "" }) {
     const [query, setQuery] = useState("");
     const inputRef = useRef(null);
 
@@ -427,7 +744,7 @@ function Landing({ onSearch }) {
 
     const submit = (event) => {
         event?.preventDefault();
-        if (query.trim()) onSearch(query.trim());
+        if (query.trim() || uploads.length) onSearch(query.trim());
     };
 
     const examples = [
@@ -443,6 +760,7 @@ function Landing({ onSearch }) {
             <h1 className="land__h1">What do you want to know?</h1>
             <p className="land__sub">AI research with real citations, dork operators, and deep web reading.</p>
             <form className="land__form" onSubmit={submit}>
+                <button type="button" className="land__attach" onClick={onOpenUpload} title="Attach files">📎</button>
                 <input
                     ref={inputRef}
                     className="land__in"
@@ -451,12 +769,18 @@ function Landing({ onSearch }) {
                     placeholder="Ask anything or use site: filetype: intitle: operators..."
                     autoComplete="off"
                 />
-                <button type="submit" className="land__btn" disabled={!query.trim()}>
+                <button type="submit" className="land__btn" disabled={!query.trim() && !uploads.length}>
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                         <path d="M8 2L14 8L8 14M2 8H14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                 </button>
             </form>
+            {(uploads.length || uploadStatus) && (
+                <div className="land__uploads">
+                    <AttachmentList attachments={uploads} onRemove={onRemoveUpload} compact />
+                    {uploadStatus ? <div className="upload-status">{uploadStatus}</div> : null}
+                </div>
+            )}
             <div className="land__exs">
                 {examples.map((example) => <button key={example} className="land__ex" onClick={() => onSearch(example)}>{example}</button>)}
             </div>
@@ -470,10 +794,14 @@ export default function SearchEngine() {
     const [streaming, setStreaming] = useState(false);
     const [input, setInput] = useState("");
     const [navActive, setNavActive] = useState("search");
+    const [pendingUploads, setPendingUploads] = useState([]);
+    const [uploadStatus, setUploadStatus] = useState("");
 
     const abortRef = useRef(null);
     const bottomRef = useRef(null);
     const inputRef = useRef(null);
+    const fileInputRef = useRef(null);
+    const uploadStatusTimerRef = useRef(null);
 
     const active = sessions.find((session) => session.id === activeId);
     const isLanding = !active && !streaming;
@@ -481,6 +809,24 @@ export default function SearchEngine() {
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [sessions, streaming]);
+
+    const setTransientUploadStatus = useCallback((value) => {
+        if (uploadStatusTimerRef.current) {
+            clearTimeout(uploadStatusTimerRef.current);
+            uploadStatusTimerRef.current = null;
+        }
+        setUploadStatus(value);
+        if (value) {
+            uploadStatusTimerRef.current = setTimeout(() => {
+                setUploadStatus("");
+                uploadStatusTimerRef.current = null;
+            }, 3200);
+        }
+    }, []);
+
+    useEffect(() => () => {
+        if (uploadStatusTimerRef.current) clearTimeout(uploadStatusTimerRef.current);
+    }, []);
 
     const patchLastBot = useCallback((sessionId, patch) => {
         setSessions((previous) => previous.map((session) => {
@@ -539,18 +885,152 @@ export default function SearchEngine() {
         });
     }, [patchLastBot]);
 
-    const runSearch = useCallback(async (query) => {
-        if (!query.trim() || streaming) return;
+    const handleFileUpload = useCallback(async (event) => {
+        const files = Array.from(event.target.files || []);
+        event.target.value = "";
+        if (!files.length || streaming) return;
+
+        const remainingSlots = Math.max(0, MAX_UPLOAD_FILES - pendingUploads.length);
+        if (remainingSlots <= 0) {
+            setTransientUploadStatus(`Attachment limit reached (${MAX_UPLOAD_FILES}). Remove one to add another.`);
+            return;
+        }
+
+        const selected = files.slice(0, remainingSlots);
+        let totalChars = pendingUploads
+            .filter((attachment) => attachment?.kind === "text")
+            .reduce((sum, attachment) => sum + (attachment?.textContent?.length || 0), 0);
+        let skippedCount = Math.max(0, files.length - selected.length);
+        let truncatedCount = 0;
+        let unreadableCount = 0;
+        let oversizedCount = 0;
+        const nextUploads = [];
+
+        for (const file of selected) {
+            if (isImageFile(file)) {
+                if ((file.size || 0) > MAX_IMAGE_UPLOAD_BYTES) {
+                    oversizedCount += 1;
+                    skippedCount += 1;
+                    continue;
+                }
+                try {
+                    const dataUrl = await readFileAsDataUrl(file);
+                    if (!dataUrl) {
+                        unreadableCount += 1;
+                        continue;
+                    }
+                    nextUploads.push({
+                        id: createId(),
+                        name: file.name,
+                        kind: "image",
+                        size: file.size,
+                        mimeType: file.type || "image/*",
+                        dataUrl,
+                        truncated: false,
+                    });
+                } catch {
+                    unreadableCount += 1;
+                }
+                continue;
+            }
+
+            if (!isProbablyTextFile(file)) {
+                skippedCount += 1;
+                continue;
+            }
+
+            try {
+                let text = normalizeTextBlock(await file.text());
+                if (!text) {
+                    skippedCount += 1;
+                    continue;
+                }
+
+                const remainingBudget = MAX_TOTAL_ATTACHMENT_CHARS - totalChars;
+                if (remainingBudget <= 0) {
+                    skippedCount += 1;
+                    continue;
+                }
+
+                let wasTruncated = false;
+                if (text.length > MAX_TEXT_ATTACHMENT_CHARS) {
+                    text = truncateText(text, MAX_TEXT_ATTACHMENT_CHARS);
+                    wasTruncated = true;
+                }
+                if (text.length > remainingBudget) {
+                    text = truncateText(text, remainingBudget);
+                    wasTruncated = true;
+                }
+                if (!text.trim()) {
+                    skippedCount += 1;
+                    continue;
+                }
+
+                totalChars += text.length;
+                if (wasTruncated) truncatedCount += 1;
+                nextUploads.push({
+                    id: createId(),
+                    name: file.name,
+                    kind: "text",
+                    size: file.size,
+                    mimeType: file.type || "text/plain",
+                    textContent: text,
+                    truncated: wasTruncated,
+                });
+            } catch {
+                unreadableCount += 1;
+            }
+        }
+
+        if (!nextUploads.length) {
+            const reason = unreadableCount
+                ? "Selected files could not be read."
+                : skippedCount
+                    ? "No supported files were added."
+                    : "No readable content found.";
+            setTransientUploadStatus(`Upload error: ${reason}`);
+            return;
+        }
+
+        setPendingUploads((previous) => [...previous, ...nextUploads]);
+        const notes = [];
+        if (truncatedCount) notes.push(`${truncatedCount} truncated`);
+        if (oversizedCount) notes.push(`${oversizedCount} too large`);
+        if (skippedCount) notes.push(`${skippedCount} skipped`);
+        if (unreadableCount) notes.push(`${unreadableCount} unreadable`);
+        setTransientUploadStatus(
+            `Attached ${nextUploads.length} file${nextUploads.length > 1 ? "s" : ""}${notes.length ? ` (${notes.join(", ")})` : ""}.`,
+        );
+    }, [pendingUploads, setTransientUploadStatus, streaming]);
+
+    const removePendingUpload = useCallback((uploadId) => {
+        setPendingUploads((previous) => previous.filter((attachment) => attachment?.id !== uploadId));
+    }, []);
+
+    const openFilePicker = useCallback(() => {
+        if (streaming) return;
+        fileInputRef.current?.click();
+    }, [streaming]);
+
+    const runSearch = useCallback(async (rawQuery, uploadsOverride = pendingUploads) => {
+        const query = normalizeTextBlock(rawQuery);
+        const attachments = buildSessionAttachments(uploadsOverride || []);
+        if ((!query && !attachments.length) || streaming) return;
 
         const sessionId = createId();
-        const complex = query.length > 35 || /site:|filetype:|intitle:|inurl:|after:|before:/.test(query);
-        const swarmQueries = buildSwarmQueries(query);
+        const complex = Boolean(query) && (query.length > 35 || /site:|filetype:|intitle:|inurl:|after:|before:/.test(query));
+        const swarmQueries = query ? buildSwarmQueries(query) : attachments.map((attachment) => attachment.name).slice(0, 4);
+        const displayQuery = query || `Analyze ${attachments.length} attached file${attachments.length > 1 ? "s" : ""}`;
+        const userText = query || getAttachmentAnalysisPrompt("", attachments);
+        const activityTitle = query ? "Searching the web" : "Inspecting uploads";
+        const activityDoneTitle = query ? "Searched the web" : "Inspected uploads";
+        const activityIcon = query ? "🌐" : "📎";
 
         const newSession = {
             id: sessionId,
-            query,
+            query: displayQuery,
             messages: [
-                { id: createId(), role: "user", text: query },
+                { id: createId(), role: "user", text: userText, attachments },
                 {
                     id: createId(),
                     role: "bot",
@@ -561,7 +1041,12 @@ export default function SearchEngine() {
                     showSearching: true,
                     queries: swarmQueries,
                     searchDone: false,
-                    statusText: `Launching ${swarmQueries.length} search workers...`,
+                    statusText: query
+                        ? `Launching ${swarmQueries.length} search workers...`
+                        : `Reading ${attachments.length} uploaded file${attachments.length > 1 ? "s" : ""}...`,
+                    activityTitle,
+                    activityDoneTitle,
+                    activityIcon,
                 },
             ],
         };
@@ -570,11 +1055,36 @@ export default function SearchEngine() {
         setActiveId(sessionId);
         setStreaming(true);
         setInput("");
+        setPendingUploads([]);
+        setUploadStatus("");
 
         abortRef.current = new AbortController();
         const { signal } = abortRef.current;
 
         try {
+            let attachmentDigest = "";
+            if (attachments.length) {
+                patchLastBot(sessionId, {
+                    statusText: `Reading ${attachments.length} uploaded file${attachments.length > 1 ? "s" : ""}...`,
+                });
+                try {
+                    attachmentDigest = await analyzeAttachments(query, attachments, signal);
+                } catch (error) {
+                    if (!query) throw error;
+                    patchLastBot(sessionId, {
+                        statusText: `Upload read failed (${error.message || "unknown error"}). Continuing with web research...`,
+                    });
+                }
+            }
+
+            if (!query) {
+                if (!attachmentDigest) {
+                    throw new Error("No readable attachment content was found.");
+                }
+                await revealAnswer(sessionId, attachmentDigest, [], signal);
+                return;
+            }
+
             patchLastBot(sessionId, {
                 statusText: `Running ${swarmQueries.length} search workers to collect up to ${SOURCE_TARGET} sites...`,
             });
@@ -635,11 +1145,16 @@ export default function SearchEngine() {
                 }
             });
 
-            const chunkSize = Math.max(1, Math.ceil(evidenceEntries.length / SYNTHESIS_SWARM_SIZE));
-            const evidenceChunks = chunkArray(evidenceEntries, chunkSize).slice(0, SYNTHESIS_SWARM_SIZE);
+            const fetchedEvidenceEntries = evidenceEntries.filter((entry) => stripFetchMeta(entry?.content || "").trim()).slice(0, FETCH_TARGET);
+            if (!fetchedEvidenceEntries.length) {
+                throw new Error("No readable source content was fetched.");
+            }
+
+            const chunkSize = Math.max(1, Math.ceil(fetchedEvidenceEntries.length / SYNTHESIS_SWARM_SIZE));
+            const evidenceChunks = chunkArray(fetchedEvidenceEntries, chunkSize).slice(0, SYNTHESIS_SWARM_SIZE);
 
             patchLastBot(sessionId, {
-                statusText: `Running ${evidenceChunks.length} synthesis workers over ${mergedSources.length} cited sites...`,
+                statusText: `Running ${evidenceChunks.length} synthesis workers over ${fetchedEvidenceEntries.length} fetched sites...`,
             });
 
             const draftSettled = await Promise.allSettled(
@@ -659,7 +1174,7 @@ export default function SearchEngine() {
                             },
                             {
                                 role: "user",
-                                content: `User query: ${query}\n\nEvidence set:\n\n${evidenceBlock}\n\nProduce a concise evidence digest with bullet points and inline source numbers.`,
+                                content: `User query: ${query}${attachmentDigest ? `\n\nUploaded file evidence:\n${truncateText(attachmentDigest, 3000)}` : ""}\n\nEvidence set:\n\n${evidenceBlock}\n\nProduce a concise evidence digest with bullet points and inline source numbers.`,
                             },
                         ],
                     }, signal);
@@ -678,8 +1193,11 @@ export default function SearchEngine() {
                 throw new Error("Research workers did not produce a final digest.");
             }
 
-            const sourceIndex = mergedSources
-                .map((source) => `[${source.citationIndex}] ${source.title} — ${source.url}`)
+            const sourceIndex = fetchedEvidenceEntries
+                .map((entry) => {
+                    const source = entry.source || {};
+                    return `[${source.citationIndex}] ${source.title} — ${source.url}`;
+                })
                 .join("\n");
 
             patchLastBot(sessionId, {
@@ -697,14 +1215,15 @@ export default function SearchEngine() {
                     },
                     {
                         role: "user",
-                        content: `User query: ${query}\n\nSource index:\n${sourceIndex}\n\nWorker drafts:\n\n${workerDrafts.map((draft, index) => `### Worker ${index + 1}\n${draft}`).join("\n\n")}`,
+                        content: `User query: ${query}${attachmentDigest ? `\n\nUploaded file evidence:\n${truncateText(attachmentDigest, 5000)}` : ""}\n\nSource index:\n${sourceIndex}\n\nWorker drafts:\n\n${workerDrafts.map((draft, index) => `### Worker ${index + 1}\n${draft}`).join("\n\n")}`,
                     },
                 ],
             }, signal);
 
-            const fullText = finalPayload?.choices?.[0]?.message?.content || finalPayload?.output_text || "";
+            const fullText = getChatText(finalPayload);
             await delay(250);
-            await revealAnswer(sessionId, fullText, mergedSources, signal);
+            const attributedSources = buildAttributedSources(fullText, fetchedEvidenceEntries);
+            await revealAnswer(sessionId, fullText, attributedSources, signal);
         } catch (error) {
             if (error.name === "AbortError") {
                 patchLastBot(sessionId, {
@@ -728,11 +1247,11 @@ export default function SearchEngine() {
             abortRef.current = null;
             setTimeout(() => inputRef.current?.focus(), 80);
         }
-    }, [active, patchLastBot, revealAnswer, streaming]);
+    }, [patchLastBot, pendingUploads, revealAnswer, streaming]);
 
     const handleSubmit = (event) => {
         event?.preventDefault();
-        if (input.trim()) runSearch(input.trim());
+        if (input.trim() || pendingUploads.length) runSearch(input.trim(), pendingUploads);
     };
 
     const NAV = [
@@ -818,7 +1337,6 @@ html,body,#root{height:100%;background:var(--bg)}
 .pstep__rest{color:var(--txm)}
 .bmsg{display:flex;flex-direction:column;gap:11px;animation:fsi .3s ease}
 .bmsg__ans{margin-left:41px;display:flex;flex-direction:column;gap:11px}
-.bmsg__heading{font-size:21px;font-weight:700;letter-spacing:-.02em;line-height:1.2}
 .bmsg__body{font-size:15px;line-height:1.78;color:var(--tx)}
 .md-h1{font-size:19px;font-weight:700;margin:14px 0 5px;letter-spacing:-.02em}
 .md-h2{font-size:16px;font-weight:600;margin:12px 0 4px}
@@ -836,18 +1354,85 @@ html,body,#root{height:100%;background:var(--bg)}
 .pill__fav{width:11px;height:11px;border-radius:2px}
 .pill__n{font-size:9px;font-weight:700;font-family:var(--mono);color:var(--ac);background:var(--acd);border-radius:3px;padding:0 3px}
 .pill__domain{max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.source-list{margin-top:10px;border:1px solid var(--bdr);border-radius:10px;background:var(--sur);overflow:hidden}
-.source-list summary{cursor:pointer;list-style:none;padding:10px 12px;font-size:12px;color:var(--txd);font-weight:600}
-.source-list summary::-webkit-details-marker{display:none}
-.source-list__items{display:grid;gap:1px;background:var(--bdr)}
-.source-list__item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 12px;background:var(--bg3);text-decoration:none;color:var(--txd);font-size:12px}
-.source-list__item:hover{background:var(--surh);color:var(--tx)}
-.source-list__idx{font-family:var(--mono);color:var(--ac);font-size:11px}
-.source-list__title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.source-list__domain{color:var(--txm);font-size:11px}
+.la-result{
+  --la-bg:#0c0a09;--la-card:rgba(255,255,255,0.03);--la-border:rgba(255,255,255,0.06);--la-border-hover:rgba(255,255,255,0.1);
+  --la-text:#a8a29e;--la-text-dim:#57534e;--la-text-bright:#e7e5e4;--la-text-heading:#fafaf9;--la-accent:#f97316;
+  --la-accent-bg:rgba(249,115,22,0.1);--la-accent-border:rgba(249,115,22,0.25);
+  background:var(--la-bg);border:1px solid var(--la-border);border-radius:16px;overflow:hidden;color:var(--la-text)
+}
+.la-header{display:flex;align-items:center;gap:8px;padding:16px 20px;border-bottom:1px solid var(--la-border)}
+.la-logo{width:22px;height:22px;background:var(--la-accent);border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700}
+.la-brand{font-size:13px;font-weight:600;color:var(--la-text-bright);letter-spacing:-.01em}
+.la-badge{font-size:10px;font-weight:600;color:var(--la-text-dim);background:var(--la-card);border:1px solid var(--la-border);padding:2px 8px;border-radius:20px;margin-left:auto}
+.la-body{padding:20px}
+.la-query{font-size:11px;font-weight:600;color:var(--la-text-dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
+.la-question{font-size:17px;font-weight:600;color:var(--la-text-heading);line-height:1.35;letter-spacing:-.02em;margin-bottom:16px}
+.la-divider{height:1px;margin:0 0 16px;background:linear-gradient(90deg,transparent,var(--la-accent-border),transparent)}
+.la-summary-label{font-size:11px;font-weight:600;color:var(--la-text-dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
+.la-summary-title{font-size:15px;font-weight:600;color:var(--la-text-heading);line-height:1.35;letter-spacing:-.01em;margin-bottom:10px}
+.la-summary-text{font-size:13px;color:var(--la-text);line-height:1.7;margin-bottom:16px}
+.la-summary-text strong{color:var(--la-text-bright);font-weight:500}
+.la-points{display:flex;flex-direction:column;gap:8px;margin-bottom:20px}
+.la-point{display:flex;gap:10px;padding:10px 12px;background:var(--la-card);border:1px solid var(--la-border);border-radius:10px}
+.la-point-icon{width:18px;height:18px;border-radius:5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;font-size:10px;font-weight:700}
+.la-point-icon.red{background:rgba(239,68,68,0.12);color:#f87171}
+.la-point-icon.amber{background:rgba(245,158,11,0.12);color:#fbbf24}
+.la-point-icon.green{background:rgba(34,197,94,0.12);color:#4ade80}
+.la-point-icon.blue{background:rgba(59,130,246,0.12);color:#60a5fa}
+.la-point p{font-size:12px;color:var(--la-text);line-height:1.5}
+.la-sources-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.la-sources-title{font-size:11px;font-weight:600;color:var(--la-text-dim);text-transform:uppercase;letter-spacing:.08em}
+.la-sources-count{font-size:11px;color:var(--la-text-dim)}
+.la-sources{display:flex;flex-direction:column;gap:4px}
+.la-source{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:10px;border:1px solid transparent;transition:all 120ms ease}
+.la-source:hover{background:var(--la-card);border-color:var(--la-border-hover)}
+.la-source-favicon{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;font-size:10px;font-weight:700}
+.la-source-favicon.blue{background:rgba(59,130,246,0.1);color:#60a5fa;border:1px solid rgba(59,130,246,0.15)}
+.la-source-favicon.sky{background:rgba(14,165,233,0.1);color:#38bdf8;border:1px solid rgba(14,165,233,0.15)}
+.la-source-favicon.red{background:rgba(239,68,68,0.1);color:#f87171;border:1px solid rgba(239,68,68,0.15)}
+.la-source-favicon.emerald{background:rgba(16,185,129,0.1);color:#34d399;border:1px solid rgba(16,185,129,0.15)}
+.la-source-favicon.purple{background:rgba(168,85,247,0.1);color:#c084fc;border:1px solid rgba(168,85,247,0.15)}
+.la-source-favicon.amber{background:rgba(245,158,11,0.1);color:#fbbf24;border:1px solid rgba(245,158,11,0.15)}
+.la-source-favicon.stone{background:rgba(168,162,158,0.08);color:#a8a29e;border:1px solid rgba(168,162,158,0.12)}
+.la-source-favicon.cyan{background:rgba(6,182,212,0.1);color:#22d3ee;border:1px solid rgba(6,182,212,0.15)}
+.la-source-favicon.indigo{background:rgba(99,102,241,0.1);color:#818cf8;border:1px solid rgba(99,102,241,0.15)}
+.la-source-favicon.rose{background:rgba(244,63,94,0.1);color:#fb7185;border:1px solid rgba(244,63,94,0.15)}
+.la-source-favicon.teal{background:rgba(20,184,166,0.1);color:#2dd4bf;border:1px solid rgba(20,184,166,0.15)}
+.la-source-favicon.lime{background:rgba(132,204,22,0.1);color:#a3e635;border:1px solid rgba(132,204,22,0.15)}
+.la-source-favicon.violet{background:rgba(139,92,246,0.1);color:#a78bfa;border:1px solid rgba(139,92,246,0.15)}
+.la-source-favicon.pink{background:rgba(236,72,153,0.1);color:#f472b6;border:1px solid rgba(236,72,153,0.15)}
+.la-source-favicon.fuchsia{background:rgba(192,38,211,0.1);color:#e879f9;border:1px solid rgba(192,38,211,0.15)}
+.la-source-favicon.orange{background:rgba(249,115,22,0.1);color:#fb923c;border:1px solid rgba(249,115,22,0.15)}
+.la-source-favicon.yellow{background:rgba(234,179,8,0.1);color:#facc15;border:1px solid rgba(234,179,8,0.15)}
+.la-source-favicon.slate{background:rgba(100,116,139,0.1);color:#94a3b8;border:1px solid rgba(100,116,139,0.15)}
+.la-source-content{flex:1;min-width:0}
+.la-source-meta{display:flex;align-items:center;gap:6px;margin-bottom:3px}
+.la-source-domain{font-size:10px;font-weight:500;color:var(--la-text-dim)}
+.la-source-tag{font-size:10px;font-weight:600;padding:1px 6px;border-radius:4px}
+.la-source-tag.relevant{color:#fb923c;background:var(--la-accent-bg);border:1px solid var(--la-accent-border)}
+.la-source-tag.official{color:#4ade80;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2)}
+.la-source-title{font-size:13px;font-weight:500;color:var(--la-text-bright);line-height:1.35;transition:color 120ms}
+.la-source:hover .la-source-title{color:#fb923c}
+.la-source-desc{font-size:12px;color:var(--la-text-dim);line-height:1.5;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.la-source-arrow{flex-shrink:0;margin-top:4px;color:var(--la-text-dim);transition:color 120ms}
+.la-source:hover .la-source-arrow{color:var(--la-text)}
+.la-footer{padding:10px 20px;border-top:1px solid var(--la-border);display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--la-text-dim);gap:12px;flex-wrap:wrap}
+.att-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.att-list--compact{margin-top:0}
+.att-chip{display:flex;align-items:center;gap:8px;min-width:0;max-width:100%;padding:8px 10px;border:1px solid var(--bdr);border-radius:10px;background:var(--sur)}
+.att-chip--compact{padding:6px 8px}
+.att-chip__thumb,.att-chip__icon{width:34px;height:34px;border-radius:8px;flex:0 0 34px}
+.att-chip__thumb{object-fit:cover;background:var(--bg2)}
+.att-chip__icon{display:flex;align-items:center;justify-content:center;background:var(--bg2);font-size:15px}
+.att-chip__meta{min-width:0;display:flex;flex-direction:column;gap:2px}
+.att-chip__name{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px}
+.att-chip__sub{font-size:11px;color:var(--txm)}
+.att-chip__remove{width:22px;height:22px;border:none;border-radius:6px;background:transparent;color:var(--txm);cursor:pointer;flex:0 0 auto}
+.att-chip__remove:hover{background:var(--surh);color:var(--tx)}
 .bot{position:absolute;bottom:0;left:0;right:0;padding:14px 22px calc(14px + env(safe-area-inset-bottom));background:linear-gradient(transparent,var(--bg) 32%);z-index:10}
 .bot__wrap{max-width:740px;margin:0 auto;background:var(--bg3);border:1px solid var(--bdr);border-radius:16px;overflow:hidden;transition:border-color .2s,box-shadow .2s}
 .bot__wrap:focus-within{border-color:rgba(0,201,167,.35);box-shadow:0 0 0 3px rgba(0,201,167,.06)}
+.bot__uploads{padding:12px 12px 0}
 .bot__row{display:flex;align-items:center;padding:4px 4px 4px 16px;gap:7px}
 .bot__in{flex:1;border:none;background:transparent;font-family:var(--font);font-size:15px;color:var(--tx);outline:none;padding:9px 0}
 .bot__in::placeholder{color:var(--txm)}
@@ -871,11 +1456,15 @@ html,body,#root{height:100%;background:var(--bg)}
 .land__sub{font-size:14px;color:var(--txd);max-width:400px;line-height:1.65}
 .land__form{width:100%;max-width:630px;background:var(--bg3);border:1px solid var(--bdr);border-radius:14px;display:flex;align-items:center;padding:4px 4px 4px 17px;gap:7px;margin-top:6px;transition:border-color .2s,box-shadow .2s}
 .land__form:focus-within{border-color:rgba(0,201,167,.38);box-shadow:0 0 0 3px rgba(0,201,167,.06)}
+.land__attach{width:36px;height:36px;border-radius:10px;border:1px solid var(--bdr);background:transparent;color:var(--txd);cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.land__attach:hover{background:var(--sur);color:var(--tx)}
 .land__in{flex:1;border:none;background:transparent;font-family:var(--font);font-size:15px;color:var(--tx);outline:none;padding:10px 0}
 .land__in::placeholder{color:var(--txm)}
 .land__btn{width:36px;height:36px;border-radius:10px;border:none;background:var(--ac);color:#000;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity .2s;flex:0 0 auto}
 .land__btn:disabled{opacity:.32;cursor:not-allowed}
 .land__btn:hover:not(:disabled){opacity:.85}
+.land__uploads{display:flex;flex-direction:column;gap:8px;width:100%;max-width:630px}
+.upload-status{font-size:12px;color:var(--txd)}
 .land__exs{display:flex;flex-direction:column;gap:5px;width:100%;max-width:630px;margin-top:2px}
 .land__ex{padding:9px 15px;border-radius:9px;border:1px solid var(--bdr);background:var(--sur);color:var(--txd);font-family:var(--font);font-size:13px;cursor:pointer;transition:all .2s;text-align:left}
 .land__ex:hover{border-color:rgba(0,201,167,.24);color:var(--tx);background:var(--acd)}
@@ -920,13 +1509,19 @@ html,body,#root{height:100%;background:var(--bg)}
 
                 <div className="chat">
                     {isLanding ? (
-                        <Landing onSearch={runSearch} />
+                        <Landing
+                            onSearch={runSearch}
+                            uploads={pendingUploads}
+                            onOpenUpload={openFilePicker}
+                            onRemoveUpload={removePendingUpload}
+                            uploadStatus={uploadStatus}
+                        />
                     ) : (
                         <div className="chat__in">
                             {active?.messages.map((message, index) => (
                                 message.role === "user"
-                                    ? <UserMsg key={message.id} text={message.text} />
-                                    : <BotMsg key={message.id} msg={message} isLast={index === active.messages.length - 1} streaming={streaming} />
+                                    ? <UserMsg key={message.id} text={message.text} attachments={message.attachments} />
+                                    : <BotMsg key={message.id} msg={message} isLast={index === active.messages.length - 1} streaming={streaming} sessionQuery={active.query} />
                             ))}
                             <div ref={bottomRef} />
                         </div>
@@ -936,20 +1531,26 @@ html,body,#root{height:100%;background:var(--bg)}
                 {!isLanding && (
                     <div className="bot">
                         <div className="bot__wrap">
+                            {(pendingUploads.length || uploadStatus) && (
+                                <div className="bot__uploads">
+                                    <AttachmentList attachments={pendingUploads} onRemove={removePendingUpload} compact />
+                                    {uploadStatus ? <div className="upload-status">{uploadStatus}</div> : null}
+                                </div>
+                            )}
                             <form className="bot__row" onSubmit={handleSubmit}>
                                 <input
                                     ref={inputRef}
                                     className="bot__in"
                                     value={input}
                                     onChange={(event) => setInput(event.target.value)}
-                                    placeholder="Ask a new question..."
+                                    placeholder={pendingUploads.length ? "Ask about the uploaded files or continue research..." : "Ask a new question..."}
                                     disabled={streaming}
                                     autoComplete="off"
                                 />
                                 {streaming ? (
                                     <button type="button" className="stop-btn" onClick={() => abortRef.current?.abort()} title="Stop">■</button>
                                 ) : (
-                                    <button type="submit" className="send-btn" disabled={!input.trim()}>
+                                    <button type="submit" className="send-btn" disabled={!input.trim() && !pendingUploads.length}>
                                         <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
                                             <path d="M7.5 2L13 7.5L7.5 13M1 7.5H13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                                         </svg>
@@ -961,7 +1562,7 @@ html,body,#root{height:100%;background:var(--bg)}
                                 <button className="bb">🔧</button>
                                 <button className="bb">🔔</button>
                                 <div className="bb__sp" />
-                                <button className="ib" title="Attach">📎</button>
+                                <button className="ib" title="Attach" onClick={openFilePicker} disabled={streaming}>📎</button>
                                 {streaming ? (
                                     <button className="ib" style={{ color: "var(--red)" }} onClick={() => abortRef.current?.abort()}>■</button>
                                 ) : (
@@ -971,6 +1572,14 @@ html,body,#root{height:100%;background:var(--bg)}
                         </div>
                     </div>
                 )}
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept=".txt,.md,.markdown,.json,.csv,.js,.mjs,.cjs,.ts,.jsx,.tsx,.py,.rb,.go,.rs,.java,.c,.h,.cpp,.hpp,.html,.css,.scss,.sass,.xml,.yaml,.yml,.toml,.ini,.env,.log,text/*,application/json,image/*"
+                    style={{ display: "none" }}
+                    onChange={handleFileUpload}
+                />
             </div>
         </div>
     );
