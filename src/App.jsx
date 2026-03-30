@@ -35,18 +35,30 @@ export default function App() {
     loadSessions();
   }, [loadSessions]);
 
-  // Handle mobile detection
+  // Handle mobile detection and auto-collapse
   useEffect(() => {
-    const checkMobile = () => {
-      const mobile = window.innerWidth < 768;
+    const checkResponsive = () => {
+      const width = window.innerWidth;
+      const mobile = width < 768;
+      const tablet = width >= 768 && width < 1024;
+      
       window.__nubagent_is_mobile = mobile;
       setIsMobile(mobile);
+      
+      // Auto-collapse sidebar on tablet
+      if (tablet && !sidebar.isCollapsed) {
+        setSidebarCollapsed(true);
+      }
+      // Auto-expand on desktop
+      if (width >= 1024 && sidebar.isCollapsed) {
+        setSidebarCollapsed(false);
+      }
     };
 
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, [setIsMobile]);
+    checkResponsive();
+    window.addEventListener('resize', checkResponsive);
+    return () => window.removeEventListener('resize', checkResponsive);
+  }, [setIsMobile, setSidebarCollapsed, sidebar.isCollapsed]);
 
   // Handle body class for sidebar state
   useEffect(() => {
