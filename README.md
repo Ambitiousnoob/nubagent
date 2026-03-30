@@ -2,7 +2,18 @@
 
 `nub-agent` is a Vite + React chat app with a Vercel serverless backend for tool-using AI workflows.
 
-The frontend exposes a branded assistant experience. The backend routes requests to Google Gemini, executes a small toolset, and returns normalized responses for chat, web reading, crawling, and scoped memory APIs. When configured, a Cerebras Qwen helper reranks API-key memory matches before the primary model answers.
+The frontend exposes a branded assistant experience. The backend routes requests to **Google Gemini 2.5 Flash Lite**, executes a small toolset, and returns normalized responses for chat, web reading, crawling, and scoped memory APIs. When configured, a Cerebras Qwen helper reranks API-key memory matches before the primary model answers.
+
+## Current AI Model
+
+| Property | Value |
+|----------|-------|
+| **Model** | `gemini-2.5-flash-lite` |
+| **Public Name** | `nub-agent` |
+| **Developer** | Ambitiousnoob |
+| **Provider** | Google Gemini |
+
+See [API.md](./API.md) for complete API documentation.
 
 ## Features
 
