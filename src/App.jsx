@@ -5,6 +5,7 @@ import { ErrorBoundary } from './components/UI/ErrorBoundary.jsx';
 import { SettingsModal } from './components/Settings/SettingsModal.jsx';
 import { useUIStore } from './store/useUIStore.js';
 import { useLibraryStore } from './store/useLibraryStore.js';
+import { useSettingsStore } from './store/useSettingsStore.js';
 import { buildSessionShareUrl, getSessionById } from './lib/library.js';
 import SearchEngine from './SearchEngine.jsx';
 import Library from './Library.jsx';
@@ -19,7 +20,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Sparkles,
-  Compass,
+  Moon,
+  Sun,
 } from 'lucide-react';
 
 /**
@@ -29,6 +31,8 @@ import {
 export default function App() {
   const { sidebar, setActiveTab, toggleSidebar, setSidebarOpen, setSidebarCollapsed, openModal, isMobile, setIsMobile } = useUIStore();
   const { loadSessions, clearSelectedSession } = useLibraryStore();
+  const theme = useSettingsStore((state) => state.theme);
+  const toggleTheme = useSettingsStore((state) => state.toggleTheme);
   const [currentView, setCurrentView] = useState('chat');
   const [selectedSession, setSelectedSession] = useState(null);
   const [chatResetToken, setChatResetToken] = useState(0);
@@ -197,6 +201,7 @@ export default function App() {
     },
   };
   const activeViewMeta = viewMeta[currentView] || viewMeta.chat;
+  const themeLabel = theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
 
   return (
     <ThemeProvider>
@@ -215,29 +220,32 @@ export default function App() {
             className={`sidebar ${isMobile && sidebar.isOpen ? 'sidebar--open' : ''} ${sidebar.isCollapsed ? 'sidebar--collapsed' : ''}`}
           >
             <div className="sidebar__header">
+              {!sidebar.isCollapsed && (
+                <button className="sidebar__new-chat" onClick={handleNewChat}>
+                  <Plus size={16} />
+                  <span>New chat</span>
+                </button>
+              )}
               <div className="sidebar__brand">
                 <div className="sidebar__logo">
                   <span className="sidebar__logo-icon"><Sparkles size={16} strokeWidth={2.3} /></span>
-                  <div className="sidebar__logo-copy">
-                    <span className="sidebar__logo-text">nubagent</span>
-                    <span className="sidebar__logo-meta">Research workspace</span>
-                  </div>
+                  {!sidebar.isCollapsed && (
+                    <div className="sidebar__logo-copy">
+                      <span className="sidebar__logo-text">NubAgent</span>
+                      <span className="sidebar__logo-meta">{currentSessionLabel || activeViewMeta.title}</span>
+                    </div>
+                  )}
                 </div>
-                {!sidebar.isCollapsed && (
-                  <div className="sidebar__context">
-                    <span className="sidebar__context-label">{activeViewMeta.eyebrow}</span>
-                    <span className="sidebar__context-separator" aria-hidden="true">•</span>
-                    <span className="sidebar__context-value">{currentView === 'chat' ? 'Live' : 'Ready'}</span>
-                  </div>
-                )}
               </div>
-              <button
-                className="sidebar__collapse"
-                onClick={() => setSidebarCollapsed(!sidebar.isCollapsed)}
-                aria-label={sidebar.isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              >
-                {sidebar.isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-              </button>
+              {!isMobile && (
+                <button
+                  className="sidebar__collapse"
+                  onClick={() => setSidebarCollapsed(!sidebar.isCollapsed)}
+                  aria-label={sidebar.isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                >
+                  {sidebar.isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+                </button>
+              )}
             </div>
 
             <nav className="sidebar__nav">
@@ -260,18 +268,7 @@ export default function App() {
               ))}
             </nav>
 
-            <div className="sidebar__actions">
-              <button
-                className="sidebar__new-chat"
-                onClick={handleNewChat}
-              >
-                <Plus size={18} />
-                {!sidebar.isCollapsed && <span>New Chat</span>}
-              </button>
-            </div>
-
             <div className="sidebar__footer">
-              {!sidebar.isCollapsed && <div className="sidebar__nav-label sidebar__nav-label--footer">Control</div>}
               <button
                 className="sidebar__footer-item"
                 onClick={() => openModal('settings')}
@@ -281,6 +278,19 @@ export default function App() {
                   <span className="sidebar__footer-copy">
                     <strong>Settings</strong>
                     <small>Keys, defaults, interface</small>
+                  </span>
+                )}
+              </button>
+              <button
+                className="sidebar__footer-item"
+                onClick={toggleTheme}
+                aria-label={themeLabel}
+              >
+                {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+                {!sidebar.isCollapsed && (
+                  <span className="sidebar__footer-copy">
+                    <strong>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</strong>
+                    <small>{theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}</small>
                   </span>
                 )}
               </button>
@@ -300,13 +310,18 @@ export default function App() {
               <div className="app__mobile-brand">
                 <span className="app__mobile-brandmark"><Sparkles size={15} strokeWidth={2.3} /></span>
                 <div className="app__mobile-titleblock">
-                  <span className="app__title">nubagent</span>
+                  <span className="app__title">NubAgent</span>
                   <span className="app__mobile-detail">{activeViewMeta.title}</span>
                 </div>
               </div>
-              <button className="app__mobile-cta" onClick={handleNewChat} aria-label="Start a new chat">
-                <Compass size={18} />
-              </button>
+              <div className="app__mobile-actions">
+                <button className="app__mobile-cta" onClick={toggleTheme} aria-label={themeLabel}>
+                  {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+                </button>
+                <button className="app__mobile-cta" onClick={handleNewChat} aria-label="Start a new chat">
+                  <Plus size={18} />
+                </button>
+              </div>
             </header>
           )}
 
@@ -315,25 +330,22 @@ export default function App() {
             {!isMobile && (
               <header className="app__desktop-header">
                 <div className="app__desktop-intro">
-                  <div className="app__desktop-eyebrow">{activeViewMeta.eyebrow}</div>
-                  <h1 className="app__desktop-title">{activeViewMeta.title}</h1>
-                  <p className="app__desktop-copy">
-                    {currentView === 'chat' && currentSessionLabel
-                      ? `Working session: ${currentSessionLabel}`
-                      : activeViewMeta.summary}
-                  </p>
+                  <button className="app__desktop-model" type="button">
+                    <span>{currentView === 'chat' ? 'NubAgent' : activeViewMeta.title}</span>
+                  </button>
+                  {!sidebar.isCollapsed && (
+                    <p className="app__desktop-copy">
+                      {currentView === 'chat' && currentSessionLabel ? currentSessionLabel : activeViewMeta.summary}
+                    </p>
+                  )}
                 </div>
-                <div className="app__desktop-sidecar">
-                  <div className="app__desktop-actions">
-                    <button className="app__desktop-btn app__desktop-btn--ghost" onClick={() => openModal('settings')}>
-                      <Settings size={16} />
-                      <span>Settings</span>
-                    </button>
-                    <button className="app__desktop-btn app__desktop-btn--primary" onClick={handleNewChat}>
-                      <Plus size={16} />
-                      <span>New Chat</span>
-                    </button>
-                  </div>
+                <div className="app__desktop-actions">
+                  <button className="app__desktop-icon" onClick={toggleTheme} aria-label={themeLabel}>
+                    {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+                  </button>
+                  <button className="app__desktop-icon" onClick={handleNewChat} aria-label="Start a new chat">
+                    <Plus size={16} />
+                  </button>
                 </div>
               </header>
             )}

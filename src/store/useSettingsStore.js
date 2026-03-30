@@ -9,7 +9,7 @@ export const useSettingsStore = create(
   persist(
     (set, get) => ({
       // State
-      theme: 'dark',
+      theme: 'light',
       apiKey: null,
       apiKeys: {},
       selectedModel: 'nub-agent',
@@ -83,7 +83,7 @@ export const useSettingsStore = create(
       clearAllSettings: () => {
         // Clear all persisted data
         set({
-          theme: 'dark',
+          theme: 'light',
           apiKey: null,
           apiKeys: {},
           selectedModel: 'nub-agent',

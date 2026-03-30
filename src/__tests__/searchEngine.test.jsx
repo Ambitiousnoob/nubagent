@@ -42,7 +42,7 @@ describe('SearchEngine shell handoff', () => {
     expect((await screen.findAllByText('A research assistant.')).length).toBeGreaterThan(0);
 
     rerender(<SearchEngine session={null} resetSignal={1} />);
-    expect(await screen.findByText('Ask anything. Get a clear answer with sources.')).toBeInTheDocument();
+    expect(await screen.findByText('How can I help you?')).toBeInTheDocument();
   });
 
   it('creates a library record for a typed query even if the search request fails', async () => {
@@ -56,7 +56,7 @@ describe('SearchEngine shell handoff', () => {
 
     render(<SearchEngine />);
 
-    const input = screen.getByPlaceholderText('Ask a question or use site:, filetype:, or intitle: operators...');
+    const input = screen.getByLabelText('Message NubAgent');
     fireEvent.change(input, { target: { value: 'Will this save to library?' } });
     fireEvent.submit(input.closest('form'));
 

@@ -14,7 +14,7 @@ describe('Settings Store', () => {
 
   it('initializes with default state', () => {
     const state = useSettingsStore.getState();
-    expect(state.theme).toBe('dark');
+    expect(state.theme).toBe('light');
     expect(state.apiKey).toBeNull();
     expect(state.selectedModel).toBe('nub-agent');
     expect(state.preferences.autoSave).toBe(true);

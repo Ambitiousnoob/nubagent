@@ -13,7 +13,6 @@ import {
 } from "./lib/researchOrchestration.js";
 import { invokeResearchRuntime, sendResearchControl } from "./lib/researchClient.js";
 import { useSettingsStore } from "./store/useSettingsStore.js";
-import Library from "./Library.jsx";
 
 const CHAT_API = "/api/chat";
 const SEARCH_API = "/api/search";
@@ -1084,7 +1083,6 @@ function LibertyResultCard({ query, heading, body, sources = [], searchCount = 0
     const cleanedBody = stripRepeatedHeading(body, heading);
     const summary = buildResultSummary(cleanedBody);
     const answerCopy = summary || cleanedBody;
-    const points = extractHighlightPoints(cleanedBody, 4);
     const topDomains = [...new Set(visibleSources.map((source) => getDomain(source.url)).filter(Boolean))];
     const modeLabel = researchMeta?.outputMode?.label || "State-of-the-Field";
     const paretoLabel = researchMeta?.pareto?.mode || "balanced";
@@ -1136,20 +1134,6 @@ function LibertyResultCard({ query, heading, body, sources = [], searchCount = 0
                         <div className="la-summary-label">Answer</div>
                         <div className="la-summary-text">{renderInlineMarkup(answerCopy, sources)}</div>
                     </>
-                ) : null}
-
-                {points.length ? (
-                    <div className="la-points">
-                        {points.map((point, index) => {
-                            const style = POINT_STYLES[index % POINT_STYLES.length];
-                            return (
-                                <div key={`${index}-${point.slice(0, 32)}`} className="la-point">
-                                    <div className={`la-point-icon ${style.className}`}>{style.symbol}</div>
-                                    <p>{renderInlineMarkup(point, sources)}</p>
-                                </div>
-                            );
-                        })}
-                    </div>
                 ) : null}
 
                 {visibleSources.length ? (
@@ -1220,9 +1204,12 @@ function EditMsg({ message, onSave, onCancel }) {
     };
 
     return (
-        <div className="umsg">
-            <div className="umsg__av"><span>U</span></div>
-            <div className="umsg__body">
+        <div className="umsg umsg--editing">
+            <div className="umsg__meta-row">
+                <div className="umsg__label">You</div>
+                <div className="umsg__label umsg__label--muted">Editing</div>
+            </div>
+            <div className="umsg__bubble umsg__bubble--editing">
                 <textarea
                     className="edit-msg__textarea"
                     value={editText}
@@ -1252,19 +1239,18 @@ function UserMsg({ text, attachments = [], onEdit }) {
 
     return (
         <div className="umsg">
-            <div className="umsg__av"><span>U</span></div>
-            <div className="umsg__body umsg__card">
-                <div className="umsg__head">
-                    <div className="umsg__name">You</div>
-                    <div className="umsg__meta">
-                        {attachments.length ? `${attachments.length} attachment${attachments.length === 1 ? "" : "s"}` : "Research prompt"}
-                    </div>
+            <div className="umsg__meta-row">
+                <div className="umsg__label">You</div>
+                <div className="umsg__label umsg__label--muted">
+                    {attachments.length ? `${attachments.length} attachment${attachments.length === 1 ? "" : "s"}` : "Research prompt"}
                 </div>
+            </div>
+            <div className="umsg__bubble">
                 {text ? <div className="umsg__text">{text}</div> : null}
                 <AttachmentList attachments={attachments} />
             </div>
             <div className="umsg__acts">
-                <button className="act-btn" title="Edit" onClick={onEdit}>✏</button>
+                {typeof onEdit === "function" ? <button className="act-btn" title="Edit" onClick={onEdit}>✏</button> : null}
                 <button className="act-btn" title="Copy" onClick={handleCopy}>
                     {isCopied ? "Copied!" : "⧉"}
                 </button>
@@ -1320,67 +1306,33 @@ function BotMsg({ msg, isLast, streaming, sessionQuery = "" }) {
     );
 }
 
-function Landing({ onSearch, uploads = [], onOpenUpload, onRemoveUpload, uploadStatus = "" }) {
-    const [query, setQuery] = useState("");
-    const inputRef = useRef(null);
-
-    useEffect(() => { inputRef.current?.focus(); }, []);
-
-    const submit = (event) => {
-        event?.preventDefault();
-        if (query.trim() || uploads.length) onSearch(query.trim());
-    };
-
+function Landing({ onChooseExample }) {
     const examples = [
         {
-            label: "Threat analysis",
-            query: "How does quantum computing threaten modern encryption?",
+            label: "Write & edit",
+            query: "Help me draft a professional email",
         },
         {
-            label: "Operator search",
-            query: 'site:arxiv.org "retrieval augmented generation" after:2024-01-01',
+            label: "Code",
+            query: "Debug my Python function",
         },
         {
-            label: "Market scan",
-            query: "Best open source LLMs benchmark 2025",
+            label: "Analyze",
+            query: "Summarize this document for me",
         },
         {
-            label: "Incident research",
-            query: "intitle:CVE Apache Log4j critical vulnerability",
+            label: "Research",
+            query: "Explain quantum entanglement simply",
         },
     ];
 
     return (
         <div className="land">
-            <div className="land__eyebrow">Research</div>
-            <h1 className="land__h1">Ask anything. Get a clear answer with sources.</h1>
-            <p className="land__sub">Start with one question, add files if you need them, and keep the whole conversation in one simple thread.</p>
-            <form className="land__form" onSubmit={submit}>
-                <button type="button" className="land__attach" onClick={onOpenUpload} title="Attach files">📎</button>
-                <input
-                    ref={inputRef}
-                    className="land__in"
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Ask a question or use site:, filetype:, or intitle: operators..."
-                    autoComplete="off"
-                />
-                <button type="submit" className="land__btn" disabled={!query.trim() && !uploads.length}>
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                        <path d="M8 2L14 8L8 14M2 8H14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                </button>
-            </form>
-            {(uploads.length || uploadStatus) && (
-                <div className="land__uploads">
-                    <AttachmentList attachments={uploads} onRemove={onRemoveUpload} compact />
-                    {uploadStatus ? <div className="upload-status">{uploadStatus}</div> : null}
-                </div>
-            )}
-            <div className="land__helper">Try an example</div>
+            <h1 className="land__h1">How can I help you?</h1>
+            <p className="land__sub">Ask me anything. I can write, analyze, code, research, and keep the source trail attached when it matters.</p>
             <div className="land__exs">
                 {examples.map((example) => (
-                    <button key={example.query} className="land__ex" onClick={() => onSearch(example.query)}>
+                    <button key={example.query} className="land__ex" onClick={() => onChooseExample(example.query)}>
                         <span className="land__ex-label">{example.label}</span>
                         <span className="land__ex-query">{example.query}</span>
                     </button>
@@ -1397,7 +1349,6 @@ export default function SearchEngine({ session = null, resetSignal = 0, onSessio
     const [input, setInput] = useState("");
     const [pendingUploads, setPendingUploads] = useState([]);
     const [uploadStatus, setUploadStatus] = useState("");
-    const [showLibrary, setShowLibrary] = useState(false);
     const [activeResearchRunId, setActiveResearchRunId] = useState("");
     const [steeringStatus, setSteeringStatus] = useState("");
     const [steeringBusy, setSteeringBusy] = useState(false);
@@ -1417,11 +1368,25 @@ export default function SearchEngine({ session = null, resetSignal = 0, onSessio
 
     const active = sessions.find((session) => session.id === activeId);
     const isLanding = !active && !streaming;
-    const isLibraryView = showLibrary;
 
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [sessions, streaming]);
+
+    useEffect(() => {
+        const node = inputRef.current;
+        if (!node) return;
+        node.style.height = "0px";
+        node.style.height = `${Math.min(node.scrollHeight, 240)}px`;
+    }, [input, isLanding]);
+
+    useEffect(() => {
+        if (streaming) return undefined;
+        const timer = setTimeout(() => {
+            inputRef.current?.focus();
+        }, 50);
+        return () => clearTimeout(timer);
+    }, [activeId, isLanding, streaming]);
 
     useEffect(() => {
         sessionsRef.current = sessions;
@@ -1452,7 +1417,6 @@ export default function SearchEngine({ session = null, resetSignal = 0, onSessio
         setSteeringMode("gap_analysis");
         setExcludedPreprints(false);
         setActiveResearchRunId("");
-        setShowLibrary(false);
         if (shareUrl) {
             window.history.replaceState({}, "", shareUrl);
         }
@@ -1471,7 +1435,6 @@ export default function SearchEngine({ session = null, resetSignal = 0, onSessio
         setSteeringMode("gap_analysis");
         setExcludedPreprints(false);
         setActiveResearchRunId("");
-        setShowLibrary(false);
         clearSharedSessionUrl();
     }, []);
 
@@ -2068,6 +2031,200 @@ export default function SearchEngine({ session = null, resetSignal = 0, onSessio
         event?.preventDefault();
         if (input.trim() || pendingUploads.length) runSearch(input.trim(), pendingUploads);
     };
+
+    const handleComposerKeyDown = (event) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            if (input.trim() || pendingUploads.length) runSearch(input.trim(), pendingUploads);
+        }
+    };
+
+    const handleExampleSelect = (query) => {
+        setInput(query);
+        setTimeout(() => inputRef.current?.focus(), 40);
+    };
+
+    const handleShareCurrentSession = () => {
+        const url = buildSessionShareUrl(active?.id) || window.location.href;
+        if (!navigator.clipboard?.writeText) {
+            promptToCopySessionUrl(url);
+            return;
+        }
+
+        navigator.clipboard.writeText(url).then(() => {
+            alert("Link copied to clipboard!");
+        }).catch(() => {
+            promptToCopySessionUrl(url);
+        });
+    };
+
+    const cleanLatestBotMessage = active?.messages?.slice().reverse().find((message) => message.role === "bot") || null;
+    const cleanLatestResearchMeta = cleanLatestBotMessage?.researchMeta || {};
+    const cleanOutputModeLabel = cleanLatestResearchMeta?.outputMode?.label || "State-of-the-Field";
+    const cleanSourceCount = cleanLatestBotMessage?.sources?.length || 0;
+    const cleanStability = Number(cleanLatestResearchMeta?.convergence?.stability_score);
+    const cleanStabilityLabel = Number.isFinite(cleanStability) ? `${Math.round(cleanStability * 100)}% stability` : "";
+    const cleanDepthLabel = cleanLatestResearchMeta?.pareto?.mode ? `Depth: ${cleanLatestResearchMeta.pareto.mode}` : null;
+    const hasComposerValue = Boolean(input.trim() || pendingUploads.length);
+
+    return (
+        <div className="research-view">
+            <div className="research-view__scroll">
+                <div className="research-view__inner">
+                    {isLanding ? (
+                        <Landing onChooseExample={handleExampleSelect} />
+                    ) : (
+                        <>
+                            <div className="thread-head">
+                                <div className="thread-head__copy">
+                                    <div className="thread-head__eyebrow">{streaming ? "Research in progress" : "Research"}</div>
+                                    <h1 className="thread-head__title">{active?.query || "Research session"}</h1>
+                                    <div className="thread-head__meta">
+                                        <span className="thread-head__pill">{cleanOutputModeLabel}</span>
+                                        {cleanSourceCount ? <span className="thread-head__pill">{cleanSourceCount} source{cleanSourceCount === 1 ? "" : "s"}</span> : null}
+                                        {cleanDepthLabel ? <span className="thread-head__pill">{cleanDepthLabel}</span> : null}
+                                        {cleanStabilityLabel ? <span className="thread-head__pill">{cleanStabilityLabel}</span> : null}
+                                    </div>
+                                </div>
+                                <button className="thread-head__action" onClick={handleShareCurrentSession}>Share</button>
+                            </div>
+
+                            <div className="chat chat--thread">
+                                <div className="chat__in">
+                                    {active?.messages.map((message, index) => (
+                                        message.role === "user"
+                                            ? <UserMsg key={message.id} text={message.text} attachments={message.attachments} />
+                                            : <BotMsg key={message.id} msg={message} isLast={index === active.messages.length - 1} streaming={streaming} sessionQuery={active.query} />
+                                    ))}
+                                    <div ref={bottomRef} />
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+            </div>
+
+            <div className="composer">
+                <div className="composer__inner">
+                    {(pendingUploads.length || uploadStatus) && (
+                        <div className="composer__uploads">
+                            <AttachmentList attachments={pendingUploads} onRemove={removePendingUpload} compact />
+                            {uploadStatus ? <div className="upload-status">{uploadStatus}</div> : null}
+                        </div>
+                    )}
+
+                    <form className="composer__box" onSubmit={handleSubmit}>
+                        <textarea
+                            ref={inputRef}
+                            className="composer__textarea"
+                            value={input}
+                            onChange={(event) => setInput(event.target.value)}
+                            onKeyDown={handleComposerKeyDown}
+                            placeholder={pendingUploads.length ? "Ask about the uploaded files or continue research..." : "Message NubAgent"}
+                            aria-label="Message NubAgent"
+                            disabled={streaming}
+                            rows={1}
+                        />
+                        <div className="composer__footer">
+                            <div className="composer__tools">
+                                <button type="button" className="composer__tool" onClick={openFilePicker} disabled={streaming}>Attach</button>
+                                <span className="composer__tool composer__tool--static">{streaming ? "Research running" : "Search web"}</span>
+                            </div>
+                            {streaming ? (
+                                <button type="button" className="composer__send composer__send--stop" onClick={() => abortRef.current?.abort()} title="Stop">■</button>
+                            ) : (
+                                <button type="submit" className="composer__send" disabled={!hasComposerValue} title="Send">↑</button>
+                            )}
+                        </div>
+                    </form>
+
+                    {streaming && (
+                        <div className="composer__steering">
+                            <div className="composer__steering-row">
+                                <span className="composer__steering-label">Pace</span>
+                                <button
+                                    type="button"
+                                    className="composer__chip"
+                                    disabled={!activeResearchRunId || steeringBusy}
+                                    onClick={() => queueSteeringCommand({ type: "prioritize_speed" })}
+                                >
+                                    Speed
+                                </button>
+                                <button
+                                    type="button"
+                                    className="composer__chip"
+                                    disabled={!activeResearchRunId || steeringBusy}
+                                    onClick={() => queueSteeringCommand({ type: "go_deeper" })}
+                                >
+                                    Go deeper
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`composer__chip ${excludedPreprints ? "composer__chip--active" : ""}`}
+                                    disabled={!activeResearchRunId || steeringBusy || excludedPreprints}
+                                    onClick={() => queueSteeringCommand({ type: "exclude_source", sourceType: "preprint" })}
+                                >
+                                    Exclude preprints
+                                </button>
+                            </div>
+                            <div className="composer__steering-row composer__steering-row--dense">
+                                <span className="composer__steering-label">Output</span>
+                                <select
+                                    className="composer__select"
+                                    value={steeringMode}
+                                    disabled={!activeResearchRunId || steeringBusy}
+                                    onChange={(event) => setSteeringMode(event.target.value)}
+                                >
+                                    <option value="state_of_the_field">State of the field</option>
+                                    <option value="gap_analysis">Gap analysis</option>
+                                    <option value="controversy_map">Controversy map</option>
+                                    <option value="tutorial">Tutorial</option>
+                                    <option value="decision_brief">Decision brief</option>
+                                </select>
+                                <button
+                                    type="button"
+                                    className="composer__chip"
+                                    disabled={!activeResearchRunId || steeringBusy}
+                                    onClick={() => queueSteeringCommand({ type: "force_mode", mode: steeringMode })}
+                                >
+                                    Apply mode
+                                </button>
+                                <input
+                                    className="composer__focus"
+                                    value={steeringArea}
+                                    onChange={(event) => setSteeringArea(event.target.value)}
+                                    placeholder="Deepen an area or hypothesis..."
+                                    disabled={!activeResearchRunId || steeringBusy}
+                                />
+                                <button
+                                    type="button"
+                                    className="composer__chip"
+                                    disabled={!activeResearchRunId || steeringBusy || !steeringArea.trim()}
+                                    onClick={() => queueSteeringCommand({ type: "increase_depth", area: steeringArea.trim() })}
+                                >
+                                    Increase depth
+                                </button>
+                            </div>
+                            <div className="composer__status">
+                                {steeringStatus || (activeResearchRunId ? `Run ${String(activeResearchRunId).slice(-8)}` : "Waiting for runtime...")}
+                            </div>
+                        </div>
+                    )}
+
+                    <p className="composer__note">NubAgent can make mistakes. Verify important info.</p>
+                </div>
+            </div>
+
+            <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept=".txt,.md,.markdown,.json,.csv,.js,.mjs,.cjs,.ts,.jsx,.tsx,.py,.rb,.go,.rs,.java,.c,.h,.cpp,.hpp,.html,.css,.scss,.sass,.xml,.yaml,.yml,.toml,.ini,.env,.log,text/*,application/json,image/*"
+                style={{ display: "none" }}
+                onChange={handleFileUpload}
+            />
+        </div>
+    );
 
     const latestBotMessage = active?.messages?.slice().reverse().find((message) => message.role === "bot") || null;
     const latestResearchMeta = latestBotMessage?.researchMeta || {};

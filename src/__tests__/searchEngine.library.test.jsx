@@ -70,7 +70,7 @@ describe('SearchEngine library persistence', () => {
 
     render(<SearchEngine />);
 
-    const input = screen.getByPlaceholderText(/ask a question or use site:/i);
+    const input = screen.getByLabelText('Message NubAgent');
     fireEvent.change(input, { target: { value: 'best laptop battery life' } });
     fireEvent.submit(input.closest('form'));
 
@@ -92,7 +92,7 @@ describe('SearchEngine library persistence', () => {
 
     const view = render(<SearchEngine />);
 
-    const input = screen.getByPlaceholderText(/ask a question or use site:/i);
+    const input = screen.getByLabelText('Message NubAgent');
     fireEvent.change(input, { target: { value: 'abort on unmount' } });
     fireEvent.submit(input.closest('form'));
 
@@ -111,7 +111,7 @@ describe('SearchEngine library persistence', () => {
 
     render(<SearchEngine />);
 
-    const input = screen.getByPlaceholderText(/ask a question or use site:/i);
+    const input = screen.getByLabelText('Message NubAgent');
     fireEvent.change(input, { target: { value: 'search failure case' } });
     fireEvent.submit(input.closest('form'));
 
@@ -157,7 +157,7 @@ describe('SearchEngine library persistence', () => {
 
     render(<SearchEngine />);
 
-    const input = screen.getByPlaceholderText(/ask a question or use site:/i);
+    const input = screen.getByLabelText('Message NubAgent');
     fireEvent.change(input, { target: { value: 'preserve sources after final reveal' } });
     fireEvent.submit(input.closest('form'));
 
@@ -192,7 +192,7 @@ describe('SearchEngine library persistence', () => {
 
     render(<SearchEngine />);
 
-    const input = screen.getByPlaceholderText(/ask a question or use site:/i);
+    const input = screen.getByLabelText('Message NubAgent');
     fireEvent.change(input, { target: { value: 'quantum computing and encryption' } });
     fireEvent.submit(input.closest('form'));
 
@@ -232,7 +232,7 @@ describe('SearchEngine library persistence', () => {
 
     render(<SearchEngine />);
 
-    const input = screen.getByPlaceholderText(/ask a question or use site:/i);
+    const input = screen.getByLabelText('Message NubAgent');
     fireEvent.change(input, { target: { value: 'no sources final state' } });
     fireEvent.submit(input.closest('form'));
 
@@ -249,7 +249,7 @@ describe('SearchEngine library persistence', () => {
 
     const searchView = render(<SearchEngine />);
 
-    const input = screen.getByPlaceholderText(/ask a question or use site:/i);
+    const input = screen.getByLabelText('Message NubAgent');
     fireEvent.change(input, { target: { value: 'library visibility check' } });
     fireEvent.submit(input.closest('form'));
 
@@ -318,12 +318,11 @@ describe('SearchEngine library persistence', () => {
     expect(await screen.findByText('updated query')).toBeInTheDocument();
   });
 
-  it('clears the shared session query param when starting a fresh chat from the search view', () => {
+  it('clears the shared session query param when the shell requests a fresh chat', () => {
     window.history.replaceState({}, '', '/?session=session-123');
 
-    render(<SearchEngine />);
-
-    fireEvent.click(screen.getByTitle('New search'));
+    const { rerender } = render(<SearchEngine resetSignal={0} />);
+    rerender(<SearchEngine resetSignal={1} />);
 
     expect(window.location.search).toBe('');
   });
