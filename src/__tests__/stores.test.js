@@ -1,0 +1,241 @@
+/**
+ * Store Tests
+ */
+
+import { describe, it, expect, beforeEach } from 'vitest';
+
+describe('Chat Store', () => {
+  let useChatStore;
+
+  beforeEach(() => {
+    vi.resetModules();
+    useChatStore = require('../store/useChatStore').useChatStore;
+  });
+
+  it('initializes with default state', () => {
+    const state = useChatStore.getState();
+    expect(state.conversationId).toBeNull();
+    expect(state.messages).toEqual([]);
+    expect(state.isLoading).toBe(false);
+    expect(state.error).toBeNull();
+    expect(state.attachments).toEqual([]);
+  });
+
+  it('sets conversation ID', () => {
+    const { setConversationId } = useChatStore.getState();
+    setConversationId('test-id');
+    expect(useChatStore.getState().conversationId).toBe('test-id');
+  });
+
+  it('starts new conversation', () => {
+    const { startNewConversation } = useChatStore.getState();
+    const id = startNewConversation();
+    
+    expect(id).toBeDefined();
+    expect(useChatStore.getState().conversationId).toBe(id);
+    expect(useChatStore.getState().messages).toEqual([]);
+  });
+
+  it('adds message', () => {
+    const { addMessage, startNewConversation } = useChatStore.getState();
+    startNewConversation();
+    addMessage({ role: 'user', content: 'Hello' });
+    
+    const state = useChatStore.getState();
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0].role).toBe('user');
+    expect(state.messages[0].content).toBe('Hello');
+  });
+
+  it('updates message', () => {
+    const { addMessage, startNewConversation, updateMessage } = useChatStore.getState();
+    startNewConversation();
+    addMessage({ role: 'user', content: 'Hello', id: 'msg-1' });
+    updateMessage('msg-1', { content: 'Updated' });
+    
+    const state = useChatStore.getState();
+    expect(state.messages[0].content).toBe('Updated');
+  });
+
+  it('removes message', () => {
+    const { addMessage, startNewConversation, removeMessage } = useChatStore.getState();
+    startNewConversation();
+    addMessage({ role: 'user', content: 'Hello', id: 'msg-1' });
+    removeMessage('msg-1');
+    
+    expect(useChatStore.getState().messages).toHaveLength(0);
+  });
+
+  it('sets loading state', () => {
+    const { setLoading } = useChatStore.getState();
+    setLoading(true);
+    expect(useChatStore.getState().isLoading).toBe(true);
+    setLoading(false);
+    expect(useChatStore.getState().isLoading).toBe(false);
+  });
+
+  it('sets and clears error', () => {
+    const { setError, clearError } = useChatStore.getState();
+    setError('Test error');
+    expect(useChatStore.getState().error).toBe('Test error');
+    clearError();
+    expect(useChatStore.getState().error).toBeNull();
+  });
+
+  it('manages attachments', () => {
+    const { addAttachment, removeAttachment, clearAttachments } = useChatStore.getState();
+    addAttachment({ id: 'att-1', name: 'file.txt', kind: 'text' });
+    
+    expect(useChatStore.getState().attachments).toHaveLength(1);
+    
+    removeAttachment('att-1');
+    expect(useChatStore.getState().attachments).toHaveLength(0);
+    
+    addAttachment({ id: 'att-2', name: 'file.txt', kind: 'text' });
+    clearAttachments();
+    expect(useChatStore.getState().attachments).toHaveLength(0);
+  });
+
+  it('clears conversation', () => {
+    const { startNewConversation, addMessage, clearConversation } = useChatStore.getState();
+    startNewConversation();
+    addMessage({ role: 'user', content: 'Hello' });
+    clearConversation();
+    
+    const state = useChatStore.getState();
+    expect(state.conversationId).toBeNull();
+    expect(state.messages).toEqual([]);
+  });
+});
+
+describe('Settings Store', () => {
+  let useSettingsStore;
+
+  beforeEach(() => {
+    vi.resetModules();
+    useSettingsStore = require('../store/useSettingsStore').useSettingsStore;
+  });
+
+  it('initializes with default state', () => {
+    const state = useSettingsStore.getState();
+    expect(state.theme).toBe('dark');
+    expect(state.apiKey).toBeNull();
+    expect(state.selectedModel).toBe('nub-agent');
+    expect(state.preferences.autoSave).toBe(true);
+  });
+
+  it('sets theme', () => {
+    const { setTheme } = useSettingsStore.getState();
+    setTheme('light');
+    expect(useSettingsStore.getState().theme).toBe('light');
+  });
+
+  it('toggles theme', () => {
+    const { toggleTheme } = useSettingsStore.getState();
+    const initialTheme = useSettingsStore.getState().theme;
+    toggleTheme();
+    expect(useSettingsStore.getState().theme).not.toBe(initialTheme);
+  });
+
+  it('sets API key', () => {
+    const { setApiKey, getApiKey } = useSettingsStore.getState();
+    setApiKey('test-key', 'openai');
+    expect(getApiKey('openai')).toBe('test-key');
+  });
+
+  it('removes API key', () => {
+    const { setApiKey, removeApiKey, getApiKey } = useSettingsStore.getState();
+    setApiKey('test-key', 'openai');
+    removeApiKey('openai');
+    expect(getApiKey('openai')).toBeUndefined();
+  });
+
+  it('sets selected model', () => {
+    const { setSelectedModel } = useSettingsStore.getState();
+    setSelectedModel('gpt-4');
+    expect(useSettingsStore.getState().selectedModel).toBe('gpt-4');
+  });
+
+  it('sets preference', () => {
+    const { setPreference } = useSettingsStore.getState();
+    setPreference('compactMode', true);
+    expect(useSettingsStore.getState().preferences.compactMode).toBe(true);
+  });
+
+  it('resets preferences', () => {
+    const { setPreference, resetPreferences } = useSettingsStore.getState();
+    setPreference('compactMode', true);
+    resetPreferences();
+    expect(useSettingsStore.getState().preferences.compactMode).toBe(false);
+  });
+});
+
+describe('UI Store', () => {
+  let useUIStore;
+
+  beforeEach(() => {
+    vi.resetModules();
+    useUIStore = require('../store/useUIStore').useUIStore;
+  });
+
+  it('initializes with default state', () => {
+    const state = useUIStore.getState();
+    expect(state.sidebar.isOpen).toBe(true);
+    expect(state.sidebar.activeTab).toBe('chat');
+    expect(state.modals.settings).toBe(false);
+    expect(state.toasts).toEqual([]);
+  });
+
+  it('toggles sidebar', () => {
+    const { toggleSidebar } = useUIStore.getState();
+    const initialOpen = useUIStore.getState().sidebar.isOpen;
+    toggleSidebar();
+    expect(useUIStore.getState().sidebar.isOpen).not.toBe(initialOpen);
+  });
+
+  it('sets active tab', () => {
+    const { setActiveTab } = useUIStore.getState();
+    setActiveTab('library');
+    expect(useUIStore.getState().sidebar.activeTab).toBe('library');
+    expect(useUIStore.getState().currentRoute).toBe('library');
+  });
+
+  it('opens and closes modals', () => {
+    const { openModal, closeModal } = useUIStore.getState();
+    openModal('settings');
+    expect(useUIStore.getState().modals.settings).toBe(true);
+    closeModal('settings');
+    expect(useUIStore.getState().modals.settings).toBe(false);
+  });
+
+  it('closes all modals', () => {
+    const { openModal, closeAllModals } = useUIStore.getState();
+    openModal('settings');
+    openModal('library');
+    closeAllModals();
+    const modals = useUIStore.getState().modals;
+    expect(Object.values(modals).every(v => v === false)).toBe(true);
+  });
+
+  it('adds and removes toasts', () => {
+    const { addToast, removeToast } = useUIStore.getState();
+    const id = addToast({ title: 'Test', type: 'success' });
+    expect(useUIStore.getState().toasts).toHaveLength(1);
+    removeToast(id);
+    expect(useUIStore.getState().toasts).toHaveLength(0);
+  });
+
+  it('clears toasts', () => {
+    const { addToast, clearToasts } = useUIStore.getState();
+    addToast({ title: 'Test 1' });
+    addToast({ title: 'Test 2' });
+    clearToasts();
+    expect(useUIStore.getState().toasts).toHaveLength(0);
+  });
+
+  it('sets route', () => {
+    const { setRoute } = useUIStore.getState();
+    setRoute('library');
+    expect(useUIStore.getState().currentRoute).toBe('library');
+  });
+});

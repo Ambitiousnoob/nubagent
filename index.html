@@ -5,12 +5,80 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Agent Console is a browser-based AI workspace for research, analysis, and tool-driven chat sessions.">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="theme-color" content="#0a0a0f">
-  <title>Agent Console</title>
+  <meta name="theme-color" content="#00c9a7">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="NubAgent">
+  <meta name="application-name" content="NubAgent">
+  <meta name="msapplication-TileColor" content="#00c9a7">
+  <meta name="msapplication-config" content="/browserconfig.xml">
+  
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="/manifest.json">
+  
+  <!-- Icons -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180x180.png">
+  <link rel="mask-icon" href="/icons/safari-pinned-tab.svg" color="#00c9a7">
+  
+  <title>NubAgent - AI Research Assistant</title>
 </head>
 <body>
   <div id="root"></div>
-  <noscript>Agent Console requires JavaScript to run.</noscript>
+  <noscript>NubAgent requires JavaScript to run. Please enable JavaScript to continue.</noscript>
   <script type="module" src="/src/main.jsx"></script>
+  
+  <!-- PWA Registration -->
+  <script>
+    // Register service worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then((registration) => {
+            console.log('[PWA] Service Worker registered:', registration.scope);
+            
+            // Check for updates
+            registration.addEventListener('updatefound', () => {
+              const newWorker = registration.installing;
+              newWorker.addEventListener('statechange', () => {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  // New content available
+                  console.log('[PWA] New content available');
+                  window.dispatchEvent(new CustomEvent('pwa-update-available'));
+                }
+              });
+            });
+          })
+          .catch((error) => {
+            console.error('[PWA] Service Worker registration failed:', error);
+          });
+      });
+    }
+    
+    // Handle PWA install prompt
+    let deferredPrompt;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      window.dispatchEvent(new CustomEvent('pwa-install-available'));
+    });
+    
+    // Track install outcome
+    window.addEventListener('appinstalled', () => {
+      console.log('[PWA] App installed');
+      deferredPrompt = null;
+      // Track analytics event here
+    });
+    
+    // Handle offline/online status
+    window.addEventListener('offline', () => {
+      window.dispatchEvent(new CustomEvent('app-offline'));
+    });
+    
+    window.addEventListener('online', () => {
+      window.dispatchEvent(new CustomEvent('app-online'));
+    });
+  </script>
 </body>
 </html>

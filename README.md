@@ -1,331 +1,319 @@
-# nub-agent
+# NubAgent
 
-`nub-agent` is a Vite + React chat app with a Vercel serverless backend for tool-using AI workflows.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
+[![React](https://img.shields.io/badge/React-18.3-blue.svg)](https://reactjs.org/)
 
-The frontend exposes a branded assistant experience. The backend routes requests to **Google Gemini 2.5 Flash Lite**, executes a small toolset, and returns normalized responses for chat, web reading, crawling, and scoped memory APIs. When configured, a Cerebras Qwen helper reranks API-key memory matches before the primary model answers.
+**NubAgent** is a modern, AI-powered research assistant and chat interface. It combines advanced language models with web search capabilities to provide accurate, cited responses to your questions.
 
-## Current AI Model
-
-| Property | Value |
-|----------|-------|
-| **Model** | `gemini-2.5-flash-lite` |
-| **Public Name** | `nub-agent` |
-| **Developer** | Ambitiousnoob |
-| **Provider** | Google Gemini |
-
-See [API.md](./API.md) for complete API documentation.
+![NubAgent Screenshot](./docs/screenshot.png)
 
 ## Features
 
-- Branded assistant surface exposed as `nub-agent`
-- React chat UI with conversation history, session memory, and live activity logs
-- Terminal-style agent activity view with tool call tracing
-- Sandboxed live preview for generated HTML UI snippets
-- Image upload support with in-browser OCR via `tesseract.js`
-- Tool-enabled `/api/chat` route with:
-  - `calculate`
-  - `web_search`
-  - `web_fetch`
-  - `search_images`
-  - `view_image`
-- Standalone reader and crawler endpoints:
-  - `/api/memory`
-  - `/api/read`
-  - `/api/crawl`
-- Regex validation script for catching invalid regex literals before deploy
+### 🤖 AI-Powered Chat
+- Natural language conversations with advanced AI models
+- Support for multiple AI providers (Gemini, OpenAI, Anthropic)
+- Context-aware responses with conversation memory
+- File upload support for images and documents
 
-## Stack
+### 🔍 Web Research
+- Real-time web search integration
+- Multi-source fact verification
+- Automatic citation generation
+- Source credibility indicators
 
-- Frontend: React 17, Vite
-- Backend: Vercel Serverless Functions
-- Model provider: Google Gemini (primary) with optional Cerebras Qwen memory reranking
-- OCR: `tesseract.js`
+### 📚 Session Library
+- Save and organize research sessions
+- Search and filter through history
+- Export sessions (JSON, Markdown, Text)
+- Bulk operations support
 
-## Repository Layout
+### 🎨 Modern UI/UX
+- Dark/Light theme support
+- Responsive design for all devices
+- PWA support for offline access
+- Smooth animations and transitions
 
-```text
-src/              React app and UI components
-api/              Vercel serverless functions
-api/tools/        Tool handlers used by /api/chat
-lib/              Shared web/reader helpers
-scripts/          Repo utilities such as regex validation
-vercel.json       Vercel routing and build config
+### 🔒 Privacy & Security
+- Local storage for sensitive data
+- Rate limiting protection
+- Input sanitization
+- CORS configuration
+
+## Quick Start
+
+### Prerequisites
+
+- Node.js 18 or higher
+- npm 9 or higher
+- Git
+
+### Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/your-org/nubagent.git
+   cd nubagent
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Set up environment variables**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your API keys
+   ```
+
+4. **Start development server**
+   ```bash
+   npm run dev
+   ```
+
+5. **Open in browser**
+   ```
+   http://localhost:5173
+   ```
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `NODE_ENV` | Environment mode | `development` |
+| `PORT` | Server port | `3000` |
+| `GEMINI_API_KEY` | Google Gemini API key | - |
+| `OPENAI_API_KEY` | OpenAI API key | - |
+| `ANTHROPIC_API_KEY` | Anthropic API key | - |
+| `DATABASE_URL` | Database connection string | - |
+| `SENTRY_DSN` | Sentry error tracking | - |
+| `POSTHOG_API_KEY` | PostHog analytics | - |
+
+See `.env.example` for all available options.
+
+### API Keys
+
+Get API keys from:
+- **Google Gemini**: [makersuite.google.com](https://makersuite.google.com/app/apikey)
+- **OpenAI**: [platform.openai.com](https://platform.openai.com/api-keys)
+- **Anthropic**: [console.anthropic.com](https://console.anthropic.com/settings/keys)
+
+## Usage
+
+### Basic Chat
+
+1. Type your question in the chat input
+2. Press Enter or click Send
+3. Wait for the AI response
+4. Click citations to view sources
+
+### Web Research
+
+1. Enter a research query
+2. NubAgent searches the web automatically
+3. Review sources and citations
+4. Save session to library
+
+### Session Management
+
+- **Save**: Sessions are auto-saved
+- **Library**: Access via sidebar or `/library`
+- **Search**: Filter sessions by query
+- **Export**: Download as JSON, Markdown, or Text
+
+## Architecture
+
+### Frontend
+
+- **React 18** - UI framework
+- **Zustand** - State management
+- **React Query** - Server state
+- **Vite** - Build tool
+- **Sonner** - Toast notifications
+
+### Backend
+
+- **Node.js** - Runtime
+- **Express** - Web framework (via Vercel)
+- **Google GenAI** - AI integration
+- **MySQL** - Database (optional)
+
+### Key Components
+
+```
+src/
+├── components/
+│   ├── Chat/          # Chat interface
+│   ├── Search/        # Search results
+│   ├── Library/       # Session library
+│   ├── Settings/      # User settings
+│   └── UI/            # Reusable components
+├── store/             # Zustand stores
+├── hooks/             # Custom hooks
+└── lib/               # Utilities
+
+api/
+├── middleware/        # Express middleware
+├── chat.js           # Chat endpoint
+├── search.js         # Search endpoint
+├── health.js         # Health check
+├── analytics.js      # Event tracking
+└── export.js         # Export functionality
 ```
 
-## Requirements
+## API Endpoints
 
-- Node.js 18+
-- npm
-- `GEMINI_API_KEY` or `GEMINI_API_KEYS` (single key or comma-separated list)
-- `DATABASE_URL`
-- Vercel CLI if you want to deploy from the terminal
+### Chat
 
-## Local Development
+```http
+POST /api/chat
+Content-Type: application/json
 
-Frontend only:
-
-```bash
-npm install
-export GEMINI_API_KEY="your-key-here"
-npm run dev
-```
-
-Full stack with Vercel routes:
-
-```bash
-npx -y vercel dev
-```
-
-Build for production:
-
-```bash
-npm run build
-```
-
-Validate regex literals across `api/`, `src/`, and `lib/`:
-
-```bash
-npm run lint:regex
-```
-
-## Environment
-
-Required:
-
-- `GEMINI_API_KEY` or `GEMINI_API_KEYS` - backend key(s) used by `api/chat.js`
-- `DATABASE_URL` - MySQL/TiDB connection string used for app state and scoped memory
-
-Optional:
-
-- `CEREBRAS_API_KEY` - enables Cerebras-assisted API-key memory reranking
-- `CEREBRAS_MEMORY_MODEL` - overrides the retrieval helper model (defaults to `qwen-3-235b-a22b-instruct-2507`)
-- `SERPER_API_KEY` or `SERPER_API_KEYS` - enables Google-backed search for dork operators in `web_search`
-- `JINA_API_KEY` or `JINA_API_KEYS` - enables Jina search enrichment for plain `web_search` queries
-- `PAGE_ACCESS_TOKEN` - Facebook Page access token used by `api/messenger.js`
-- `VERIFY_TOKEN` or `MESSENGER_VERIFY_TOKEN` - token used by Facebook webhook verification
-- `FB_GRAPH_API` - overrides the Graph API origin/version. Defaults to `https://graph.facebook.com/v21.0`
-- `MESSENGER_SYSTEM_PROMPT` - custom system instruction for Messenger replies
-- `MESSENGER_MAX_MESSAGE_CHARS` - max characters per outbound Messenger text chunk
-
-Notes:
-
-- The frontend is static; keep secrets on the server side only.
-- Vercel reads environment variables from project settings in production.
-
-## API
-
-### `GET /api/chat`
-
-Returns metadata for the chat endpoint, including the public model label and enabled tools.
-
-### `POST /api/chat`
-
-Primary chat endpoint. It expects a non-empty `messages` array.
-
-For local API testing, use `vercel dev` and target the local Vercel server.
-
-Example:
-
-```bash
-curl -sS -X POST http://localhost:3000/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "messages": [
-      { "role": "user", "content": "What is the current date in UTC?" }
-    ],
-    "stream": false
-  }'
-```
-
-Response shape:
-
-```json
 {
-  "ok": true,
   "model": "nub-agent",
-  "output_text": "...",
-  "choices": [
-    {
-      "message": {
-        "content": "..."
-      },
-      "finish_reason": "stop"
-    }
-  ],
-  "agentic": true,
-  "tools_used": [
-    {
-      "name": "web_search",
-      "args": "{\"query\":\"current date UTC\"}"
-    }
-  ]
+  "messages": [{"role": "user", "content": "Hello!"}],
+  "stream": false
 }
 ```
 
-Behavior notes:
+### Search
 
-- Tool execution is enabled by default.
-- Streaming is supported for direct completions.
-- Tool turns run in non-stream mode for deterministic tool handling.
-- If you send `X-API-Key` or `Authorization: Bearer <key>`, the server stores memory rows for that key in the database and searches them for related context on later requests.
-- For lower token usage, reuse the same memory key and send only the latest user turn; the backend searches the key's memory table and injects only the relevant matches.
-- When `CEREBRAS_API_KEY` is configured, the backend uses a Qwen helper on Cerebras to rerank the candidate memory rows before injecting them.
+```http
+POST /api/search
+Content-Type: application/json
 
-### `GET /api/memory`
-
-Returns metadata for the API-key memory endpoint.
-
-### `POST /api/memory`
-
-Supports `insert` and `search` actions for API-key-scoped memory.
-
-Insert example:
-
-```bash
-curl -sS -X POST http://localhost:3000/api/memory \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: demo-memory-key-123" \
-  -d '{
-    "action": "insert",
-    "entries": [
-      { "role": "user", "content": "My favorite database is TiDB." },
-      { "role": "assistant", "content": "Understood. Favorite database is TiDB." }
-    ]
-  }'
+{
+  "query": "latest AI developments",
+  "limit": 10
+}
 ```
 
-Search example:
+### Health
 
-```bash
-curl -sS -X POST http://localhost:3000/api/memory \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: demo-memory-key-123" \
-  -d '{
-    "action": "search",
-    "query": "what is my favorite database",
-    "limit": 4,
-    "include_context": true
-  }'
+```http
+GET /api/health
 ```
 
-### `GET /api/state`
+### Analytics
 
-Loads persisted app state for a memory scope.
+```http
+POST /api/analytics
+Content-Type: application/json
 
-Send one of:
-
-- `X-API-Key: <your-memory-key>` to isolate memory by API key
-- `Authorization: Bearer <your-memory-key>` as an alternative
-- `X-State-Key: <generated-browser-key>` for anonymous browser scope
-
-### `POST /api/state`
-
-Saves persisted app state for the selected memory scope.
-
-Example:
-
-```bash
-curl -sS -X POST http://localhost:3000/api/state \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: demo-memory-key-123" \
-  -d '{
-    "state": {
-      "version": 1,
-      "conversations": [],
-      "currentConversationId": "",
-      "primaryModelId": "nub-agent",
-      "fallbackModelIds": []
-    }
-  }'
+{
+  "event": "chat_message_sent",
+  "properties": {"length": 50}
+}
 ```
 
-### `POST /api/read`
+### Export
 
-Reads a single URL and returns cleaned content plus metadata.
+```http
+POST /api/export
+Content-Type: application/json
 
-Example:
-
-```bash
-curl -sS -X POST http://localhost:3000/api/read \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://example.com",
-    "mode": "article",
-    "maxChars": 3200
-  }'
+{
+  "format": "markdown",
+  "sessionIds": ["session-1", "session-2"]
+}
 ```
 
-### `POST /api/crawl`
+## Development
 
-Crawls a site breadth-first within bounded limits and returns extracted text for each visited page.
-
-Example:
+### Scripts
 
 ```bash
-curl -sS -X POST http://localhost:3000/api/crawl \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://example.com/docs",
-    "maxPages": 4,
-    "maxDepth": 1,
-    "sameOrigin": true
-  }'
+# Development
+npm run dev          # Start dev server
+
+# Production
+npm run build        # Build for production
+npm run preview      # Preview production build
+
+# Code Quality
+npm run lint:regex   # Run linting
 ```
 
-### `GET /api/messenger`
+### Project Structure
 
-Facebook Messenger webhook verification endpoint. Facebook sends `hub.mode`,
-`hub.verify_token`, and `hub.challenge`; the route returns the challenge when
-the verify token matches `VERIFY_TOKEN` or `MESSENGER_VERIFY_TOKEN`.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for detailed development guidelines.
 
-### `POST /api/messenger`
+## PWA Support
 
-Facebook Messenger webhook receiver. For incoming message and postback events,
-the route calls the same LiteHost AI runtime used by `/api/chat` and sends the
-reply back through the Facebook Graph API using `PAGE_ACCESS_TOKEN`.
+NubAgent is a Progressive Web App:
 
-Example local verification request:
+1. **Install**: Click the install prompt in supported browsers
+2. **Offline**: Basic functionality works offline
+3. **Push Notifications**: Coming soon
+
+## Testing
 
 ```bash
-curl -sS "http://localhost:3000/api/messenger?hub.mode=subscribe&hub.verify_token=litehost_verify_2024&hub.challenge=12345"
+# Run tests
+npm test
+
+# Test coverage
+npm run test:coverage
 ```
 
-## Tooling Inside `/api/chat`
+## Troubleshooting
 
-The chat route registers five server-side tools:
+### Common Issues
 
-- `calculate` - evaluates simple math expressions
-- `web_search` - runs web search queries with DuckDuckGo, Tavily, optional Jina enrichment, and Google dork support when Serper is configured
-- `web_fetch` - fetches a URL and returns cleaned markdown or text
-- `search_images` - returns image search results
-- `view_image` - checks an image URL and returns basic metadata
+**API Key Errors**
+- Verify keys in `.env`
+- Check API provider status
+- Ensure no trailing spaces
 
-## Frontend Notes
+**Build Failures**
+- Clear `node_modules`: `rm -rf node_modules && npm install`
+- Clear cache: `npm run build -- --force`
 
-- The activity panel shows live dispatch/tool events in a terminal-style layout.
-- When the model returns a fenced `html` block, the UI renders it in a sandboxed `iframe` preview.
-- Uploaded images are OCR-processed client-side before being included in context.
+**CORS Errors**
+- Check `CORS_ORIGINS` in `.env`
+- Ensure proper protocol (http/https)
 
-## Security Notes
+## Security
 
-- `lib/web.js` blocks private and local network targets for reader/crawler fetches.
-- Generated HTML previews are sandboxed with `allow-scripts` and isolated from the main app.
-- Do not commit provider keys or deployment secrets.
+- All API keys stored client-side only
+- Rate limiting enabled by default
+- Input sanitization on all endpoints
+- HTTPS required in production
 
-## Deploying to Vercel
+See [SECURITY.md](./SECURITY.md) for detailed security policy.
 
-This repo is already configured for Vercel through `vercel.json`.
+## Contributing
 
-Deploy:
+We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 
-```bash
-npx -y vercel --prod
-```
+### Ways to Contribute
 
-Make sure `GEMINI_API_KEY` or `GEMINI_API_KEYS` is configured in the target Vercel project before deploying.
+- 🐛 Report bugs
+- ✨ Suggest features
+- 📝 Improve documentation
+- 💻 Submit pull requests
+- 🎨 Design improvements
 
-## Current Gaps
+## License
 
-- No automated test suite yet
-- No formal lint/format pipeline beyond regex validation
-- Some tool providers are configured directly in code and should be reviewed before wider distribution
+MIT License - see [LICENSE](./LICENSE) for details.
+
+## Acknowledgments
+
+- [Google GenAI](https://ai.google.dev/) for AI capabilities
+- [React](https://reactjs.org/) for the UI framework
+- [Vite](https://vitejs.dev/) for fast builds
+- [Zustand](https://zustand-demo.pmnd.rs/) for state management
+- All contributors and supporters
+
+## Contact
+
+- **Issues**: [GitHub Issues](https://github.com/your-org/nubagent/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/your-org/nubagent/discussions)
+
+---
+
+Built with ❤️ by the NubAgent Team

@@ -1,24 +1,55 @@
 {
-  "name": "ai-chatbot",
-  "version": "0.0.0",
+  "name": "nubagent",
+  "version": "1.0.0",
+  "description": "AI-powered research assistant and chat interface",
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint:regex": "node scripts/regex-lint.js"
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:coverage": "vitest --coverage",
+    "test:ui": "vitest --ui",
+    "lint:regex": "node scripts/regex-lint.js",
+    "lint": "eslint src --ext .js,.jsx",
+    "format": "prettier --write src/**/*.{js,jsx,css}"
   },
+  "keywords": [
+    "ai",
+    "chatbot",
+    "research",
+    "assistant",
+    "react",
+    "nlp"
+  ],
+  "author": "NubAgent Team",
+  "license": "MIT",
   "dependencies": {
     "@google/genai": "^1.46.0",
+    "@sentry/react": "^10.46.0",
+    "@tanstack/react-query": "^5.95.2",
     "dotenv": "^16.4.5",
+    "lucide-react": "^1.7.0",
     "mysql2": "^3.20.0",
+    "posthog-js": "^1.364.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "tesseract.js": "^7.0.0"
+    "react-markdown": "^10.1.0",
+    "react-syntax-highlighter": "^16.1.1",
+    "sonner": "^2.0.7",
+    "tesseract.js": "^7.0.0",
+    "zod": "^4.3.6",
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^14.3.1",
     "@vitejs/plugin-react": "^3.1.0",
     "acorn": "^8.16.0",
     "acorn-jsx": "^5.3.2",
     "acorn-walk": "^8.3.5",
-    "vite": "^4.5.14"
+    "jsdom": "^23.2.0",
+    "vite": "^4.5.14",
+    "vitest": "^1.6.1"
   }
 }
