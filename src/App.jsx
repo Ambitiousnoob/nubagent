@@ -11,13 +11,10 @@ import SearchEngine from './SearchEngine.jsx';
 import Library from './Library.jsx';
 import {
   Menu,
-  X,
   MessageSquare,
   Library as LibraryIcon,
   Settings,
   Plus,
-  Search,
-  Home,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
