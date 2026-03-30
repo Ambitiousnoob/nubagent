@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import { sanitizeSummaryText } from "./lib/sanitizeSummaryText.js";
+import { expandLiteratureQuery } from "./lib/researchQuery.js";
 
 const CHAT_API = "/api/chat";
 const SEARCH_API = "/api/search";
@@ -304,6 +306,7 @@ const analyzeAttachments = async (query, attachments, signal) => {
         model: MODEL_NAME,
         stream: false,
         use_tools: false,
+        research_mode: true,
         messages: [
             {
                 role: "system",
@@ -806,7 +809,44 @@ function AttachmentList({ attachments = [], onRemove, compact = false }) {
     );
 }
 
-function UserMsg({ text, attachments = [] }) {
+function EditMsg({ message, onSave, onCancel }) {
+    const [editText, setEditText] = useState(message.text);
+
+    const handleSave = () => {
+        onSave(message.id, editText);
+    };
+
+    return (
+        <div className="umsg">
+            <div className="umsg__av"><span>U</span></div>
+            <div className="umsg__body">
+                <textarea
+                    className="edit-msg__textarea"
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    autoFocus
+                />
+                <div className="edit-msg__actions">
+                    <button className="edit-msg__btn" onClick={handleSave}>Save</button>
+                    <button className="edit-msg__btn" onClick={onCancel}>Cancel</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function UserMsg({ text, attachments = [], onEdit }) {
+    const [isCopied, setIsCopied] = useState(false);
+
+    const handleCopy = () => {
+        if (navigator.clipboard && text) {
+            navigator.clipboard.writeText(text).then(() => {
+                setIsCopied(true);
+                setTimeout(() => setIsCopied(false), 2000);
+            });
+        }
+    };
+
     return (
         <div className="umsg">
             <div className="umsg__av"><span>U</span></div>
@@ -816,8 +856,10 @@ function UserMsg({ text, attachments = [] }) {
                 <AttachmentList attachments={attachments} />
             </div>
             <div className="umsg__acts">
-                <button className="act-btn" title="Edit">✏</button>
-                <button className="act-btn" title="Copy">⧉</button>
+                <button className="act-btn" title="Edit" onClick={onEdit}>✏</button>
+                <button className="act-btn" title="Copy" onClick={handleCopy}>
+                    {isCopied ? "Copied!" : "⧉"}
+                </button>
             </div>
         </div>
     );
@@ -1151,12 +1193,13 @@ export default function SearchEngine() {
 
     const runSearch = useCallback(async (rawQuery, uploadsOverride = pendingUploads) => {
         const query = normalizeTextBlock(rawQuery);
+        const searchQuery = expandLiteratureQuery(query);
         const attachments = buildSessionAttachments(uploadsOverride || []);
         if ((!query && !attachments.length) || streaming) return;
 
         const sessionId = createId();
         const complex = Boolean(query) && (query.length > 35 || /site:|filetype:|intitle:|inurl:|after:|before:/.test(query));
-        const swarmQueries = query ? buildSwarmQueries(query) : attachments.map((attachment) => attachment.name).slice(0, 4);
+        const swarmQueries = query ? buildSwarmQueries(searchQuery) : attachments.map((attachment) => attachment.name).slice(0, 4);
         const displayQuery = query || `Analyze ${attachments.length} attached file${attachments.length > 1 ? "s" : ""}`;
         const userText = query || getAttachmentAnalysisPrompt("", attachments);
         const activityTitle = query ? "Searching the web" : "Inspecting uploads";
@@ -1205,7 +1248,7 @@ export default function SearchEngine() {
                     statusText: `Reading ${attachments.length} uploaded file${attachments.length > 1 ? "s" : ""}...`,
                 });
                 try {
-                    attachmentDigest = await analyzeAttachments(query, attachments, signal);
+                    attachmentDigest = await analyzeAttachments(searchQuery, attachments, signal);
                 } catch (error) {
                     if (!query) throw error;
                     patchLastBot(sessionId, {
@@ -1313,14 +1356,15 @@ export default function SearchEngine() {
                         model: MODEL_NAME,
                         stream: false,
                         use_tools: false,
+                        research_mode: true,
                         messages: [
                             {
                                 role: "system",
-                                content: `You are research worker ${index + 1}/${evidenceChunks.length}. Use only the supplied evidence. Pull out the most relevant facts for the user query. Preserve citation numbers like [12]. Do not invent new sources.`,
+                                content: `You are research worker ${index + 1}/${evidenceChunks.length}. Use only the supplied evidence. Pull out the most relevant facts for the user query. Cite with bracketed indices like [3] or [12] matching the evidence labels—never bare comma-separated numbers after sentences. Do not invent new sources.`,
                             },
                             {
                                 role: "user",
-                                content: `User query: ${query}${attachmentDigest ? `\n\nUploaded file evidence:\n${truncateText(attachmentDigest, 3000)}` : ""}\n\nEvidence set:\n\n${evidenceBlock}\n\nProduce a concise evidence digest with bullet points and inline source numbers.`,
+                                content: `User query: ${searchQuery}${attachmentDigest ? `\n\nUploaded file evidence:\n${truncateText(attachmentDigest, 3000)}` : ""}\n\nEvidence set:\n\n${evidenceBlock}\n\nProduce a concise evidence digest with bullet points and bracketed citations [n] only.`,
                             },
                         ],
                     }, signal);
@@ -1354,19 +1398,20 @@ export default function SearchEngine() {
                 model: MODEL_NAME,
                 stream: false,
                 use_tools: false,
+                research_mode: true,
                 messages: [
                     {
                         role: "system",
-                        content: `You are a synthesis model for a search swarm. Merge the worker drafts into one answer. Use citation numbers like [1], [2], [57] that refer to the provided source index. Start with a single H1 title. Then provide a concise but information-dense answer. End with a short section called ## Sources used listing the cited source numbers only.`,
+                        content: "You are a synthesis model for a search swarm. Merge the worker drafts into one coherent answer. Use only bracketed citations [n] that refer to the provided source index. Do not introduce yourself or your creator. Never use bare comma-separated numbers (e.g. \"4, 9, 11\") as citations. Start with a single H1 title. Then provide a concise but information-dense answer. End with a short section called ## Sources used listing the cited bracket numbers only.",
                     },
                     {
                         role: "user",
-                        content: `User query: ${query}${attachmentDigest ? `\n\nUploaded file evidence:\n${truncateText(attachmentDigest, 5000)}` : ""}\n\nSource index:\n${sourceIndex}\n\nWorker drafts:\n\n${workerDrafts.map((draft, index) => `### Worker ${index + 1}\n${draft}`).join("\n\n")}`,
+                        content: `User query: ${searchQuery}${attachmentDigest ? `\n\nUploaded file evidence:\n${truncateText(attachmentDigest, 5000)}` : ""}\n\nSource index:\n${sourceIndex}\n\nWorker drafts:\n\n${workerDrafts.map((draft, index) => `### Worker ${index + 1}\n${draft}`).join("\n\n")}`,
                     },
                 ],
             }, signal);
 
-            const fullText = getChatText(finalPayload);
+            const fullText = sanitizeSummaryText(getChatText(finalPayload));
             await delay(250);
             const attributedSources = buildAttributedSources(fullText, fetchedEvidenceEntries);
             await revealAnswer(sessionId, fullText, attributedSources, signal, {
@@ -1466,6 +1511,9 @@ html,body,#root{height:100%;background:var(--bg)}
 .umsg__text{font-size:15px;color:var(--tx);line-height:1.6}
 .umsg__acts{display:flex;gap:3px;opacity:0;transition:opacity .2s;padding-top:3px}
 .umsg:hover .umsg__acts{opacity:1}
+.edit-msg__textarea { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--bdr); background: var(--bg2); color: var(--tx); font-family: var(--font); font-size: 15px; margin-bottom: 8px; }
+.edit-msg__actions { display: flex; gap: 8px; }
+.edit-msg__btn { padding: 5px 12px; border-radius: 8px; border: none; background: var(--ac); color: #000; font-family: var(--font); font-size: 12px; font-weight: 600; cursor: pointer; }
 .act-btn{width:26px;height:26px;border-radius:6px;border:none;background:transparent;color:var(--txm);font-size:12px;cursor:pointer;transition:all .15s}
 .act-btn:hover{background:var(--sur);color:var(--txd)}
 .scard{background:var(--bgc);border:1px solid var(--bdr);border-radius:var(--r);padding:15px;display:flex;flex-direction:column;gap:11px;animation:fsi .28s ease;margin-left:41px}
@@ -1758,6 +1806,14 @@ html,body,#root{height:100%;background:var(--bg)}
                     type="file"
                     multiple
                     accept=".txt,.md,.markdown,.json,.csv,.js,.mjs,.cjs,.ts,.jsx,.tsx,.py,.rb,.go,.rs,.java,.c,.h,.cpp,.hpp,.html,.css,.scss,.sass,.xml,.yaml,.yml,.toml,.ini,.env,.log,text/*,application/json,image/*"
+                    style={{ display: "none" }}
+                    onChange={handleFileUpload}
+                />
+            </div>
+        </div>
+    );
+}
+p,.html,.css,.scss,.sass,.xml,.yaml,.yml,.toml,.ini,.env,.log,text/*,application/json,image/*"
                     style={{ display: "none" }}
                     onChange={handleFileUpload}
                 />
