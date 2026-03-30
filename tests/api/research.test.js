@@ -32,12 +32,13 @@ const buildHandler = ({
   serializeResearchRun = vi.fn((run) => run),
   buildExportPayload = vi.fn(),
 } = {}) => {
-  const mocks = {
+    const mocks = {
     "../lib/web": {
       readBody: vi.fn(async () => body ?? {}),
     },
     "../lib/state-scope": {
       getScopedStateKeyFromRequest: vi.fn(() => ({ stateKey: "scope:test" })),
+      normalizeApiKey: vi.fn((value) => String(value || "").trim()),
       normalizeStateKey: vi.fn((value) => value),
     },
     "../lib/research-memory": {
@@ -130,6 +131,10 @@ describe("/api/research", () => {
         depthPreference: "deep",
         refinementBudget: 5,
         forcedOutputMode: "decision_brief",
+        searchProviderKeys: {
+          tavily: "tvly-dev-key-1234567890",
+          serper: "",
+        },
         controls: [{ type: "go_deeper" }],
         stopAfterCheckpoint: "draft",
       },
@@ -153,6 +158,9 @@ describe("/api/research", () => {
       depthPreference: "deep",
       refinementBudget: 5,
       forcedOutputMode: "decision_brief",
+      searchProviderKeys: {
+        tavily: "tvly-dev-key-1234567890",
+      },
       controls: [{ type: "go_deeper" }],
       stopAfterCheckpoint: "draft",
     }));

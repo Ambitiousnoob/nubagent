@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadCommonJsModule } from "../../src/__tests__/loadCommonJsModule.js";
 
-const installRuntimeMocks = ({ pendingControls = [] } = {}) => {
+const installRuntimeMocks = ({
+  pendingControls = [],
+  omitFinalCitations = false,
+  sourceMeshOverride = null,
+  evidenceEntriesOverride = null,
+} = {}) => {
   const runStore = new Map();
   const queuedControls = [...pendingControls];
 
@@ -33,7 +38,9 @@ const installRuntimeMocks = ({ pendingControls = [] } = {}) => {
     if (system.includes("SynthesisMediator")) {
       return {
         reply: {
-          content: "# Decision Draft\nCaching improves latency, but freshness caveats remain [1].\n\n## Residual uncertainty\nFreshness impact depends on invalidation quality [1].\n\n## Sources used\n[1]",
+          content: omitFinalCitations
+            ? "# Decision Draft\nCaching improves latency, but freshness caveats remain.\n\n## Residual uncertainty\nFreshness impact depends on invalidation quality."
+            : "# Decision Draft\nCaching improves latency, but freshness caveats remain [1].\n\n## Residual uncertainty\nFreshness impact depends on invalidation quality [1].\n\n## Sources used\n[1]",
         },
       };
     }
@@ -96,7 +103,7 @@ const installRuntimeMocks = ({ pendingControls = [] } = {}) => {
     },
     "./research-sources": {
       searchResearchSources: vi.fn(async () => ({
-      sources: [
+      sources: sourceMeshOverride?.sources || [
         {
           title: "Caching Paper",
           url: "https://example.com/paper",
@@ -105,17 +112,20 @@ const installRuntimeMocks = ({ pendingControls = [] } = {}) => {
           citationIndex: 1,
         },
       ],
-      providersUsed: ["mock"],
+      providersUsed: sourceMeshOverride?.providersUsed || ["mock"],
+      providerErrors: sourceMeshOverride?.providerErrors || [],
     })),
     },
     "./research-extraction": {
-      fetchTieredEvidence: vi.fn(async (sources) => [
-      {
-        source: { ...sources[0], citationIndex: 1 },
-        content: "Caching reduced latency in controlled evaluations while freshness depended on invalidation quality.",
-        evidenceBlock: "[1] Caching reduced latency in controlled evaluations while freshness depended on invalidation quality.",
-      },
-    ]),
+      fetchTieredEvidence: vi.fn(async (sources) => (
+        evidenceEntriesOverride || [
+          {
+            source: { ...sources[0], citationIndex: 1 },
+            content: "Caching reduced latency in controlled evaluations while freshness depended on invalidation quality.",
+            evidenceBlock: "[1] Caching reduced latency in controlled evaluations while freshness depended on invalidation quality.",
+          },
+        ]
+      )),
       extractResearchArtifacts: vi.fn(async () => ({
       claims: [{ type: "effect_size", metric: "latency", value: -0.3, sampleSizeFlag: false }],
       repositories: [],
@@ -209,5 +219,63 @@ describe("research runtime orchestration", () => {
       event.type === "control_applied"
       && event.restartNode === "dialecticalSynthesisEngine"
     ))).toBe(true);
+  });
+
+  it("falls back to tiered sources when the final draft has no valid citations", async () => {
+    const { runtime } = installRuntimeMocks({
+      omitFinalCitations: true,
+    });
+
+    const run = await runtime.runResearch({
+      query: "should we adopt response caching for the research agent",
+    });
+
+    expect(run.status).toBe("complete");
+    expect(run.result.sources).toHaveLength(1);
+    expect(run.result.sources[0]).toMatchObject({
+      title: "Caching Paper",
+      url: "https://example.com/paper",
+      tier: "core",
+    });
+    expect(run.result.sourceSelection).toMatchObject({
+      mode: "fallback",
+      citedNumbers: [],
+      totalTieredSources: 1,
+    });
+  });
+
+  it("emits an explicit no-sources report when retrieval produced no grounded evidence", async () => {
+    const { runtime } = installRuntimeMocks({
+      sourceMeshOverride: {
+        sources: [],
+        providersUsed: [],
+        providerErrors: [
+          "web_search DuckDuckGo returned bot challenge",
+          "openalex HTTP 429",
+        ],
+      },
+      evidenceEntriesOverride: [],
+    });
+
+    const run = await runtime.runResearch({
+      query: "how does quantum computing threaten modern encryption",
+      searchProviderKeys: {
+        tavily: "tvly-preview-key-1234567890",
+      },
+    });
+
+    expect(run.status).toBe("complete");
+    expect(run.result.sources).toEqual([]);
+    expect(run.result.sourceSelection).toMatchObject({
+      mode: "no_grounded_sources",
+      totalTieredSources: 0,
+    });
+    expect(run.result.finalText).toContain("# No Sources Retrieved");
+    expect(run.result.finalText).toContain("Configured search providers for this run: Tavily.");
+    expect(run.result.finalText).toContain("DuckDuckGo returned bot challenge");
+    expect(run.result.decision).toBeNull();
+    expect(run.result.slides).toBe("");
+    expect(run.result.datasetCsv).toBe("");
+    expect(run.requestOptions.searchProviders).toEqual(["Tavily"]);
   });
 });

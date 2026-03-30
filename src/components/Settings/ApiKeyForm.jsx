@@ -18,6 +18,10 @@ export function ApiKeyForm() {
 
   const providers = [
     { id: 'default', label: 'Default' },
+    { id: 'tavily', label: 'Tavily Search' },
+    { id: 'serper', label: 'Serper Search' },
+    { id: 'brave', label: 'Brave Search' },
+    { id: 'jina', label: 'Jina Search' },
     { id: 'openai', label: 'OpenAI' },
     { id: 'anthropic', label: 'Anthropic' },
     { id: 'google', label: 'Google' },
@@ -131,6 +135,30 @@ export function ApiKeyForm() {
         <ul>
           <li>
             <strong>Default:</strong> Configure in your environment variables
+          </li>
+          <li>
+            <strong>Tavily:</strong>{' '}
+            <a href="https://app.tavily.com/home" target="_blank" rel="noopener noreferrer">
+              app.tavily.com
+            </a>
+          </li>
+          <li>
+            <strong>Serper:</strong>{' '}
+            <a href="https://serper.dev" target="_blank" rel="noopener noreferrer">
+              serper.dev
+            </a>
+          </li>
+          <li>
+            <strong>Brave Search:</strong>{' '}
+            <a href="https://api.search.brave.com" target="_blank" rel="noopener noreferrer">
+              api.search.brave.com
+            </a>
+          </li>
+          <li>
+            <strong>Jina:</strong>{' '}
+            <a href="https://jina.ai" target="_blank" rel="noopener noreferrer">
+              jina.ai
+            </a>
           </li>
           <li>
             <strong>OpenAI:</strong>{' '}

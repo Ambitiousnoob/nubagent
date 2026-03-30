@@ -12,6 +12,7 @@ import {
     summarizeSubagents,
 } from "./lib/researchOrchestration.js";
 import { invokeResearchRuntime, sendResearchControl } from "./lib/researchClient.js";
+import { useSettingsStore } from "./store/useSettingsStore.js";
 import Library from "./Library.jsx";
 
 const CHAT_API = "/api/chat";
@@ -516,18 +517,11 @@ const renderInlineMarkup = (str, sources = []) => {
 };
 
 const extractHighlightPoints = (text = "", limit = 4) => {
-    const bullets = String(text || "")
+    return String(text || "")
         .split("\n")
         .map((line) => line.trim())
         .filter((line) => /^[-*]\s+/.test(line))
         .map((line) => line.replace(/^[-*]\s+/, "").trim())
-        .filter(Boolean);
-    if (bullets.length) return bullets.slice(0, limit);
-
-    return String(text || "")
-        .replace(/\n+/g, " ")
-        .split(/(?<=[.!?])\s+/)
-        .map((line) => line.trim())
         .filter(Boolean)
         .slice(0, limit);
 };
@@ -537,7 +531,49 @@ const buildResultSummary = (text = "") => {
         .split("\n")
         .map((line) => line.trim())
         .filter((line) => line && !/^[-*]\s+/.test(line) && !/^#{1,6}\s+/.test(line));
-    return cleaned.join(" ");
+    const summary = cleaned.join(" ");
+    if (summary.length <= 560) return summary;
+    return `${summary.slice(0, 557).trimEnd()}...`;
+};
+
+const stripRepeatedHeading = (text = "", heading = "") => {
+    const lines = String(text || "").split("\n");
+    const normalizedHeading = String(heading || "").replace(/^#+\s*/, "").trim().toLowerCase();
+
+    while (lines.length) {
+        const firstLine = String(lines[0] || "").trim();
+        const normalizedFirstLine = firstLine.replace(/^#+\s*/, "").trim().toLowerCase();
+        if (!normalizedFirstLine) {
+            lines.shift();
+            continue;
+        }
+        if (
+            normalizedFirstLine === normalizedHeading
+            || normalizedFirstLine === "research answer"
+            || normalizedFirstLine === "answer"
+        ) {
+            lines.shift();
+            continue;
+        }
+        break;
+    }
+
+    return lines.join("\n").trim();
+};
+
+const collectSearchProviderKeys = (getApiKey) => {
+    if (typeof getApiKey !== "function") return {};
+
+    const configured = {
+        tavily: getApiKey("tavily"),
+        serper: getApiKey("serper"),
+        brave: getApiKey("brave"),
+        jina: getApiKey("jina"),
+    };
+
+    return Object.fromEntries(
+        Object.entries(configured).filter(([, value]) => String(value || "").trim()),
+    );
 };
 
 const SOURCE_COLOR_CLASSES = [
@@ -618,6 +654,9 @@ const buildCoverageRows = (query, researchMeta = {}, sources = []) => {
     const subagents = Array.isArray(researchMeta?.subagents) ? researchMeta.subagents.filter(Boolean) : [];
     const dedicatedSubagentCount = countSubagentAssignments(subagents);
     const dagSummary = String(researchMeta?.dagSummary || summarizeDag(researchMeta?.dag || {})).trim();
+    const configuredProviders = Array.isArray(researchMeta?.configuredProviders) ? researchMeta.configuredProviders.filter(Boolean) : [];
+    const providersUsed = Array.isArray(researchMeta?.providersUsed) ? researchMeta.providersUsed.filter(Boolean) : [];
+    const providerErrors = Array.isArray(researchMeta?.providerErrors) ? researchMeta.providerErrors.filter(Boolean) : [];
     const ambiguousAxes = Array.isArray(researchMeta?.intentConfidence?.ambiguousAxes)
         ? researchMeta.intentConfidence.ambiguousAxes.filter(Boolean)
         : [];
@@ -668,6 +707,16 @@ const buildCoverageRows = (query, researchMeta = {}, sources = []) => {
             label: "Sites ranked",
             spec: `${Math.max(rankedSites, sources.length)} unique site${Math.max(rankedSites, sources.length) === 1 ? "" : "s"} kept after dedupe`,
         },
+        ...((configuredProviders.length || providersUsed.length || providerErrors.length)
+            ? [{
+                label: "Provider status",
+                spec: providersUsed.length
+                    ? `${providersUsed.length} provider${providersUsed.length === 1 ? "" : "s"} returned usable results${configuredProviders.length ? `; configured: ${configuredProviders.join(", ")}` : ""}${providerErrors.length ? `; ${providerErrors.length} provider issue${providerErrors.length === 1 ? "" : "s"}: ${providerErrors.slice(0, 2).join(" | ")}` : ""}`
+                    : configuredProviders.length
+                        ? `Configured for this run: ${configuredProviders.join(", ")}${providerErrors.length ? `; ${providerErrors.length} provider issue${providerErrors.length === 1 ? "" : "s"}: ${providerErrors.slice(0, 3).join(" | ")}` : ""}`
+                        : `${providerErrors.length} provider issue${providerErrors.length === 1 ? "" : "s"}: ${providerErrors.slice(0, 3).join(" | ")}`,
+            }]
+            : []),
         ...(fetchPlanned
             ? [{
                 label: "Fetch plan",
@@ -1032,9 +1081,10 @@ function SubagentOwnershipTable({ researchMeta = {} }) {
 
 function LibertyResultCard({ query, heading, body, sources = [], searchCount = 0, researchMeta = {} }) {
     const visibleSources = sources.slice(0, 20);
-    const summary = buildResultSummary(body);
-    const answerCopy = summary || body;
-    const points = extractHighlightPoints(body, 4);
+    const cleanedBody = stripRepeatedHeading(body, heading);
+    const summary = buildResultSummary(cleanedBody);
+    const answerCopy = summary || cleanedBody;
+    const points = extractHighlightPoints(cleanedBody, 4);
     const topDomains = [...new Set(visibleSources.map((source) => getDomain(source.url)).filter(Boolean))];
     const modeLabel = researchMeta?.outputMode?.label || "State-of-the-Field";
     const paretoLabel = researchMeta?.pareto?.mode || "balanced";
@@ -1042,6 +1092,8 @@ function LibertyResultCard({ query, heading, body, sources = [], searchCount = 0
         ? `Stability ${researchMeta.convergence.stability_score}`
         : null;
     const frameworkLabel = researchMeta?.frameworkVersion ? `Framework v${researchMeta.frameworkVersion}` : null;
+    const noGroundedSources = researchMeta?.sourceSelection?.mode === "no_grounded_sources"
+        || (!visibleSources.length && Array.isArray(researchMeta?.providerErrors) && researchMeta.providerErrors.length);
 
     return (
         <div className="la-result">
@@ -1073,9 +1125,15 @@ function LibertyResultCard({ query, heading, body, sources = [], searchCount = 0
                     {convergenceLabel ? <span className="la-meta-pill">{convergenceLabel}</span> : null}
                 </div>
 
+                {noGroundedSources ? (
+                    <div className="la-warning">
+                        No grounded sources were retrieved for this run. Open <strong>Research process</strong> for provider details and next steps.
+                    </div>
+                ) : null}
+
                 {answerCopy ? (
                     <>
-                        <div className="la-summary-label">Summary</div>
+                        <div className="la-summary-label">Answer</div>
                         <div className="la-summary-text">{renderInlineMarkup(answerCopy, sources)}</div>
                     </>
                 ) : null}
@@ -1094,12 +1152,26 @@ function LibertyResultCard({ query, heading, body, sources = [], searchCount = 0
                     </div>
                 ) : null}
 
-                {(visibleSources.length || Object.keys(researchMeta || {}).length) ? (
+                {visibleSources.length ? (
                     <div className="la-tables">
                         <LibertySourceTable sources={visibleSources} />
-                        <LibertyCoverageTable query={query} researchMeta={{ ...researchMeta, searchCount }} sources={visibleSources} />
-                        <SubagentOwnershipTable researchMeta={researchMeta} />
                     </div>
+                ) : null}
+
+                {(Object.keys(researchMeta || {}).length || (Array.isArray(researchMeta?.subagents) && researchMeta.subagents.length)) ? (
+                    <details className="la-process-details">
+                        <summary className="la-process-summary">
+                            <span>Research process</span>
+                            <span className="la-process-meta">
+                                {Math.max(searchCount, 1)} search{Math.max(searchCount, 1) === 1 ? "" : "es"}
+                                {sources.length ? ` • ${sources.length} source${sources.length === 1 ? "" : "s"}` : ""}
+                            </span>
+                        </summary>
+                        <div className="la-tables la-tables--secondary">
+                            <LibertyCoverageTable query={query} researchMeta={{ ...researchMeta, searchCount }} sources={visibleSources} />
+                            <SubagentOwnershipTable researchMeta={researchMeta} />
+                        </div>
+                    </details>
                 ) : null}
             </div>
 
@@ -1341,6 +1413,7 @@ export default function SearchEngine({ session = null, resetSignal = 0, onSessio
     const steeringStatusTimerRef = useRef(null);
     const resetSignalRef = useRef(resetSignal);
     const sessionsRef = useRef(sessions);
+    const getApiKey = useSettingsStore((state) => state.getApiKey);
 
     const active = sessions.find((session) => session.id === activeId);
     const isLanding = !active && !streaming;
@@ -1476,10 +1549,18 @@ export default function SearchEngine({ session = null, resetSignal = 0, onSessio
 
     const revealAnswer = useCallback(async (sessionId, sessionQuery, finalText, sources, signal, extraPatch = {}) => {
         const { heading, body } = extractAnswerParts(finalText);
+        const currentSession = sessionsRef.current.find((item) => item.id === sessionId);
+        const botMessages = Array.isArray(currentSession?.messages)
+            ? currentSession.messages.filter((message) => message.role === "bot")
+            : [];
+        const existingSources = Array.isArray(botMessages[botMessages.length - 1]?.sources)
+            ? botMessages[botMessages.length - 1].sources
+            : [];
+        const resolvedSources = Array.isArray(sources) && sources.length ? sources : existingSources;
         patchLastBot(sessionId, {
             heading,
             body: "",
-            sources,
+            sources: resolvedSources,
             showPlanning: false,
             showSearching: false,
             searchDone: true,
@@ -1494,7 +1575,7 @@ export default function SearchEngine({ session = null, resetSignal = 0, onSessio
             patchLastBot(sessionId, {
                 heading,
                 body: built.trimEnd(),
-                sources,
+                sources: resolvedSources,
                 showPlanning: false,
                 showSearching: false,
                 searchDone: true,
@@ -1506,7 +1587,7 @@ export default function SearchEngine({ session = null, resetSignal = 0, onSessio
         patchLastBot(sessionId, {
             heading,
             body: body || heading,
-            sources,
+            sources: resolvedSources,
             showPlanning: false,
             showSearching: false,
             searchDone: true,
@@ -1524,7 +1605,7 @@ export default function SearchEngine({ session = null, resetSignal = 0, onSessio
             query: savedSession?.query || sessionQuery || heading,
             heading,
             body: body || heading,
-            sources,
+            sources: resolvedSources,
             attachments: savedAttachments,
             researchMeta,
         }));
@@ -1776,6 +1857,7 @@ export default function SearchEngine({ session = null, resetSignal = 0, onSessio
         let runtimeRunId = "";
 
         try {
+            const searchProviderKeys = collectSearchProviderKeys(getApiKey);
             const streamResearchEvent = (event) => {
                 if (!event || typeof event !== "object") return;
                 if (event.runId) {
@@ -1894,6 +1976,7 @@ export default function SearchEngine({ session = null, resetSignal = 0, onSessio
                 forcedOutputMode: compiledPlan.outputMode.id,
                 refinementBudget: compiledPlan.refinementBudget,
                 maxQueries: SEARCH_SWARM_SIZE,
+                ...(Object.keys(searchProviderKeys).length ? { searchProviderKeys } : {}),
             }, signal, streamResearchEvent);
             runtimeRunId = runtimeResult?.runId || runtimeRunId;
 
@@ -1909,6 +1992,7 @@ export default function SearchEngine({ session = null, resetSignal = 0, onSessio
                 ragLexical: true,
                 tribunal: tribunal || undefined,
                 convergence: convergence || undefined,
+                sourceSelection: finalResult.sourceSelection || undefined,
                 ...researchMetaBase,
                 ...(runtimeResult?.researchMeta || {}),
             };
@@ -2111,7 +2195,16 @@ html,body,#root{height:100%;background:var(--bg)}
 .la-point-icon.green{background:rgba(34,197,94,0.12);color:#4ade80}
 .la-point-icon.blue{background:rgba(59,130,246,0.12);color:#60a5fa}
 .la-point p{font-size:12px;color:var(--la-text);line-height:1.5}
+.la-warning{margin:14px 0 16px;padding:12px 14px;border-radius:12px;border:1px solid rgba(245,158,11,0.18);background:rgba(245,158,11,0.08);color:var(--la-text);font-size:12px;line-height:1.55}
+.la-warning strong{color:var(--la-text-heading)}
 .la-tables{display:flex;flex-direction:column;gap:20px;margin-top:20px}
+.la-tables--secondary{margin-top:14px;padding-top:4px}
+.la-process-details{margin-top:18px;border-top:1px solid var(--la-border);padding-top:14px}
+.la-process-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;list-style:none;color:var(--la-text-heading);font-size:12px;font-weight:600}
+.la-process-summary::-webkit-details-marker{display:none}
+.la-process-summary::marker{display:none}
+.la-process-summary span:first-child{letter-spacing:-.01em}
+.la-process-meta{font-size:11px;font-weight:500;color:var(--la-text-dim)}
 .la-card{background:var(--la-bg);border:1px solid var(--la-border);border-radius:14px;overflow:hidden}
 .la-card-header{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid var(--la-border)}
 .la-card-icon{width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;background:var(--la-accent-bg);border:1px solid var(--la-accent-border);color:var(--la-accent);font-size:10px;font-weight:700}

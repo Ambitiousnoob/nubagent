@@ -1,6 +1,6 @@
 const crypto = require("node:crypto");
 const { readBody } = require("../lib/web");
-const { getScopedStateKeyFromRequest, normalizeStateKey } = require("../lib/state-scope");
+const { getScopedStateKeyFromRequest, normalizeApiKey, normalizeStateKey } = require("../lib/state-scope");
 const {
     listResearchRuns,
     loadResearchRun,
@@ -90,11 +90,26 @@ const normalizeMaxQueries = (value) => {
     return Math.max(1, Math.min(12, Math.floor(resolved)));
 };
 
+const normalizeSearchProviderKeys = (value = {}) => {
+    const candidate = value && typeof value === "object" ? value : {};
+    const normalized = {
+        tavily: normalizeApiKey(candidate?.tavily),
+        serper: normalizeApiKey(candidate?.serper),
+        brave: normalizeApiKey(candidate?.brave),
+        jina: normalizeApiKey(candidate?.jina),
+    };
+
+    return Object.fromEntries(
+        Object.entries(normalized).filter(([, apiKey]) => apiKey),
+    );
+};
+
 const buildRuntimeRequestOptions = (req, body = {}) => ({
     depthPreference: normalizeDepthPreference(body?.depthPreference || body?.depth || req.query?.depthPreference || req.query?.depth),
     forcedOutputMode: normalizeForcedOutputMode(body?.forcedOutputMode || body?.outputMode || req.query?.forcedOutputMode || req.query?.outputMode),
     refinementBudget: normalizeRefinementBudget(body?.refinementBudget || req.query?.refinementBudget),
     maxQueries: normalizeMaxQueries(body?.maxQueries || req.query?.maxQueries),
+    searchProviderKeys: normalizeSearchProviderKeys(body?.searchProviderKeys),
 });
 
 const buildRunPreview = (run = {}) => {
