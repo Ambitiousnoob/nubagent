@@ -9,7 +9,6 @@ import { buildSessionShareUrl, getSessionById } from './lib/library.js';
 import SearchEngine from './SearchEngine.jsx';
 import Library from './Library.jsx';
 import Docs from './Docs.jsx';
-import './styles/app-shell.css';
 import {
   BookOpen,
   Menu,

@@ -6,7 +6,6 @@ import { SearchFilters } from './components/Search/SearchFilters.jsx';
 import { Button } from './components/UI/Button.jsx';
 import { useToast } from './components/UI/ToastProvider.jsx';
 import { buildSessionShareUrl, promptToCopySessionUrl } from './lib/library.js';
-import './styles/knowledge-surfaces.css';
 import {
   Search,
   ArrowLeft,

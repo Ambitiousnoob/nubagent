@@ -12,7 +12,6 @@ import {
   RESEARCH_FRAMEWORK_V31_STRESS_POINTS,
   SUBAGENT_GROUPS,
 } from './lib/docsContent.js';
-import './styles/knowledge-surfaces.css';
 
 function CodeBlock({ children }) {
   return (
