@@ -267,29 +267,9 @@ body::before {
   transition: all var(--transition-fast);
 }
 
-.sidebar__collapse:hover,
-.sidebar__close:hover {
+.sidebar__collapse:hover {
   background: var(--color-bg-elevated);
   color: var(--color-text-primary);
-}
-
-.sidebar__close-mobile {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: none;
-  background: var(--color-bg-tertiary);
-  color: var(--color-text-primary);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.sidebar__close-mobile:hover {
-  background: var(--color-error);
-  color: white;
 }
 
 .sidebar__nav {
@@ -2507,11 +2487,6 @@ body::before {
 
   .sidebar__collapse {
     display: none;
-  }
-
-  /* Ensure close button is visible on mobile */
-  .sidebar__close-mobile {
-    display: flex !important;
   }
 
   /* Prevent body scroll when sidebar is open */

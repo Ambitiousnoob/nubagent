@@ -27,7 +27,7 @@ import {
  * Root component with navigation and routing
  */
 export default function App() {
-  const { sidebar, setActiveTab, toggleSidebar, setSidebarCollapsed, openModal, isMobile, closeSidebar, setIsMobile } = useUIStore();
+  const { sidebar, setActiveTab, toggleSidebar, setSidebarCollapsed, openModal, isMobile, setIsMobile } = useUIStore();
   const { loadSessions, selectSession, clearSelectedSession } = useLibraryStore();
   const [currentView, setCurrentView] = useState('chat');
   const [selectedSession, setSelectedSession] = useState(null);
@@ -66,13 +66,13 @@ export default function App() {
 
     const handleClickOutside = (event) => {
       if (sidebarRef.current && !sidebarRef.current.contains(event.target)) {
-        closeSidebar();
+        toggleSidebar();
       }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isMobile, sidebar.isOpen, closeSidebar]);
+  }, [isMobile, sidebar.isOpen, toggleSidebar]);
 
   const handleNewChat = () => {
     setCurrentView('chat');
@@ -125,13 +125,6 @@ export default function App() {
                   aria-label={sidebar.isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                 >
                   {sidebar.isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-                </button>
-                <button
-                  className="sidebar__close-mobile"
-                  onClick={closeSidebar}
-                  aria-label="Close sidebar"
-                >
-                  <X size={20} />
                 </button>
               </div>
 
