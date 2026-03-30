@@ -4,6 +4,7 @@ const {
     wantsStream,
     runLiteHostChat,
     createChatResponsePayload,
+    normalizeChatBody,
 } = require("../lib/litehost-chat");
 const {
     loadScopedChatMemory,
@@ -73,23 +74,24 @@ module.exports = async (req, res) => {
     }
 
     try {
+        const normalizedBody = normalizeChatBody(body);
         const scopedMemory = await loadScopedChatMemory(req).catch(() => null);
-        const latestUserText = getLatestUserText(body.messages);
+        const latestUserText = getLatestUserText(normalizedBody.messages);
         const apiKeyMemorySearch = scopedMemory?.scope === "api_key" && latestUserText
             ? await searchApiKeyMemoryDetailed(scopedMemory.stateKey, latestUserText).catch(() => ({ results: [], meta: null }))
             : { results: [], meta: null };
         const apiKeyMemoryHits = apiKeyMemorySearch.results || [];
         const apiKeyMemoryContext = formatApiKeyMemoryContext(apiKeyMemoryHits);
-        const shouldUseMemory = Boolean(scopedMemory?.dbKey) && shouldUseScopedChatMemory(body);
+        const shouldUseMemory = Boolean(scopedMemory?.dbKey) && shouldUseScopedChatMemory(normalizedBody);
         const requestBody = shouldUseMemory
             ? {
-                ...body,
-                messages: buildMessagesWithScopedMemory(body.messages, scopedMemory.memory, {
+                ...normalizedBody,
+                messages: buildMessagesWithScopedMemory(normalizedBody.messages, scopedMemory.memory, {
                     retrievedContext: apiKeyMemoryContext,
                 }),
             }
-            : body;
-        const wantsSse = wantsStream(body) && body.use_tools === false;
+            : normalizedBody;
+        const wantsSse = wantsStream(normalizedBody) && normalizedBody.use_tools === false;
 
         if (wantsSse) {
             res.status(200);
@@ -103,10 +105,10 @@ module.exports = async (req, res) => {
 
             const result = await runLiteHostChat(requestBody, streamCallback);
             if (scopedMemory?.scope === "api_key" && body.save_persistent_memory !== false) {
-                await saveApiKeyMemoryEntries(scopedMemory.stateKey, body.messages, result?.reply?.content || "").catch(() => {});
+                await saveApiKeyMemoryEntries(scopedMemory.stateKey, normalizedBody.messages, result?.reply?.content || "").catch(() => {});
             }
             if (scopedMemory?.dbKey && body.save_persistent_memory !== false) {
-                const nextMemory = mergeChatMemory(scopedMemory.memory, body.messages, result?.reply?.content || "");
+                const nextMemory = mergeChatMemory(scopedMemory.memory, normalizedBody.messages, result?.reply?.content || "");
                 await saveScopedChatMemory(scopedMemory, nextMemory).catch(() => {});
             }
             res.write("data: [DONE]\n\n");
@@ -114,11 +116,11 @@ module.exports = async (req, res) => {
         } else {
             const result = await runLiteHostChat(requestBody);
             if (scopedMemory?.scope === "api_key" && body.save_persistent_memory !== false) {
-                await saveApiKeyMemoryEntries(scopedMemory.stateKey, body.messages, result?.reply?.content || "").catch(() => {});
+                await saveApiKeyMemoryEntries(scopedMemory.stateKey, normalizedBody.messages, result?.reply?.content || "").catch(() => {});
             }
             let memoryMeta = null;
             if (scopedMemory?.dbKey && body.save_persistent_memory !== false) {
-                const nextMemory = mergeChatMemory(scopedMemory.memory, body.messages, result?.reply?.content || "");
+                const nextMemory = mergeChatMemory(scopedMemory.memory, normalizedBody.messages, result?.reply?.content || "");
                 const savedMemory = await saveScopedChatMemory(scopedMemory, nextMemory).catch(() => null);
                 const activeMemory = savedMemory?.memory || nextMemory;
                 memoryMeta = {
