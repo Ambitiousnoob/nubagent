@@ -47,6 +47,11 @@ const getLatestUserText = (messages = []) => {
     return getMessageText(latestUserMessage?.content || "").trim();
 };
 
+const buildDelegationContext = (scopedMemory = null) => ({
+    scopeKey: scopedMemory?.stateKey || "",
+    scope: scopedMemory?.scope || "",
+});
+
 module.exports = async (req, res) => {
     writeCorsHeaders(res);
 
@@ -91,6 +96,10 @@ module.exports = async (req, res) => {
                 }),
             }
             : normalizedBody;
+        const delegatedRequestBody = {
+            ...requestBody,
+            delegationContext: buildDelegationContext(scopedMemory),
+        };
         const wantsSse = wantsStream(normalizedBody) && normalizedBody.use_tools === false;
 
         if (wantsSse) {
@@ -103,7 +112,7 @@ module.exports = async (req, res) => {
                 res.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: chunk } }] })}\n\n`);
             };
 
-            const result = await runLiteHostChat(requestBody, streamCallback);
+            const result = await runLiteHostChat(delegatedRequestBody, streamCallback);
             if (scopedMemory?.scope === "api_key" && body.save_persistent_memory !== false) {
                 await saveApiKeyMemoryEntries(scopedMemory.stateKey, normalizedBody.messages, result?.reply?.content || "").catch(() => {});
             }
@@ -114,7 +123,7 @@ module.exports = async (req, res) => {
             res.write("data: [DONE]\n\n");
             res.end();
         } else {
-            const result = await runLiteHostChat(requestBody);
+            const result = await runLiteHostChat(delegatedRequestBody);
             if (scopedMemory?.scope === "api_key" && body.save_persistent_memory !== false) {
                 await saveApiKeyMemoryEntries(scopedMemory.stateKey, normalizedBody.messages, result?.reply?.content || "").catch(() => {});
             }

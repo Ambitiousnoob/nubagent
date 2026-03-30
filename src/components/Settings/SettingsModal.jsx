@@ -21,7 +21,7 @@ export function SettingsModal() {
   const tabs = [
     { id: 'general', label: 'General', icon: <Settings size={16} /> },
     { id: 'api', label: 'API Keys', icon: <Key size={16} /> },
-    { id: 'model', label: 'Model', icon: <Cpu size={16} /> },
+    { id: 'model', label: 'Research Models', icon: <Cpu size={16} /> },
     { id: 'notifications', label: 'Notifications', icon: <Bell size={16} /> },
   ];
 

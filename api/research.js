@@ -89,6 +89,32 @@ const normalizeMaxQueries = (value) => {
     if (!Number.isFinite(resolved)) return undefined;
     return Math.max(1, Math.min(12, Math.floor(resolved)));
 };
+const normalizeResearchProvider = (value) => {
+    const normalized = normalizeText(value).toLowerCase();
+    if (normalized === "openrouter" || normalized === "open-router") return "openrouter";
+    if (normalized === "google" || normalized === "gemini") return "google";
+    return undefined;
+};
+const normalizeResearchModel = (value) => normalizeText(value) || undefined;
+const normalizeResearchModelChain = (value) => {
+    const entries = Array.isArray(value)
+        ? value
+        : typeof value === "string"
+            ? value.split(",")
+            : [];
+    const normalized = entries
+        .map((item) => normalizeText(item))
+        .filter(Boolean);
+    return normalized.length ? [...new Set(normalized)] : undefined;
+};
+const normalizeResearchRoundRobin = (value) => {
+    if (value == null || value === "") return undefined;
+    if (typeof value === "boolean") return value;
+    const normalized = normalizeText(value).toLowerCase();
+    if (["true", "1", "yes", "round_robin", "round-robin"].includes(normalized)) return true;
+    if (["false", "0", "no", "single", "off"].includes(normalized)) return false;
+    return undefined;
+};
 
 const normalizeSearchProviderKeys = (value = {}) => {
     const candidate = value && typeof value === "object" ? value : {};
@@ -103,6 +129,16 @@ const normalizeSearchProviderKeys = (value = {}) => {
         Object.entries(normalized).filter(([, apiKey]) => apiKey),
     );
 };
+const normalizeResearchProviderKeys = (value = {}) => {
+    const candidate = value && typeof value === "object" ? value : {};
+    const normalized = {
+        openrouter: normalizeApiKey(candidate?.openrouter || candidate?.openRouter || candidate?.["open-router"]),
+        google: normalizeApiKey(candidate?.google || candidate?.gemini),
+    };
+    return Object.fromEntries(
+        Object.entries(normalized).filter(([, apiKey]) => apiKey),
+    );
+};
 
 const buildRuntimeRequestOptions = (req, body = {}) => ({
     depthPreference: normalizeDepthPreference(body?.depthPreference || body?.depth || req.query?.depthPreference || req.query?.depth),
@@ -110,6 +146,11 @@ const buildRuntimeRequestOptions = (req, body = {}) => ({
     refinementBudget: normalizeRefinementBudget(body?.refinementBudget || req.query?.refinementBudget),
     maxQueries: normalizeMaxQueries(body?.maxQueries || req.query?.maxQueries),
     searchProviderKeys: normalizeSearchProviderKeys(body?.searchProviderKeys),
+    researchProvider: normalizeResearchProvider(body?.researchProvider || body?.provider || req.query?.researchProvider || req.query?.provider),
+    researchModel: normalizeResearchModel(body?.researchModel || body?.model || req.query?.researchModel || req.query?.model),
+    researchModelChain: normalizeResearchModelChain(body?.researchModelChain || body?.modelChain || req.query?.researchModelChain || req.query?.modelChain),
+    researchRoundRobin: normalizeResearchRoundRobin(body?.researchRoundRobin || body?.roundRobin || req.query?.researchRoundRobin || req.query?.roundRobin),
+    researchProviderKeys: normalizeResearchProviderKeys(body?.researchProviderKeys || body?.providerApiKeys || body?.provider_api_keys),
 });
 
 const buildRunPreview = (run = {}) => {

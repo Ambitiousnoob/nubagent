@@ -131,9 +131,19 @@ describe("/api/research", () => {
         depthPreference: "deep",
         refinementBudget: 5,
         forcedOutputMode: "decision_brief",
+        researchProvider: "openrouter",
+        researchModel: "nvidia/nemotron-3-super-120b-a12b:free",
+        researchModelChain: [
+          "nvidia/nemotron-3-super-120b-a12b:free",
+          "meta-llama/llama-3.3-70b-instruct:free",
+        ],
+        researchRoundRobin: true,
         searchProviderKeys: {
           tavily: "tvly-dev-key-1234567890",
           serper: "",
+        },
+        researchProviderKeys: {
+          openrouter: "sk-or-v1-1234567890abcdefghijklmnop",
         },
         controls: [{ type: "go_deeper" }],
         stopAfterCheckpoint: "draft",
@@ -158,8 +168,18 @@ describe("/api/research", () => {
       depthPreference: "deep",
       refinementBudget: 5,
       forcedOutputMode: "decision_brief",
+      researchProvider: "openrouter",
+      researchModel: "nvidia/nemotron-3-super-120b-a12b:free",
+      researchModelChain: [
+        "nvidia/nemotron-3-super-120b-a12b:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+      ],
+      researchRoundRobin: true,
       searchProviderKeys: {
         tavily: "tvly-dev-key-1234567890",
+      },
+      researchProviderKeys: {
+        openrouter: "sk-or-v1-1234567890abcdefghijklmnop",
       },
       controls: [{ type: "go_deeper" }],
       stopAfterCheckpoint: "draft",
@@ -188,6 +208,16 @@ describe("/api/research", () => {
         depthPreference: "speed",
         refinementBudget: 2,
         forcedOutputMode: "gap_analysis",
+        researchProvider: "openrouter",
+        researchModel: "nvidia/nemotron-3-super-120b-a12b:free",
+        researchModelChain: [
+          "nvidia/nemotron-3-super-120b-a12b:free",
+          "meta-llama/llama-3.3-70b-instruct:free",
+        ],
+        researchRoundRobin: true,
+        researchProviderKeys: {
+          openrouter: "sk-or-v1-1234567890abcdefghijklmnop",
+        },
         controls: [{ type: "prioritize_speed" }, { type: "force_mode", mode: "gap_analysis" }],
         stopAfterCheckpoint: "summaries",
       },
@@ -208,6 +238,16 @@ describe("/api/research", () => {
       depthPreference: "speed",
       refinementBudget: 2,
       forcedOutputMode: "gap_analysis",
+      researchProvider: "openrouter",
+      researchModel: "nvidia/nemotron-3-super-120b-a12b:free",
+      researchModelChain: [
+        "nvidia/nemotron-3-super-120b-a12b:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+      ],
+      researchRoundRobin: true,
+      researchProviderKeys: {
+        openrouter: "sk-or-v1-1234567890abcdefghijklmnop",
+      },
       controls: [{ type: "prioritize_speed" }, { type: "force_mode", mode: "gap_analysis" }],
       stopAfterCheckpoint: "summaries",
     }));
@@ -320,9 +360,9 @@ describe("/api/research", () => {
       },
       researchMeta: {
         subagents: [
-          { id: "claimVerifier" },
-          { id: "citationVerifier" },
-          { id: "decisionIntelligenceLayer" },
+          { id: "claimVerifier", equipment: ["Claim ledger", "Evidence excerpts"] },
+          { id: "citationVerifier", equipment: ["Citation map"] },
+          { id: "decisionIntelligenceLayer", equipment: ["Decision payload"] },
         ],
       },
     }));
@@ -354,6 +394,10 @@ describe("/api/research", () => {
       "claimVerifier",
       "citationVerifier",
       "decisionIntelligenceLayer",
+    ]));
+    expect(payload.researchMeta.subagents.find((item) => item.id === "claimVerifier")?.equipment).toEqual(expect.arrayContaining([
+      "Claim ledger",
+      "Evidence excerpts",
     ]));
   });
 });

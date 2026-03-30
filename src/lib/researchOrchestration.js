@@ -5,6 +5,7 @@ export const RESEARCH_FRAMEWORK_VERSION = "3.1";
 export const REFINEMENT_BUDGET = 3;
 
 const DEFAULT_DEPTH = "balanced";
+const SCHOLARLY_SIGNAL_RE = /\b(scholar|scholarly|academic|peer[- ]?reviewed|journal|journals|paper|papers|study|studies|literature|meta-analysis|systematic review|doi|citation|citations|university|thesis|dissertation)\b/i;
 
 const DOMAIN_RULES = [
   {
@@ -145,7 +146,7 @@ const PIPELINE_PHASES = Object.freeze({
   intelligentCrawlerMesh: {
     id: "intelligentCrawlerMesh",
     label: "Intelligent Crawler Mesh",
-    summary: "Adaptive source mesh, citation tracing, author networks, and temporal trend analysis.",
+    summary: "Adaptive source mesh, scholarly harvesting, citation tracing, author networks, and temporal trend analysis.",
     dependsOn: ["adversarialQueryForge"],
     parallelizable: true,
     critical: true,
@@ -208,7 +209,53 @@ const PIPELINE_PHASES = Object.freeze({
   },
 });
 
-export const RESEARCH_SUBAGENT_SPECS = Object.freeze({
+const SUBAGENT_EQUIPMENT = Object.freeze({
+  cognitiveCommandLayer: ["Intent axes", "DAG compiler", "Pareto controls", "Session continuity memory"],
+  devilsAdvocateDecomposer: ["Counter-hypothesis lanes", "Disconfirming prompts", "Scope challenges"],
+  domainDetector: ["Domain taxonomy", "Ontology vocabulary", "Recency norms"],
+  queryVersionController: ["Revision log", "Rationale ledger", "Rollback pointer"],
+  forwardCitationTracer: ["OpenAlex cited-by API", "Citation snowball seeds", "Seed paper set"],
+  scholarlySourceHarvester: ["Google Scholar-style lanes", "Semantic Scholar lanes", "OpenAlex lanes", "University-domain sweep", "Institutional repositories"],
+  authorNetworkMapper: ["Author graph", "Co-authorship edges", "Echo-chamber heuristics"],
+  temporalTrendAnalyzer: ["Publication year buckets", "Velocity chart", "Recency horizon"],
+  temporalRelevanceDecay: ["Field half-life", "Recency weighting", "Freshness score"],
+  retractedPaperGuard: ["Retraction signals", "Quarantine log", "DOI/title cross-check"],
+  sampleSizeFilter: ["Sample-size parser", "Domain threshold", "Confidence weighting"],
+  statisticalClaimExtractor: ["Effect-size parser", "P-value parser", "Sample-size schema"],
+  codeRepoAnalyzer: ["Repo URL extractor", "README audit", "Dependency manifest scan"],
+  supplementaryMaterialParser: ["Appendix scan", "Method recovery", "Supplementary evidence cache"],
+  conceptEntityLinker: ["Ontology vocabulary", "Concept graph", "Entity normalizer"],
+  statisticalVerifier: ["Sandboxed recomputation", "Claim ledger", "Meta-analysis hooks"],
+  thesisAgent: ["Core/supporting source set", "Position map", "Dominant-view brief"],
+  antithesisAgent: ["Counterevidence clusters", "Contradiction map", "Disconfirming source set"],
+  synthesisMediator: ["Debate transcripts", "Uncertainty schema", "Inline constraints"],
+  narrativeArchitect: ["Output-mode template", "Citation slots", "Delivery formatter"],
+  quantitativeSynthesizer: ["Effect-size aggregator", "Heterogeneity scan", "Evidence weights"],
+  evidencePyramidBuilder: ["Evidence-type classifier", "Tier weights", "Study design labels"],
+  evolvingNarrativeTracker: ["Temporal trend points", "Consensus shift map", "Year buckets"],
+  internalConsistencyCritic: ["Claim ledger", "Source-to-claim map", "Rewrite gate"],
+  claimVerifier: ["Claim ledger", "Evidence excerpts", "Support threshold"],
+  citationVerifier: ["Citation map", "Excerpt alignment", "Source-strength check"],
+  contradictionVerifier: ["Counterevidence map", "Stance clusters", "False-consensus check"],
+  uncertaintyVerifier: ["Confidence scores", "Residual uncertainty", "Calibration rules"],
+  coverageAuditor: ["Hypothesis list", "Coverage matrix", "Gap report"],
+  userGoalAlignmentCritic: ["Output-mode target", "Depth preference", "Steering controls"],
+  decisionIntelligenceLayer: ["Decision payload", "Risk profile", "Reversibility frame"],
+  adaptiveDeliveryHub: ["Checkpoint stream", "Markdown export", "Slide outline", "Dataset export"],
+  activeSafetyAndEthics: ["Dual-use flags", "Funding conflict scan", "Predatory journal scan", "Manipulation scan"],
+  causalRiskAnalyzer: ["Technique-to-risk chain", "Misuse vector map", "Severity scores"],
+});
+
+const attachSubagentEquipment = (specs) => Object.freeze(
+  Object.fromEntries(
+    Object.entries(specs).map(([id, spec]) => [id, {
+      ...spec,
+      equipment: SUBAGENT_EQUIPMENT[id] || [],
+    }]),
+  ),
+);
+
+export const RESEARCH_SUBAGENT_SPECS = attachSubagentEquipment({
   cognitiveCommandLayer: {
     label: "Cognitive Command Layer",
     scope: "Intent decomposition, DAG compilation, Pareto steering, and session continuity.",
@@ -232,6 +279,11 @@ export const RESEARCH_SUBAGENT_SPECS = Object.freeze({
   forwardCitationTracer: {
     label: "ForwardCitationTracer",
     scope: "Forward citation expansion and seed reinforcement.",
+    phaseId: "intelligentCrawlerMesh",
+  },
+  scholarlySourceHarvester: {
+    label: "ScholarlySourceHarvester",
+    scope: "Google Scholar-style discovery, institutional repository, and university-domain harvesting via permitted search paths.",
     phaseId: "intelligentCrawlerMesh",
   },
   authorNetworkMapper: {
@@ -416,6 +468,10 @@ export const createSubagentDescriptor = (id, options = {}) => {
     phaseId: spec.phaseId,
     count: Math.max(1, Number(options.count) || 1),
     detail: options.detail ? String(options.detail) : "",
+    equipment: uniqueList([
+      ...(Array.isArray(spec.equipment) ? spec.equipment : []),
+      ...(Array.isArray(options.equipment) ? options.equipment : []),
+    ]).slice(0, 6),
   };
 };
 
@@ -621,6 +677,65 @@ const buildCitationSnowballSeeds = (query, scope) => {
   return uniqueList(seeds).slice(0, 4);
 };
 
+const shouldActivateScholarlyHarvest = (query, domain, scope, outputMode) => {
+  const normalized = normalizeText(query);
+  if (!normalized) return false;
+  if (SCHOLARLY_SIGNAL_RE.test(normalized)) return true;
+  if (domain?.id && domain.id !== DOMAIN_FALLBACK.id) return true;
+  if (["gap_finding", "replication_study", "contested_topic"].includes(scope?.id)) return true;
+  if ([
+    "state_of_the_field",
+    "controversy_map",
+    "gap_analysis",
+    "replication_crisis_report",
+    "foundational_review",
+  ].includes(outputMode?.id)) return true;
+  return false;
+};
+
+const buildScholarlyDiscoveryLanes = (query, domain, scope, outputMode) => {
+  const normalized = normalizeText(query);
+  if (!normalized || !shouldActivateScholarlyHarvest(normalized, domain, scope, outputMode)) {
+    return [];
+  }
+
+  const lanes = [
+    `${normalized} site:scholar.google.com`,
+    `${normalized} site:semanticscholar.org`,
+    `${normalized} site:openalex.org`,
+    `${normalized} site:.edu`,
+  ];
+
+  if (domain?.id === "biomedical") {
+    lanes.push(`${normalized} site:pubmed.ncbi.nlm.nih.gov`, `${normalized} site:nih.gov`);
+  }
+  if (domain?.id === "cs_ml") {
+    lanes.push(`${normalized} site:arxiv.org`, `${normalized} site:paperswithcode.com`);
+  }
+  if (domain?.id === "social_science") {
+    lanes.push(`${normalized} site:jstor.org`, `${normalized} site:ssrn.com`);
+  }
+  if (scope?.id === "replication_study") {
+    lanes.push(`${normalized} site:osf.io`);
+  }
+
+  return uniqueList(lanes).slice(0, 5);
+};
+
+const buildScholarlyProviderBias = (domain, scope) => {
+  const providers = ["openalex", "crossref"];
+  if (domain?.id === "cs_ml") {
+    providers.push("papers_with_code");
+  }
+  if (domain?.id === "social_science") {
+    providers.push("jstor");
+  }
+  if (domain?.id === "biomedical" || scope?.id === "replication_study") {
+    providers.push("ieee_xplore");
+  }
+  return uniqueList(providers).slice(0, 5);
+};
+
 export const buildQueryVersionLog = (query, domain, scope, outputMode, depthPreference = DEFAULT_DEPTH) => {
   const normalized = normalizeText(query);
   if (!normalized) return [];
@@ -666,6 +781,8 @@ export const buildResearchQueryMatrix = (query, options = {}) => {
   const citationSnowballSeeds = buildCitationSnowballSeeds(normalized, scope);
   const ontologyMappedVocabulary = uniqueList(domain.ontologyTerms).slice(0, 4);
   const counterHypotheses = buildCounterHypotheses(normalized, scope);
+  const scholarlyDiscoveryLanes = buildScholarlyDiscoveryLanes(normalized, domain, scope, outputMode);
+  const scholarlyProviderBias = buildScholarlyProviderBias(domain, scope);
   const versions = buildQueryVersionLog(normalized, domain, scope, outputMode, depthPreference);
 
   return {
@@ -674,6 +791,9 @@ export const buildResearchQueryMatrix = (query, options = {}) => {
     citationSnowballSeeds,
     ontologyMappedVocabulary,
     counterHypotheses,
+    scholarlyDiscoveryLanes,
+    scholarlyProviderBias,
+    scholarlyHarvestActive: scholarlyDiscoveryLanes.length > 0,
     versions,
   };
 };
@@ -681,13 +801,24 @@ export const buildResearchQueryMatrix = (query, options = {}) => {
 export const buildDynamicSearchQueries = (plan, options = {}) => {
   const maxQueries = Math.max(1, Number(options.maxQueries) || 4);
   const matrix = plan?.queryMatrix || {};
-  return uniqueList([
+  const scholarlyLanes = matrix.scholarlyDiscoveryLanes || [];
+  const primary = uniqueList([
+    ...(matrix.keywords || []).slice(0, scholarlyLanes.length ? 2 : 3),
+    ...scholarlyLanes.slice(0, 2),
+    ...(matrix.semanticEmbeddings || []).slice(0, 1),
+    ...(matrix.citationSnowballSeeds || []).slice(0, 1),
+    ...(matrix.counterHypotheses || []).slice(0, 1),
+    ...(matrix.ontologyMappedVocabulary || []).slice(0, 1).map((term) => `${plan.query} ${term}`),
+  ]);
+  const fallback = uniqueList([
     ...(matrix.keywords || []),
+    ...scholarlyLanes,
     ...(matrix.semanticEmbeddings || []),
     ...(matrix.counterHypotheses || []),
     ...(matrix.ontologyMappedVocabulary || []).map((term) => `${plan.query} ${term}`),
     ...(matrix.citationSnowballSeeds || []),
-  ]).slice(0, maxQueries);
+  ]);
+  return uniqueList([...primary, ...fallback]).slice(0, maxQueries);
 };
 
 const computeOverlapScore = (queryTerms, text) => {
@@ -912,6 +1043,11 @@ const buildSubagents = (plan) => {
       createSubagentDescriptor("devilsAdvocateDecomposer", {
         detail: `${counterHypotheses || 1} counter-hypothesis lane${counterHypotheses === 1 ? "" : "s"}`,
       }),
+      ...(plan.scholarlyHarvest?.active
+        ? [createSubagentDescriptor("scholarlySourceHarvester", {
+          detail: `${plan.scholarlyHarvest.lanes.length} scholarly lane${plan.scholarlyHarvest.lanes.length === 1 ? "" : "s"}; academic index + .edu sweep`,
+        })]
+        : []),
       createSubagentDescriptor("forwardCitationTracer", {
         count: plan.depthPreference === "deep" ? 2 : 1,
         detail: `depth ${plan.depthPreference === "deep" ? 2 : 1} citation tracing`,
@@ -1001,6 +1137,11 @@ export const compileResearchPlan = (options = {}) => {
   });
   const pareto = buildParetoProfile(depthPreference);
   const safety = buildSafetyChecks(query, domain);
+  const scholarlyHarvest = {
+    active: Boolean(queryMatrix.scholarlyHarvestActive || (queryMatrix.scholarlyDiscoveryLanes || []).length),
+    lanes: queryMatrix.scholarlyDiscoveryLanes || [],
+    providerBias: queryMatrix.scholarlyProviderBias || [],
+  };
   const basePlan = {
     frameworkVersion: RESEARCH_FRAMEWORK_VERSION,
     query,
@@ -1011,6 +1152,7 @@ export const compileResearchPlan = (options = {}) => {
     outputMode,
     intentConfidence,
     queryMatrix,
+    scholarlyHarvest,
     continuity,
     pareto,
     safety,

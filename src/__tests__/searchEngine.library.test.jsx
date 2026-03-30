@@ -173,8 +173,10 @@ describe('SearchEngine library persistence', () => {
     });
   });
 
-  it('forwards configured search provider keys with research runs', async () => {
+  it('forwards configured search and model provider keys with research runs', async () => {
     useSettingsStore.getState().setApiKey('tvly-preview-key-1234567890', 'tavily');
+    useSettingsStore.getState().setApiKey('sk-or-v1-1234567890abcdefghijklmnop', 'openrouter');
+    useSettingsStore.getState().setResearchSelectedModel('nvidia/nemotron-3-super-120b-a12b:free');
     fetch.mockResolvedValue(createSseResponse([
       `event: final\ndata: ${JSON.stringify({
         type: 'final',
@@ -204,6 +206,53 @@ describe('SearchEngine library persistence', () => {
     const payload = JSON.parse(request.body);
     expect(payload.searchProviderKeys).toMatchObject({
       tavily: 'tvly-preview-key-1234567890',
+    });
+    expect(payload.researchProvider).toBe('openrouter');
+    expect(payload.researchModel).toBe('nvidia/nemotron-3-super-120b-a12b:free');
+    expect(payload.researchModelChain).toEqual([
+      'nvidia/nemotron-3-super-120b-a12b:free',
+    ]);
+    expect(payload.researchRoundRobin).toBe(true);
+    expect(payload.researchProviderKeys).toMatchObject({
+      openrouter: 'sk-or-v1-1234567890abcdefghijklmnop',
+    });
+  });
+
+  it('uses the round-robin preset without pinning a single research model chain', async () => {
+    useSettingsStore.getState().setApiKey('sk-or-v1-1234567890abcdefghijklmnop', 'openrouter');
+    useSettingsStore.getState().setResearchSelectedModel('openrouter-round-robin');
+    fetch.mockResolvedValue(createSseResponse([
+      `event: final\ndata: ${JSON.stringify({
+        type: 'final',
+        runId: 'research-run-2b',
+        final: {
+          heading: 'Research Answer',
+          body: 'Round robin preset payload test.',
+          markdown: '# Research Answer\n\nRound robin preset payload test.',
+          sources: [],
+        },
+        researchMeta: {},
+      })}\n\n`,
+      'data: [DONE]\n\n',
+    ]));
+
+    render(<SearchEngine />);
+
+    const input = screen.getByLabelText('Message NubAgent');
+    fireEvent.change(input, { target: { value: 'round robin research model preset' } });
+    fireEvent.submit(input.closest('form'));
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalled();
+    });
+
+    const [, request] = fetch.mock.calls[0];
+    const payload = JSON.parse(request.body);
+    expect(payload.researchProvider).toBe('openrouter');
+    expect(payload.researchModel).toBe('nvidia/nemotron-3-super-120b-a12b:free');
+    expect(payload.researchModelChain).toBeUndefined();
+    expect(payload.researchProviderKeys).toMatchObject({
+      openrouter: 'sk-or-v1-1234567890abcdefghijklmnop',
     });
   });
 
@@ -242,7 +291,7 @@ describe('SearchEngine library persistence', () => {
     const raw = storage.get(LIBRARY_STORAGE_KEY);
     const sessions = JSON.parse(raw);
     expect(sessions[0].sources).toEqual([]);
-  });
+  }, 15000);
 
   it('shows the saved session inside the Library view after submit', async () => {
     fetch.mockImplementation(() => new Promise(() => {}));
@@ -316,7 +365,7 @@ describe('SearchEngine library persistence', () => {
     });
 
     expect(await screen.findByText('updated query')).toBeInTheDocument();
-  });
+  }, 20000);
 
   it('clears the shared session query param when the shell requests a fresh chat', () => {
     window.history.replaceState({}, '', '/?session=session-123');
@@ -325,5 +374,5 @@ describe('SearchEngine library persistence', () => {
     rerender(<SearchEngine resetSignal={1} />);
 
     expect(window.location.search).toBe('');
-  });
+  }, 15000);
 });

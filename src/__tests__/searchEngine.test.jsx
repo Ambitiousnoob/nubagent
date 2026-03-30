@@ -125,6 +125,7 @@ describe('SearchEngine shell handoff', () => {
                 scope: 'claim support verification',
                 count: 1,
                 detail: '4 verifier lanes active',
+                equipment: ['Claim ledger', 'Evidence excerpts', 'Support threshold'],
               },
               {
                 id: 'citationVerifier',
@@ -132,6 +133,7 @@ describe('SearchEngine shell handoff', () => {
                 scope: 'citation integrity',
                 count: 1,
                 detail: 'claim-to-citation integrity',
+                equipment: ['Citation map', 'Excerpt alignment', 'Source-strength check'],
               },
               {
                 id: 'decisionIntelligenceLayer',
@@ -139,6 +141,7 @@ describe('SearchEngine shell handoff', () => {
                 scope: 'decision payload generation and risk shaping',
                 count: 1,
                 detail: 'Decision Brief',
+                equipment: ['Decision payload', 'Risk profile', 'Reversibility frame'],
               },
             ],
           },
@@ -155,5 +158,7 @@ describe('SearchEngine shell handoff', () => {
     expect(screen.getByText('Claim verifier')).toBeInTheDocument();
     expect(screen.getByText('Citation verifier')).toBeInTheDocument();
     expect(screen.getByText('Decision intelligence layer')).toBeInTheDocument();
+    expect(screen.getByText('Claim ledger')).toBeInTheDocument();
+    expect(screen.getByText('Decision payload')).toBeInTheDocument();
   });
 });

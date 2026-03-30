@@ -42,6 +42,27 @@ describe("server research plan contract", () => {
     expect(ids).toContain("uncertaintyVerifier");
   });
 
+  it("activates scholarly-source harvesting for literature-oriented server plans", () => {
+    const plan = compileResearchPlan({
+      query: "How does quantum computing threaten modern encryption?",
+      depthPreference: "balanced",
+    });
+
+    expect(plan.queryMatrix.scholarlyDiscoveryLanes).toEqual(expect.arrayContaining([
+      expect.stringContaining("site:scholar.google.com"),
+      expect.stringContaining("site:openalex.org"),
+    ]));
+    expect(plan.scholarlyHarvest).toMatchObject({
+      active: true,
+    });
+    expect(plan.subagents.find((item) => item.id === "scholarlySourceHarvester")).toMatchObject({
+      equipment: expect.arrayContaining([
+        "Google Scholar-style lanes",
+        "Institutional repositories",
+      ]),
+    });
+  });
+
   it("keeps decision-only orchestration out of non-decision research plans", () => {
     const plan = compileResearchPlan({
       query: "survey the evidence for retrieval caching in RAG systems",
@@ -54,6 +75,10 @@ describe("server research plan contract", () => {
     expect(plan.subagents.find((item) => item.id === "claimVerifier")).toMatchObject({
       label: "ClaimVerifier",
       detail: "claim support gate",
+      equipment: expect.arrayContaining([
+        "Claim ledger",
+        "Evidence excerpts",
+      ]),
     });
   });
 });

@@ -575,6 +575,47 @@ const collectSearchProviderKeys = (getApiKey) => {
     );
 };
 
+const DEFAULT_RESEARCH_MODEL = "nvidia/nemotron-3-super-120b-a12b:free";
+const OPENROUTER_ROUND_ROBIN_PRESET = "openrouter-round-robin";
+
+const collectResearchProviderKeys = (getApiKey) => {
+    if (typeof getApiKey !== "function") return {};
+
+    const configured = {
+        openrouter: getApiKey("openrouter"),
+        google: getApiKey("google") || getApiKey("gemini"),
+    };
+
+    return Object.fromEntries(
+        Object.entries(configured).filter(([, value]) => String(value || "").trim()),
+    );
+};
+
+const resolveResearchModelSelection = (researchSelectedModel = "") => {
+    if (String(researchSelectedModel || "").trim() === OPENROUTER_ROUND_ROBIN_PRESET) {
+        return {
+            researchProvider: "openrouter",
+            researchModel: DEFAULT_RESEARCH_MODEL,
+            researchModelChain: [],
+        };
+    }
+
+    const entries = String(researchSelectedModel || "")
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+    const chain = entries.length ? [...new Set(entries)] : [DEFAULT_RESEARCH_MODEL];
+    const model = chain[0] || DEFAULT_RESEARCH_MODEL;
+    const normalizedModel = model.toLowerCase();
+    const provider = normalizedModel.startsWith("gemini-") ? "google" : "openrouter";
+
+    return {
+        researchProvider: provider,
+        researchModel: model,
+        researchModelChain: chain,
+    };
+};
+
 const SOURCE_COLOR_CLASSES = [
     "blue", "sky", "red", "emerald", "purple", "amber", "stone", "cyan",
     "indigo", "rose", "teal", "lime", "violet", "pink", "fuchsia", "orange", "yellow", "slate",
@@ -1040,6 +1081,7 @@ function SubagentOwnershipTable({ researchMeta = {} }) {
             label: SUBAGENT_STAGE_LABELS[entry.id] || entry.label,
             owner: entry.count > 1 ? `${entry.count}x ${entry.label}` : entry.label,
             focus: `${entry.scope}${entry.detail ? `; ${entry.detail}` : ""}`,
+            equipment: (Array.isArray(entry.equipment) ? entry.equipment : []).filter(Boolean).slice(0, 6),
         }));
     if (!rows.length) return null;
 
@@ -1048,7 +1090,7 @@ function SubagentOwnershipTable({ researchMeta = {} }) {
             icon="⚙"
             title="Subagent Ownership"
             badge={`${rows.length} owners`}
-            note="Every micro-stage is owned by a dedicated subagent for clear accountability."
+            note="Every micro-stage is owned by a dedicated subagent. Equipment shows the tools, memories, and artifacts each owner can use."
         >
             <div className="la-table-wrap">
                 <table className="la-table la-table--subagents">
@@ -1068,6 +1110,16 @@ function SubagentOwnershipTable({ researchMeta = {} }) {
                                 </td>
                                 <td className="col-focus">
                                     <span className="subagent-owner__focus">{row.focus}</span>
+                                    {row.equipment.length ? (
+                                        <span className="subagent-owner__equipment">
+                                            <span className="subagent-owner__equipment-label">Equipment</span>
+                                            <span className="subagent-owner__equipment-items">
+                                                {row.equipment.map((item) => (
+                                                    <span key={`${row.key}-${item}`} className="subagent-owner__equipment-pill">{item}</span>
+                                                ))}
+                                            </span>
+                                        </span>
+                                    ) : null}
                                 </td>
                             </tr>
                         ))}
@@ -1365,6 +1417,7 @@ export default function SearchEngine({ session = null, resetSignal = 0, onSessio
     const resetSignalRef = useRef(resetSignal);
     const sessionsRef = useRef(sessions);
     const getApiKey = useSettingsStore((state) => state.getApiKey);
+    const researchSelectedModel = useSettingsStore((state) => state.researchSelectedModel || DEFAULT_RESEARCH_MODEL);
 
     const active = sessions.find((session) => session.id === activeId);
     const isLanding = !active && !streaming;
@@ -1821,6 +1874,8 @@ export default function SearchEngine({ session = null, resetSignal = 0, onSessio
 
         try {
             const searchProviderKeys = collectSearchProviderKeys(getApiKey);
+            const researchProviderKeys = collectResearchProviderKeys(getApiKey);
+            const researchModelSelection = resolveResearchModelSelection(researchSelectedModel);
             const streamResearchEvent = (event) => {
                 if (!event || typeof event !== "object") return;
                 if (event.runId) {
@@ -1939,7 +1994,12 @@ export default function SearchEngine({ session = null, resetSignal = 0, onSessio
                 forcedOutputMode: compiledPlan.outputMode.id,
                 refinementBudget: compiledPlan.refinementBudget,
                 maxQueries: SEARCH_SWARM_SIZE,
+                researchProvider: researchModelSelection.researchProvider,
+                researchModel: researchModelSelection.researchModel,
+                ...(researchModelSelection.researchModelChain.length ? { researchModelChain: researchModelSelection.researchModelChain } : {}),
+                researchRoundRobin: true,
                 ...(Object.keys(searchProviderKeys).length ? { searchProviderKeys } : {}),
+                ...(Object.keys(researchProviderKeys).length ? { researchProviderKeys } : {}),
             }, signal, streamResearchEvent);
             runtimeRunId = runtimeResult?.runId || runtimeRunId;
 
@@ -2385,6 +2445,10 @@ html,body,#root{height:100%;background:var(--bg)}
 .la-table--subagents .col-focus{min-width:260px}
 .subagent-owner__name{display:block;font-weight:600;color:var(--la-text-heading);letter-spacing:-.01em}
 .subagent-owner__focus{display:block;font-size:11px;color:var(--la-text);margin-top:4px;line-height:1.4}
+.subagent-owner__equipment{display:block;margin-top:8px}
+.subagent-owner__equipment-label{display:block;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--la-text-dim);margin-bottom:5px}
+.subagent-owner__equipment-items{display:flex;flex-wrap:wrap;gap:6px}
+.subagent-owner__equipment-pill{display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;background:var(--la-card);border:1px solid var(--la-border);font-size:10px;font-weight:500;color:var(--la-text)}
 .la-source-name{color:var(--la-text-bright);font-weight:500}
 .la-source-ref{font-size:11px;color:var(--la-text-dim);margin-top:2px}
 .la-source-url{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--la-accent);margin-top:4px;opacity:.85;text-decoration:none}

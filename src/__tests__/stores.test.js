@@ -16,7 +16,8 @@ describe('Settings Store', () => {
     const state = useSettingsStore.getState();
     expect(state.theme).toBe('light');
     expect(state.apiKey).toBeNull();
-    expect(state.selectedModel).toBe('nub-agent');
+    expect(state.selectedModel).toBe('gemini-2.5-flash-lite');
+    expect(state.researchSelectedModel).toBe('nvidia/nemotron-3-super-120b-a12b:free');
     expect(state.preferences.autoSave).toBe(true);
   });
 
@@ -50,6 +51,14 @@ describe('Settings Store', () => {
     const { setSelectedModel } = useSettingsStore.getState();
     setSelectedModel('gpt-4');
     expect(useSettingsStore.getState().selectedModel).toBe('gpt-4');
+  });
+
+  it('sets the research subagent model separately from the main model', () => {
+    const { setSelectedModel, setResearchSelectedModel } = useSettingsStore.getState();
+    setSelectedModel('gemini-2.5-flash-lite');
+    setResearchSelectedModel('openrouter-round-robin');
+    expect(useSettingsStore.getState().selectedModel).toBe('gemini-2.5-flash-lite');
+    expect(useSettingsStore.getState().researchSelectedModel).toBe('openrouter-round-robin');
   });
 
   it('sets preference', () => {

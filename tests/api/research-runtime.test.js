@@ -244,6 +244,68 @@ describe("research runtime orchestration", () => {
     });
   });
 
+  it("round-robins the configured research model chain across orchestration subagent calls", async () => {
+    const { runtime, runLiteHostChat } = installRuntimeMocks();
+    const researchModelChain = [
+      "nvidia/nemotron-3-super-120b-a12b:free",
+      "meta-llama/llama-3.3-70b-instruct:free",
+    ];
+
+    const run = await runtime.runResearch({
+      query: "should we adopt response caching for the research agent",
+      researchProvider: "openrouter",
+      researchModel: researchModelChain[0],
+      researchModelChain,
+      researchRoundRobin: true,
+      researchProviderKeys: {
+        openrouter: "sk-or-v1-1234567890abcdefghijklmnop",
+      },
+    });
+
+    const researchCalls = runLiteHostChat.mock.calls
+      .map(([payload]) => payload)
+      .filter((payload) => payload?.research_mode === true);
+
+    expect(researchCalls.slice(0, 6).map((payload) => payload.model)).toEqual([
+      researchModelChain[0],
+      researchModelChain[1],
+      researchModelChain[0],
+      researchModelChain[1],
+      researchModelChain[0],
+      researchModelChain[1],
+    ]);
+    expect(researchCalls.every((payload) => payload.provider === "openrouter")).toBe(true);
+    expect(researchCalls.every((payload) => payload.use_tools === false)).toBe(true);
+    expect(run.requestOptions.researchProvider).toBe("openrouter");
+    expect(run.requestOptions.researchModel).toBe(researchModelChain[0]);
+    expect(run.requestOptions.researchModelChain).toEqual(researchModelChain);
+    expect(run.requestOptions.researchRoundRobin).toBe(true);
+    expect(run.requestOptions.modelProviders).toEqual(expect.arrayContaining(["OpenRouter"]));
+    expect(run.state.researchModelSelection).toMatchObject({
+      chain: researchModelChain,
+      chainLength: 2,
+      roundRobinEnabled: true,
+    });
+  });
+
+  it("includes active subagent equipment in the orchestration prompt brief", async () => {
+    const { runtime, runLiteHostChat } = installRuntimeMocks();
+
+    await runtime.runResearch({
+      query: "should we adopt response caching for the research agent",
+      forcedOutputMode: "decision_brief",
+    });
+
+    const promptText = runLiteHostChat.mock.calls
+      .flatMap(([payload]) => (Array.isArray(payload?.messages) ? payload.messages : []))
+      .map((message) => String(message?.content || ""))
+      .join("\n\n");
+
+    expect(promptText).toContain("Subagent equipment:");
+    expect(promptText).toContain("- ClaimVerifier: Claim ledger, Evidence excerpts, Support threshold");
+    expect(promptText).toContain("- Decision Intelligence Layer: Decision payload, Risk profile, Reversibility frame");
+  });
+
   it("emits an explicit no-sources report when retrieval produced no grounded evidence", async () => {
     const { runtime } = installRuntimeMocks({
       sourceMeshOverride: {

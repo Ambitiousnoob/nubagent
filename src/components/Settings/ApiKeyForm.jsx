@@ -18,6 +18,7 @@ export function ApiKeyForm() {
 
   const providers = [
     { id: 'default', label: 'Default' },
+    { id: 'openrouter', label: 'OpenRouter' },
     { id: 'tavily', label: 'Tavily Search' },
     { id: 'serper', label: 'Serper Search' },
     { id: 'brave', label: 'Brave Search' },
@@ -135,6 +136,12 @@ export function ApiKeyForm() {
         <ul>
           <li>
             <strong>Default:</strong> Configure in your environment variables
+          </li>
+          <li>
+            <strong>OpenRouter:</strong>{' '}
+            <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer">
+              openrouter.ai
+            </a>
           </li>
           <li>
             <strong>Tavily:</strong>{' '}

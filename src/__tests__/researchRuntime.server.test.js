@@ -200,6 +200,10 @@ describe("research runtime serialization", () => {
       "contradictionVerifier",
       "uncertaintyVerifier",
     ]));
+    expect(serialized.researchMeta.subagents.find((item) => item.id === "claimVerifier")?.equipment).toEqual(expect.arrayContaining([
+      "Claim ledger",
+      "Evidence excerpts",
+    ]));
     expect(serialized.final.tribunal).toEqual(run.tribunal);
     expect(serialized.final.convergence).toEqual(run.convergence);
     expect(serialized.final.verifierSummary).toEqual(run.verifierSummary);

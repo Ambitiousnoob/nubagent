@@ -290,6 +290,7 @@ export const RESEARCH_FRAMEWORK_V3_PHASES = [
     summary: 'Adaptive source mesh with proactive citation intelligence and trend scanning.',
     capabilities: [
       'Expanded source set: IEEE/ACM/JSTOR, Unpaywall, GitHub, Papers With Code, Retraction Watch.',
+      'ScholarlySourceHarvester for Google Scholar-style discovery, Semantic Scholar, OpenAlex, and university-domain sweeps.',
       'ForwardCitationTracer with depth-aware citation expansion.',
       'AuthorNetworkMapper for co-authorship and echo-chamber analysis.',
       'TemporalTrendAnalyzer for emerging vs. saturated topic velocity.',
