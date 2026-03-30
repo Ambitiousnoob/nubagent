@@ -3,9 +3,9 @@
  * Configures testing environment
  */
 
-import '@testing-library/jest-dom/vitest';
-import { cleanup } from '@testing-library/react';
-import { afterEach } from 'vitest';
+import "@testing-library/jest-dom/vitest";
+import { cleanup } from "@testing-library/react";
+import { afterEach } from "vitest";
 
 // Cleanup after each test
 afterEach(() => {
@@ -15,7 +15,7 @@ afterEach(() => {
 });
 
 // Mock window.matchMedia
-Object.defineProperty(window, 'matchMedia', {
+Object.defineProperty(window, "matchMedia", {
   writable: true,
   value: vi.fn().mockImplementation((query) => ({
     matches: false,
@@ -32,7 +32,9 @@ Object.defineProperty(window, 'matchMedia', {
 // Mock localStorage
 const localStorageState = new Map();
 const localStorageMock = {
-  getItem: vi.fn((key) => (localStorageState.has(key) ? localStorageState.get(key) : null)),
+  getItem: vi.fn((key) =>
+    localStorageState.has(key) ? localStorageState.get(key) : null,
+  ),
   setItem: vi.fn((key, value) => {
     localStorageState.set(String(key), String(value));
   }),
@@ -44,12 +46,12 @@ const localStorageMock = {
   }),
   key: vi.fn((index) => Array.from(localStorageState.keys())[index] ?? null),
 };
-Object.defineProperty(localStorageMock, 'length', {
+Object.defineProperty(localStorageMock, "length", {
   get() {
     return localStorageState.size;
   },
 });
-Object.defineProperty(window, 'localStorage', {
+Object.defineProperty(window, "localStorage", {
   value: localStorageMock,
 });
 

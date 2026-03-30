@@ -1,10 +1,10 @@
-import React from 'react';
-import { Loader2 } from 'lucide-react';
+import React from "react";
+import { Loader2 } from "lucide-react";
 
 /**
  * Button Component
  * Reusable button with multiple variants and states
- * 
+ *
  * @param {string} variant - Button style (primary, secondary, outline, ghost, danger)
  * @param {string} size - Button size (sm, md, lg)
  * @param {boolean} isLoading - Loading state
@@ -14,21 +14,21 @@ import { Loader2 } from 'lucide-react';
  * @param {function} onClick - Click handler
  */
 export function Button({
-  variant = 'primary',
-  size = 'md',
+  variant = "primary",
+  size = "md",
   isLoading = false,
   disabled = false,
-  className = '',
+  className = "",
   children,
   onClick,
-  type = 'button',
+  type = "button",
   ...props
 }) {
-  const baseClasses = 'btn';
+  const baseClasses = "btn";
   const variantClasses = `btn--${variant}`;
   const sizeClasses = `btn--${size}`;
-  const loadingClasses = isLoading ? 'btn--loading' : '';
-  const disabledClasses = disabled || isLoading ? 'btn--disabled' : '';
+  const loadingClasses = isLoading ? "btn--loading" : "";
+  const disabledClasses = disabled || isLoading ? "btn--disabled" : "";
 
   return (
     <button

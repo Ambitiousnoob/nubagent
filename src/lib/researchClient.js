@@ -1,3 +1,5 @@
+import { withClientStateKey } from "./clientStateKey.js";
+
 const RESEARCH_API = "/api/research";
 
 const normalizeText = (value) => String(value ?? "").trim();
@@ -15,15 +17,13 @@ const readErrorPayload = async (response) => {
   }
 };
 
-const parseSseChunkLines = (chunk) => chunk
-  .split(/\r?\n/)
-  .filter(Boolean);
+const parseSseChunkLines = (chunk) => chunk.split(/\r?\n/).filter(Boolean);
 
 const parseSseStream = async (response, onEvent) => {
   const reader = response.body?.getReader?.();
   if (!reader) return null;
 
-  const decoder = new TextDecoder();
+  const decoder = new globalThis.TextDecoder();
   let buffer = "";
   let eventType = "message";
   let eventData = "";
@@ -43,11 +43,10 @@ const parseSseStream = async (response, onEvent) => {
     } catch {
       parsed = { raw: eventData };
     }
-    const payload = (
+    const payload =
       parsed && typeof parsed === "object" && !Array.isArray(parsed)
         ? { ...parsed, type: parsed.type || eventType || "message" }
-        : { type: eventType || "message", data: parsed }
-    );
+        : { type: eventType || "message", data: parsed };
     events.push(payload);
     onEvent?.(payload);
     if (payload.type === "final") finalEvent = payload;
@@ -98,6 +97,7 @@ const parseSseStream = async (response, onEvent) => {
 };
 
 export async function runResearchRequest(payload, { signal, onEvent } = {}) {
+  const requestPayload = withClientStateKey(payload || {});
   const response = await fetch(RESEARCH_API, {
     method: "POST",
     headers: {
@@ -106,7 +106,7 @@ export async function runResearchRequest(payload, { signal, onEvent } = {}) {
     credentials: "include",
     cache: "no-store",
     signal,
-    body: JSON.stringify(payload || {}),
+    body: JSON.stringify(requestPayload),
   });
 
   if (!response.ok) {
@@ -140,6 +140,11 @@ export async function invokeResearchRuntime(payload, signal, onEvent) {
 }
 
 export async function sendResearchControl(runId, control, { signal } = {}) {
+  const requestPayload = withClientStateKey({
+    action: "control",
+    runId,
+    control,
+  });
   const response = await fetch(RESEARCH_API, {
     method: "POST",
     headers: {
@@ -148,11 +153,7 @@ export async function sendResearchControl(runId, control, { signal } = {}) {
     credentials: "include",
     cache: "no-store",
     signal,
-    body: JSON.stringify({
-      action: "control",
-      runId,
-      control,
-    }),
+    body: JSON.stringify(requestPayload),
   });
 
   if (!response.ok) {
@@ -163,6 +164,11 @@ export async function sendResearchControl(runId, control, { signal } = {}) {
 }
 
 export async function fetchResearchExport(runId, format, { signal } = {}) {
+  const requestPayload = withClientStateKey({
+    action: "export",
+    runId,
+    format,
+  });
   const response = await fetch(RESEARCH_API, {
     method: "POST",
     headers: {
@@ -171,11 +177,7 @@ export async function fetchResearchExport(runId, format, { signal } = {}) {
     credentials: "include",
     cache: "no-store",
     signal,
-    body: JSON.stringify({
-      action: "export",
-      runId,
-      format,
-    }),
+    body: JSON.stringify(requestPayload),
   });
 
   if (!response.ok) {

@@ -1,6 +1,12 @@
-import React from 'react';
-import { Toaster, toast as sonnerToast } from 'sonner';
-import { AlertCircle, CheckCircle2, Info, X, AlertTriangle } from 'lucide-react';
+import React from "react";
+import { Toaster, toast as sonnerToast } from "sonner";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Info,
+  X,
+  AlertTriangle,
+} from "lucide-react";
 
 /**
  * Toast Provider Component
@@ -14,13 +20,13 @@ export function ToastProvider() {
       richColors
       toastOptions={{
         duration: 5000,
-        className: 'toast',
+        className: "toast",
         classNames: {
-          success: 'toast--success',
-          error: 'toast--error',
-          warning: 'toast--warning',
-          info: 'toast--info',
-          default: 'toast--default',
+          success: "toast--success",
+          error: "toast--error",
+          warning: "toast--warning",
+          info: "toast--info",
+          default: "toast--default",
         },
       }}
       icons={{
@@ -41,7 +47,10 @@ export function ToastProvider() {
  */
 export function useToast() {
   const invokeToast = (variant, title, description, options = {}) => {
-    const method = typeof sonnerToast[variant] === 'function' ? sonnerToast[variant] : sonnerToast;
+    const method =
+      typeof sonnerToast[variant] === "function"
+        ? sonnerToast[variant]
+        : sonnerToast;
     return method(title, {
       description,
       ...options,
@@ -50,37 +59,42 @@ export function useToast() {
 
   const toast = (options) => {
     const {
-      title = '',
+      title = "",
       description,
-      type = 'default',
+      type = "default",
       duration,
       action,
     } = options || {};
 
-    return invokeToast(type, title || description || '', description && title ? description : undefined, {
-      duration,
-      action,
-    });
+    return invokeToast(
+      type,
+      title || description || "",
+      description && title ? description : undefined,
+      {
+        duration,
+        action,
+      },
+    );
   };
 
   const success = (title, description) => {
-    return invokeToast('success', title, description);
+    return invokeToast("success", title, description);
   };
 
   const error = (title, description) => {
-    return invokeToast('error', title, description);
+    return invokeToast("error", title, description);
   };
 
   const warning = (title, description) => {
-    return invokeToast('warning', title, description);
+    return invokeToast("warning", title, description);
   };
 
   const info = (title, description) => {
-    return invokeToast('info', title, description);
+    return invokeToast("info", title, description);
   };
 
   const loading = (title, description) => {
-    return invokeToast('loading', title, description, { duration: Infinity });
+    return invokeToast("loading", title, description, { duration: Infinity });
   };
 
   const dismiss = (id) => {

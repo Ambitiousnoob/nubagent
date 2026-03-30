@@ -2,9 +2,7 @@
  * Single facade: research query → retrieval → answer cleanup.
  * Import one module in UI and API helpers: `import { Company } from './lib/company.js'`
  */
-import {
-  sanitizeSummaryText,
-} from "./sanitizeSummaryText.js";
+import { sanitizeSummaryText } from "./sanitizeSummaryText.js";
 import {
   RESEARCH_SUMMARY_SYSTEM_ADDENDUM,
   MERGE_SUMMARY_ADDENDUM,

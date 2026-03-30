@@ -32,7 +32,7 @@ const buildHandler = ({
   serializeResearchRun = vi.fn((run) => run),
   buildExportPayload = vi.fn(),
 } = {}) => {
-    const mocks = {
+  const mocks = {
     "../lib/web": {
       readBody: vi.fn(async () => body ?? {}),
     },
@@ -96,17 +96,21 @@ describe("/api/research", () => {
     const payload = JSON.parse(res.body);
     expect(payload.outputs).toContain("decision_brief");
     expect(payload.outputs).toContain("engineering_action_plan");
-    expect(payload.controls).toEqual(expect.arrayContaining([
-      expect.objectContaining({ type: "prioritize_speed" }),
-      expect.objectContaining({ type: "go_deeper" }),
-      expect.objectContaining({ type: "force_mode", mode: "gap_analysis" }),
-    ]));
-    expect(payload.streamingEvents).toEqual(expect.arrayContaining([
-      "checkpoint",
-      "summary",
-      "control_applied",
-      "final",
-    ]));
+    expect(payload.controls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "prioritize_speed" }),
+        expect.objectContaining({ type: "go_deeper" }),
+        expect.objectContaining({ type: "force_mode", mode: "gap_analysis" }),
+      ]),
+    );
+    expect(payload.streamingEvents).toEqual(
+      expect.arrayContaining([
+        "checkpoint",
+        "summary",
+        "control_applied",
+        "final",
+      ]),
+    );
   });
 
   it("forwards orchestration controls to runResearch", async () => {
@@ -127,7 +131,9 @@ describe("/api/research", () => {
     const { handler } = buildHandler({
       body: {
         query: "should we adopt retrieval caching",
-        attachments: [{ name: "notes.txt", kind: "text", textContent: "cached responses" }],
+        attachments: [
+          { name: "notes.txt", kind: "text", textContent: "cached responses" },
+        ],
         depthPreference: "deep",
         refinementBudget: 5,
         forcedOutputMode: "decision_brief",
@@ -161,29 +167,41 @@ describe("/api/research", () => {
 
     await handler(req, res);
 
-    expect(runResearch).toHaveBeenCalledWith(expect.objectContaining({
-      query: "should we adopt retrieval caching",
-      attachments: [{ id: undefined, name: "notes.txt", kind: "text", size: 0, dataUrl: "", textContent: "cached responses", truncated: false }],
-      scopeKey: "scope:test",
-      depthPreference: "deep",
-      refinementBudget: 5,
-      forcedOutputMode: "decision_brief",
-      researchProvider: "openrouter",
-      researchModel: "nvidia/nemotron-3-super-120b-a12b:free",
-      researchModelChain: [
-        "nvidia/nemotron-3-super-120b-a12b:free",
-        "meta-llama/llama-3.3-70b-instruct:free",
-      ],
-      researchRoundRobin: true,
-      searchProviderKeys: {
-        tavily: "tvly-dev-key-1234567890",
-      },
-      researchProviderKeys: {
-        openrouter: "sk-or-v1-1234567890abcdefghijklmnop",
-      },
-      controls: [{ type: "go_deeper" }],
-      stopAfterCheckpoint: "draft",
-    }));
+    expect(runResearch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        query: "should we adopt retrieval caching",
+        attachments: [
+          {
+            id: undefined,
+            name: "notes.txt",
+            kind: "text",
+            size: 0,
+            dataUrl: "",
+            textContent: "cached responses",
+            truncated: false,
+          },
+        ],
+        scopeKey: "scope:test",
+        depthPreference: "deep",
+        refinementBudget: 5,
+        forcedOutputMode: "decision_brief",
+        researchProvider: "openrouter",
+        researchModel: "nvidia/nemotron-3-super-120b-a12b:free",
+        researchModelChain: [
+          "nvidia/nemotron-3-super-120b-a12b:free",
+          "meta-llama/llama-3.3-70b-instruct:free",
+        ],
+        researchRoundRobin: true,
+        searchProviderKeys: {
+          tavily: "tvly-dev-key-1234567890",
+        },
+        researchProviderKeys: {
+          openrouter: "sk-or-v1-1234567890abcdefghijklmnop",
+        },
+        controls: [{ type: "go_deeper" }],
+        stopAfterCheckpoint: "draft",
+      }),
+    );
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body)).toMatchObject({
       ok: true,
@@ -218,7 +236,10 @@ describe("/api/research", () => {
         researchProviderKeys: {
           openrouter: "sk-or-v1-1234567890abcdefghijklmnop",
         },
-        controls: [{ type: "prioritize_speed" }, { type: "force_mode", mode: "gap_analysis" }],
+        controls: [
+          { type: "prioritize_speed" },
+          { type: "force_mode", mode: "gap_analysis" },
+        ],
         stopAfterCheckpoint: "summaries",
       },
       resumeResearch,
@@ -233,24 +254,29 @@ describe("/api/research", () => {
 
     await handler(req, res);
 
-    expect(resumeResearch).toHaveBeenCalledWith(expect.objectContaining({
-      runId: "research-run-2",
-      depthPreference: "speed",
-      refinementBudget: 2,
-      forcedOutputMode: "gap_analysis",
-      researchProvider: "openrouter",
-      researchModel: "nvidia/nemotron-3-super-120b-a12b:free",
-      researchModelChain: [
-        "nvidia/nemotron-3-super-120b-a12b:free",
-        "meta-llama/llama-3.3-70b-instruct:free",
-      ],
-      researchRoundRobin: true,
-      researchProviderKeys: {
-        openrouter: "sk-or-v1-1234567890abcdefghijklmnop",
-      },
-      controls: [{ type: "prioritize_speed" }, { type: "force_mode", mode: "gap_analysis" }],
-      stopAfterCheckpoint: "summaries",
-    }));
+    expect(resumeResearch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runId: "research-run-2",
+        depthPreference: "speed",
+        refinementBudget: 2,
+        forcedOutputMode: "gap_analysis",
+        researchProvider: "openrouter",
+        researchModel: "nvidia/nemotron-3-super-120b-a12b:free",
+        researchModelChain: [
+          "nvidia/nemotron-3-super-120b-a12b:free",
+          "meta-llama/llama-3.3-70b-instruct:free",
+        ],
+        researchRoundRobin: true,
+        researchProviderKeys: {
+          openrouter: "sk-or-v1-1234567890abcdefghijklmnop",
+        },
+        controls: [
+          { type: "prioritize_speed" },
+          { type: "force_mode", mode: "gap_analysis" },
+        ],
+        stopAfterCheckpoint: "summaries",
+      }),
+    );
     expect(res.statusCode).toBe(200);
   });
 
@@ -281,7 +307,9 @@ describe("/api/research", () => {
 
     await handler(req, res);
 
-    expect(mocks["../lib/research-memory"].queueResearchControl).toHaveBeenCalledWith("research-run-4", {
+    expect(
+      mocks["../lib/research-memory"].queueResearchControl,
+    ).toHaveBeenCalledWith("research-run-4", {
       type: "increase_depth",
       area: "hypothesis_2",
     });
@@ -327,7 +355,9 @@ describe("/api/research", () => {
 
     await handler(req, res);
 
-    expect(mocks["../lib/research-memory"].loadResearchRun).toHaveBeenCalledWith("research-run-5");
+    expect(
+      mocks["../lib/research-memory"].loadResearchRun,
+    ).toHaveBeenCalledWith("research-run-5");
     expect(buildExportPayload).toHaveBeenCalledWith(run, "markdown");
     expect(res.headers["Content-Type"]).toBe("text/markdown; charset=utf-8");
     expect(res.body).toBe("# Retrieval caching\n\nUse it.");
@@ -360,7 +390,10 @@ describe("/api/research", () => {
       },
       researchMeta: {
         subagents: [
-          { id: "claimVerifier", equipment: ["Claim ledger", "Evidence excerpts"] },
+          {
+            id: "claimVerifier",
+            equipment: ["Claim ledger", "Evidence excerpts"],
+          },
           { id: "citationVerifier", equipment: ["Citation map"] },
           { id: "decisionIntelligenceLayer", equipment: ["Decision payload"] },
         ],
@@ -390,14 +423,16 @@ describe("/api/research", () => {
       claim_support: 0.88,
       citation_integrity: 0.91,
     });
-    expect(payload.researchMeta.subagents.map((item) => item.id)).toEqual(expect.arrayContaining([
-      "claimVerifier",
-      "citationVerifier",
-      "decisionIntelligenceLayer",
-    ]));
-    expect(payload.researchMeta.subagents.find((item) => item.id === "claimVerifier")?.equipment).toEqual(expect.arrayContaining([
-      "Claim ledger",
-      "Evidence excerpts",
-    ]));
+    expect(payload.researchMeta.subagents.map((item) => item.id)).toEqual(
+      expect.arrayContaining([
+        "claimVerifier",
+        "citationVerifier",
+        "decisionIntelligenceLayer",
+      ]),
+    );
+    expect(
+      payload.researchMeta.subagents.find((item) => item.id === "claimVerifier")
+        ?.equipment,
+    ).toEqual(expect.arrayContaining(["Claim ledger", "Evidence excerpts"]));
   });
 });

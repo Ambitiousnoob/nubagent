@@ -1,16 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { loadCommonJsModule } from "./loadCommonJsModule.js";
 
-const { buildResearchMemoryEntriesFromRun, normalizeMemoryEntry } = loadCommonJsModule(
-  "/root/.bot/.downloads/nubagent/lib/research-memory.js",
-  {
+const { buildResearchMemoryEntriesFromRun, normalizeMemoryEntry } =
+  loadCommonJsModule("/root/.bot/.downloads/nubagent/lib/research-memory.js", {
     "./db": {
       getPool: () => {
         throw new Error("db access not expected in this test");
       },
     },
-  },
-);
+  });
 
 describe("research memory indexing", () => {
   it("stores graph relations and run artifacts for proactive reuse", () => {
@@ -23,7 +21,9 @@ describe("research memory indexing", () => {
         scope: { id: "decision_support", label: "Decision Support" },
         outputMode: { id: "decision_brief", label: "Decision Brief" },
         queryMatrix: {
-          counterHypotheses: ["Caching may hurt freshness if invalidation is weak."],
+          counterHypotheses: [
+            "Caching may hurt freshness if invalidation is weak.",
+          ],
         },
       },
       final: {
@@ -79,7 +79,9 @@ describe("research memory indexing", () => {
             name: "retrieval caching",
             ontology: "ACM CCS",
             canonicalId: "acm:retrieval-caching",
-            relations: [{ type: "depends_on", target: "cache invalidation", weight: 0.9 }],
+            relations: [
+              { type: "depends_on", target: "cache invalidation", weight: 0.9 },
+            ],
           },
           {
             name: "cache invalidation",
@@ -89,7 +91,8 @@ describe("research memory indexing", () => {
         ],
         epistemicClaims: [
           {
-            claim: "Caching reduces repeated lookup latency but requires strong invalidation.",
+            claim:
+              "Caching reduces repeated lookup latency but requires strong invalidation.",
             confidence: 0.84,
             evidence_weight: 0.8,
             contradiction_score: 0.24,
@@ -97,26 +100,34 @@ describe("research memory indexing", () => {
         ],
         abstractions: [
           {
-            summary: "Latency gains persist when invalidation quality remains high.",
+            summary:
+              "Latency gains persist when invalidation quality remains high.",
           },
         ],
       },
     });
 
     const episode = entries.find((entry) => entry.layer === "episode");
-    const concept = entries.find((entry) => entry.layer === "concept" && entry.title === "retrieval caching");
+    const concept = entries.find(
+      (entry) =>
+        entry.layer === "concept" && entry.title === "retrieval caching",
+    );
     const postmortem = entries.find((entry) => entry.layer === "postmortem");
 
-    expect(episode?.metadata?.relatedConcepts).toEqual(expect.arrayContaining([
-      "retrieval caching",
-      "cache invalidation",
-    ]));
-    expect(concept?.metadata?.relations).toEqual(expect.arrayContaining([
-      expect.objectContaining({ type: "depends_on", target: "cache invalidation" }),
-    ]));
-    expect(postmortem?.metadata?.promptPatches).toEqual(expect.arrayContaining([
-      "Keep freshness caveats explicit.",
-    ]));
+    expect(episode?.metadata?.relatedConcepts).toEqual(
+      expect.arrayContaining(["retrieval caching", "cache invalidation"]),
+    );
+    expect(concept?.metadata?.relations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "depends_on",
+          target: "cache invalidation",
+        }),
+      ]),
+    );
+    expect(postmortem?.metadata?.promptPatches).toEqual(
+      expect.arrayContaining(["Keep freshness caveats explicit."]),
+    );
   });
 
   it("normalizes relation metadata into searchable memory entries", () => {
@@ -133,10 +144,18 @@ describe("research memory indexing", () => {
       },
     });
 
-    expect(entry?.metadata?.relations).toEqual(expect.arrayContaining([
-      expect.objectContaining({ type: "depends_on", target: "cache invalidation" }),
-      expect.objectContaining({ type: "supports", target: "latency reduction" }),
-    ]));
+    expect(entry?.metadata?.relations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "depends_on",
+          target: "cache invalidation",
+        }),
+        expect.objectContaining({
+          type: "supports",
+          target: "latency reduction",
+        }),
+      ]),
+    );
     expect(entry?.searchText).toContain("cache invalidation");
     expect(entry?.searchText).toContain("latency reduction");
   });

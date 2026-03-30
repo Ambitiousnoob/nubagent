@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 import {
   ALIAS_ENDPOINT_EXAMPLE,
   API_CREATION_CHECKLIST,
@@ -11,7 +11,7 @@ import {
   RESEARCH_FRAMEWORK_V31_STABILIZATION,
   RESEARCH_FRAMEWORK_V31_STRESS_POINTS,
   SUBAGENT_GROUPS,
-} from './lib/docsContent.js';
+} from "./lib/docsContent.js";
 
 function CodeBlock({ children }) {
   return (
@@ -25,8 +25,10 @@ function EndpointCard({ endpoint }) {
   return (
     <article className="docs-card docs-card--endpoint" id={endpoint.id}>
       <div className="docs-card__eyebrow">
-        <span>{endpoint.methods.join(' · ')}</span>
-        <span>{endpoint.paths.length} path{endpoint.paths.length === 1 ? '' : 's'}</span>
+        <span>{endpoint.methods.join(" · ")}</span>
+        <span>
+          {endpoint.paths.length} path{endpoint.paths.length === 1 ? "" : "s"}
+        </span>
       </div>
       <h3 className="docs-card__title">{endpoint.title}</h3>
       <p className="docs-card__body">{endpoint.summary}</p>
@@ -94,7 +96,7 @@ function SubagentGroup({ group }) {
           <p className="docs-group__summary">{group.summary}</p>
         </div>
         <span className="docs-group__count">
-          {group.agents.length} agent{group.agents.length === 1 ? '' : 's'}
+          {group.agents.length} agent{group.agents.length === 1 ? "" : "s"}
         </span>
       </header>
 
@@ -127,7 +129,7 @@ function FrameworkPhaseCard({ phase }) {
   );
 }
 
-function ShortCard({ title, body, tone = 'default' }) {
+function ShortCard({ title, body, tone = "default" }) {
   return (
     <article className={`docs-short-card docs-short-card--${tone}`}>
       <h3 className="docs-short-card__title">{title}</h3>
@@ -137,25 +139,40 @@ function ShortCard({ title, body, tone = 'default' }) {
 }
 
 export default function Docs() {
-  const totalEndpoints = API_REFERENCE_SECTIONS.reduce((count, endpoint) => count + endpoint.paths.length, 0);
-  const totalSubagents = SUBAGENT_GROUPS.reduce((count, group) => count + group.agents.length, 0);
-  const frameworkPhases = RESEARCH_FRAMEWORK_V3_PHASES.filter((phase) => phase.phase !== 'X');
-  const crossCuttingLayers = RESEARCH_FRAMEWORK_V3_PHASES.filter((phase) => phase.phase === 'X');
+  const totalEndpoints = API_REFERENCE_SECTIONS.reduce(
+    (count, endpoint) => count + endpoint.paths.length,
+    0,
+  );
+  const totalSubagents = SUBAGENT_GROUPS.reduce(
+    (count, group) => count + group.agents.length,
+    0,
+  );
+  const frameworkPhases = RESEARCH_FRAMEWORK_V3_PHASES.filter(
+    (phase) => phase.phase !== "X",
+  );
+  const crossCuttingLayers = RESEARCH_FRAMEWORK_V3_PHASES.filter(
+    (phase) => phase.phase === "X",
+  );
 
   return (
     <div className="docs-page docs-page--refined">
       <div className="docs-page__hero">
         <div className="docs-page__hero-copy">
           <div className="docs-page__eyebrow">NubAgent Docs</div>
-          <h1 className="docs-page__title">Runtime, API, and ownership reference</h1>
+          <h1 className="docs-page__title">
+            Runtime, API, and ownership reference
+          </h1>
           <p className="docs-page__lead">
-            Operator-facing docs for the API surface, research runtime, and the owners behind each part of the system.
+            Operator-facing docs for the API surface, research runtime, and the
+            owners behind each part of the system.
           </p>
         </div>
 
         <div className="docs-page__stats">
           <div className="docs-stat">
-            <span className="docs-stat__value">{API_REFERENCE_SECTIONS.length}</span>
+            <span className="docs-stat__value">
+              {API_REFERENCE_SECTIONS.length}
+            </span>
             <span className="docs-stat__label">API sections</span>
           </div>
           <div className="docs-stat">
@@ -183,18 +200,24 @@ export default function Docs() {
             <h2 className="docs-section__title">API reference</h2>
           </div>
           <p className="docs-section__body">
-            Use these cards to see which public paths exist, what they do, and which files own them.
+            Use these cards to see which public paths exist, what they do, and
+            which files own them.
           </p>
         </header>
 
         <div className="docs-section__intro-grid">
           <div className="docs-section__intro-card">
             <span>What this covers</span>
-            <strong>Dedicated endpoints, shared aliases, and the current public contract.</strong>
+            <strong>
+              Dedicated endpoints, shared aliases, and the current public
+              contract.
+            </strong>
           </div>
           <div className="docs-section__intro-card">
             <span>Use it for</span>
-            <strong>Fast lookup of owning files, request shape, and response shape.</strong>
+            <strong>
+              Fast lookup of owning files, request shape, and response shape.
+            </strong>
           </div>
         </div>
 
@@ -212,7 +235,8 @@ export default function Docs() {
             <h2 className="docs-section__title">API creation playbook</h2>
           </div>
           <p className="docs-section__body">
-            Use this when you need to add or reshape a public endpoint. Pick the right boundary first, then keep aliases, tests, and docs aligned.
+            Use this when you need to add or reshape a public endpoint. Pick the
+            right boundary first, then keep aliases, tests, and docs aligned.
           </p>
         </header>
 
@@ -223,7 +247,10 @@ export default function Docs() {
           </div>
           <div className="docs-section__intro-card">
             <span>Outcome</span>
-            <strong>New API work lands in a predictable place and stays easy to maintain.</strong>
+            <strong>
+              New API work lands in a predictable place and stays easy to
+              maintain.
+            </strong>
           </div>
         </div>
 
@@ -244,7 +271,9 @@ export default function Docs() {
           </article>
 
           <article className="docs-card">
-            <h3 className="docs-card__title">Where new API work usually lands</h3>
+            <h3 className="docs-card__title">
+              Where new API work usually lands
+            </h3>
             <div className="docs-card__paths">
               <code>api/&lt;name&gt;.js</code>
               <code>api/content.js</code>
@@ -254,8 +283,9 @@ export default function Docs() {
               <code>API.md</code>
             </div>
             <p className="docs-card__body">
-              Use dedicated files for real product surfaces, `api/content.js` for retrieval aliases, and
-              `api/utils-handler.cjs` for utility aliases that share one backend implementation.
+              Use dedicated files for real product surfaces, `api/content.js`
+              for retrieval aliases, and `api/utils-handler.cjs` for utility
+              aliases that share one backend implementation.
             </p>
           </article>
         </div>
@@ -277,21 +307,30 @@ export default function Docs() {
         <header className="docs-section__header">
           <div>
             <div className="docs-section__eyebrow">Research Runtime</div>
-            <h2 className="docs-section__title">Research Framework v3.0 — The Living Research Intelligence</h2>
+            <h2 className="docs-section__title">
+              Research Framework v3.0 — The Living Research Intelligence
+            </h2>
           </div>
           <p className="docs-section__body">
-            The research runtime is organized as a compiled graph with verification, synthesis, and delivery stages that can be steered as work progresses.
+            The research runtime is organized as a compiled graph with
+            verification, synthesis, and delivery stages that can be steered as
+            work progresses.
           </p>
         </header>
 
         <div className="docs-section__intro-grid">
           <div className="docs-section__intro-card">
             <span>Core shift</span>
-            <strong>From a fixed pipeline to a steerable research runtime.</strong>
+            <strong>
+              From a fixed pipeline to a steerable research runtime.
+            </strong>
           </div>
           <div className="docs-section__intro-card">
             <span>Runtime shape</span>
-            <strong>Compiled graph execution, recursive verification, and explicit checkpoints.</strong>
+            <strong>
+              Compiled graph execution, recursive verification, and explicit
+              checkpoints.
+            </strong>
           </div>
         </div>
 
@@ -360,7 +399,12 @@ export default function Docs() {
             <h3 className="docs-card__title">Critical stress points in v3.0</h3>
             <div className="docs-short-grid">
               {RESEARCH_FRAMEWORK_V31_STRESS_POINTS.map((item) => (
-                <ShortCard key={item.id} title={item.title} body={item.impact} tone="warning" />
+                <ShortCard
+                  key={item.id}
+                  title={item.title}
+                  body={item.impact}
+                  tone="warning"
+                />
               ))}
             </div>
           </article>
@@ -369,7 +413,12 @@ export default function Docs() {
             <h3 className="docs-card__title">v3.1 stabilization layer</h3>
             <div className="docs-short-grid">
               {RESEARCH_FRAMEWORK_V31_STABILIZATION.map((item) => (
-                <ShortCard key={item.id} title={item.title} body={item.summary} tone="success" />
+                <ShortCard
+                  key={item.id}
+                  title={item.title}
+                  body={item.summary}
+                  tone="success"
+                />
               ))}
             </div>
           </article>
@@ -383,7 +432,8 @@ export default function Docs() {
             <h2 className="docs-section__title">NubAgent subagent catalog</h2>
           </div>
           <p className="docs-section__body">
-            This is the web view of the local `nub_*` roster so you can see who owns orchestration, search, fetch, verification, docs, and release.
+            This is the web view of the local `nub_*` roster so you can see who
+            owns orchestration, search, fetch, verification, docs, and release.
           </p>
         </header>
 
@@ -394,7 +444,10 @@ export default function Docs() {
           </div>
           <div className="docs-section__intro-card">
             <span>Reading mode</span>
-            <strong>Use these clusters as routing hints when work spans runtime, retrieval, verification, or docs.</strong>
+            <strong>
+              Use these clusters as routing hints when work spans runtime,
+              retrieval, verification, or docs.
+            </strong>
           </div>
         </div>
 

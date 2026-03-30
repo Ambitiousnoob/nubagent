@@ -13,15 +13,23 @@ describe("client research orchestration plan", () => {
     expect(plan.depthPreference).toBe("deep");
     expect(plan.outputMode.id).toBe("decision_brief");
     expect(plan.refinementBudget).toBe(5);
-    expect(plan.dag.nodes.map((node) => node.id)).toContain("decisionIntelligenceLayer");
+    expect(plan.dag.nodes.map((node) => node.id)).toContain(
+      "decisionIntelligenceLayer",
+    );
 
     const nodeById = new Map(plan.dag.nodes.map((node) => [node.id, node]));
-    expect(nodeById.get("decisionIntelligenceLayer")?.dependsOn).toEqual(["recursiveSelfImprovementLoop"]);
-    expect(nodeById.get("adaptiveDeliveryHub")?.dependsOn).toEqual(["decisionIntelligenceLayer"]);
-    expect(plan.subagents.map((item) => item.id)).toEqual(expect.arrayContaining([
+    expect(nodeById.get("decisionIntelligenceLayer")?.dependsOn).toEqual([
+      "recursiveSelfImprovementLoop",
+    ]);
+    expect(nodeById.get("adaptiveDeliveryHub")?.dependsOn).toEqual([
       "decisionIntelligenceLayer",
-      "adaptiveDeliveryHub",
-    ]));
+    ]);
+    expect(plan.subagents.map((item) => item.id)).toEqual(
+      expect.arrayContaining([
+        "decisionIntelligenceLayer",
+        "adaptiveDeliveryHub",
+      ]),
+    );
   });
 
   it("allocates the verifier swarm in the compiled subagent roster", () => {
@@ -35,6 +43,20 @@ describe("client research orchestration plan", () => {
     expect(ids).toContain("citationVerifier");
     expect(ids).toContain("contradictionVerifier");
     expect(ids).toContain("uncertaintyVerifier");
+    expect(ids).toContain("taskFocusVerifier");
+    expect(plan.taskFocus).toMatchObject({
+      summary: expect.stringContaining(
+        "compare the evidence for two RAG retrieval strategies",
+      ),
+      primaryQuestion: "compare the evidence for two RAG retrieval strategies",
+    });
+    expect(
+      plan.subagents.find((item) => item.id === "taskFocusVerifier"),
+    ).toMatchObject({
+      taskContract: expect.stringContaining(
+        "Do not drift beyond the original question",
+      ),
+    });
   });
 
   it("adds a scholarly harvester and academic lanes for literature-style research runs", () => {
@@ -43,14 +65,20 @@ describe("client research orchestration plan", () => {
       depthPreference: "balanced",
     });
 
-    expect(plan.queryMatrix.scholarlyDiscoveryLanes).toEqual(expect.arrayContaining([
-      expect.stringContaining("site:scholar.google.com"),
-      expect.stringContaining("site:openalex.org"),
-    ]));
-    expect(plan.searchQueries).toEqual(expect.arrayContaining([
-      expect.stringContaining("site:scholar.google.com"),
-    ]));
-    expect(plan.subagents.find((item) => item.id === "scholarlySourceHarvester")).toMatchObject({
+    expect(plan.queryMatrix.scholarlyDiscoveryLanes).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("site:scholar.google.com"),
+        expect.stringContaining("site:openalex.org"),
+      ]),
+    );
+    expect(plan.searchQueries).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("site:scholar.google.com"),
+      ]),
+    );
+    expect(
+      plan.subagents.find((item) => item.id === "scholarlySourceHarvester"),
+    ).toMatchObject({
       label: "ScholarlySourceHarvester",
       equipment: expect.arrayContaining([
         "Google Scholar-style lanes",
@@ -66,14 +94,17 @@ describe("client research orchestration plan", () => {
     });
 
     expect(plan.outputMode.id).toBe("state_of_the_field");
-    expect(plan.dag.nodes.map((node) => node.id)).not.toContain("decisionIntelligenceLayer");
-    expect(plan.subagents.map((item) => item.id)).not.toContain("decisionIntelligenceLayer");
-    expect(plan.subagents.find((item) => item.id === "claimVerifier")).toMatchObject({
-      detail: "4 verifier lanes active",
-      equipment: expect.arrayContaining([
-        "Claim ledger",
-        "Evidence excerpts",
-      ]),
+    expect(plan.dag.nodes.map((node) => node.id)).not.toContain(
+      "decisionIntelligenceLayer",
+    );
+    expect(plan.subagents.map((item) => item.id)).not.toContain(
+      "decisionIntelligenceLayer",
+    );
+    expect(
+      plan.subagents.find((item) => item.id === "claimVerifier"),
+    ).toMatchObject({
+      detail: "5 verifier lanes active",
+      equipment: expect.arrayContaining(["Claim ledger", "Evidence excerpts"]),
     });
   });
 });

@@ -22,12 +22,20 @@ describe("server research plan contract", () => {
       .map((node) => node.id);
 
     expect(ordered).toContain("decisionIntelligenceLayer");
-    expect(ordered.indexOf("decisionIntelligenceLayer")).toBeGreaterThan(ordered.indexOf("recursiveSelfImprovementLoop"));
-    expect(ordered.indexOf("adaptiveDeliveryHub")).toBeGreaterThan(ordered.indexOf("decisionIntelligenceLayer"));
+    expect(ordered.indexOf("decisionIntelligenceLayer")).toBeGreaterThan(
+      ordered.indexOf("recursiveSelfImprovementLoop"),
+    );
+    expect(ordered.indexOf("adaptiveDeliveryHub")).toBeGreaterThan(
+      ordered.indexOf("decisionIntelligenceLayer"),
+    );
 
     const nodeById = new Map(plan.dag.nodes.map((node) => [node.id, node]));
-    expect(nodeById.get("decisionIntelligenceLayer")?.dependsOn).toEqual(["recursiveSelfImprovementLoop"]);
-    expect(nodeById.get("adaptiveDeliveryHub")?.dependsOn).toEqual(["decisionIntelligenceLayer"]);
+    expect(nodeById.get("decisionIntelligenceLayer")?.dependsOn).toEqual([
+      "recursiveSelfImprovementLoop",
+    ]);
+    expect(nodeById.get("adaptiveDeliveryHub")?.dependsOn).toEqual([
+      "decisionIntelligenceLayer",
+    ]);
   });
 
   it("includes the verifier swarm in the active subagent map", () => {
@@ -40,6 +48,21 @@ describe("server research plan contract", () => {
     expect(ids).toContain("citationVerifier");
     expect(ids).toContain("contradictionVerifier");
     expect(ids).toContain("uncertaintyVerifier");
+    expect(ids).toContain("taskFocusVerifier");
+    expect(plan.taskFocus).toMatchObject({
+      summary: expect.stringContaining(
+        "latest evidence on replication quality in ML benchmarks",
+      ),
+      primaryQuestion:
+        "latest evidence on replication quality in ML benchmarks",
+    });
+    expect(
+      plan.subagents.find((item) => item.id === "taskFocusVerifier"),
+    ).toMatchObject({
+      taskContract: expect.stringContaining(
+        "Do not drift beyond the original question",
+      ),
+    });
   });
 
   it("activates scholarly-source harvesting for literature-oriented server plans", () => {
@@ -48,14 +71,18 @@ describe("server research plan contract", () => {
       depthPreference: "balanced",
     });
 
-    expect(plan.queryMatrix.scholarlyDiscoveryLanes).toEqual(expect.arrayContaining([
-      expect.stringContaining("site:scholar.google.com"),
-      expect.stringContaining("site:openalex.org"),
-    ]));
+    expect(plan.queryMatrix.scholarlyDiscoveryLanes).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("site:scholar.google.com"),
+        expect.stringContaining("site:openalex.org"),
+      ]),
+    );
     expect(plan.scholarlyHarvest).toMatchObject({
       active: true,
     });
-    expect(plan.subagents.find((item) => item.id === "scholarlySourceHarvester")).toMatchObject({
+    expect(
+      plan.subagents.find((item) => item.id === "scholarlySourceHarvester"),
+    ).toMatchObject({
       equipment: expect.arrayContaining([
         "Google Scholar-style lanes",
         "Institutional repositories",
@@ -70,15 +97,18 @@ describe("server research plan contract", () => {
     });
 
     expect(plan.outputMode.id).toBe("state_of_the_field");
-    expect(plan.dag.nodes.map((node) => node.id)).not.toContain("decisionIntelligenceLayer");
-    expect(plan.subagents.map((item) => item.id)).not.toContain("decisionIntelligenceLayer");
-    expect(plan.subagents.find((item) => item.id === "claimVerifier")).toMatchObject({
+    expect(plan.dag.nodes.map((node) => node.id)).not.toContain(
+      "decisionIntelligenceLayer",
+    );
+    expect(plan.subagents.map((item) => item.id)).not.toContain(
+      "decisionIntelligenceLayer",
+    );
+    expect(
+      plan.subagents.find((item) => item.id === "claimVerifier"),
+    ).toMatchObject({
       label: "ClaimVerifier",
       detail: "claim support gate",
-      equipment: expect.arrayContaining([
-        "Claim ledger",
-        "Evidence excerpts",
-      ]),
+      equipment: expect.arrayContaining(["Claim ledger", "Evidence excerpts"]),
     });
   });
 });

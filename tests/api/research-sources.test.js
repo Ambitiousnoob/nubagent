@@ -37,7 +37,8 @@ describe("research source retrieval recovery", () => {
             {
               id: "https://openalex.org/W1",
               doi: "https://doi.org/10.1234/quantum-risk",
-              display_name: "Quantum computing threats to public-key encryption",
+              display_name:
+                "Quantum computing threats to public-key encryption",
               primary_location: {
                 landing_page_url: "https://doi.org/10.1234/quantum-risk",
                 source: {
@@ -121,7 +122,9 @@ describe("research source retrieval recovery", () => {
 
     expect(scholarlyCallCount).toBeGreaterThan(6);
     expect(result.sources.length).toBeGreaterThan(0);
-    expect(result.sources.some((source) => /quantum/i.test(source.title))).toBe(true);
+    expect(result.sources.some((source) => /quantum/i.test(source.title))).toBe(
+      true,
+    );
     expect(result.providersUsed).toContain("openalex");
     expect(result.providerErrors.length).toBeGreaterThan(0);
   });
@@ -145,7 +148,10 @@ describe("research source retrieval recovery", () => {
       "/root/.bot/.downloads/nubagent/lib/research-sources.js",
       {
         "./tools/web_search": {
-          handler: vi.fn(async () => "Error: search failed (DuckDuckGo returned bot challenge)"),
+          handler: vi.fn(
+            async () =>
+              "Error: search failed (DuckDuckGo returned bot challenge)",
+          ),
         },
       },
     );
@@ -161,7 +167,11 @@ describe("research source retrieval recovery", () => {
     });
 
     expect(result.sources).toEqual([]);
-    expect(result.providerErrors.some((message) => /DuckDuckGo returned bot challenge/i.test(message))).toBe(true);
+    expect(
+      result.providerErrors.some((message) =>
+        /DuckDuckGo returned bot challenge/i.test(message),
+      ),
+    ).toBe(true);
   });
 
   it("carries scholarly lanes into the source mesh and labels them distinctly", async () => {
@@ -196,7 +206,9 @@ describe("research source retrieval recovery", () => {
         searchQueries: ["quantum computing encryption"],
         queryMatrix: {
           versions: [],
-          scholarlyDiscoveryLanes: ["how does quantum computing threaten encryption site:scholar.google.com"],
+          scholarlyDiscoveryLanes: [
+            "how does quantum computing threaten encryption site:scholar.google.com",
+          ],
           scholarlyProviderBias: ["openalex", "crossref"],
         },
         scholarlyHarvest: {
@@ -206,12 +218,14 @@ describe("research source retrieval recovery", () => {
       maxResults: 10,
     });
 
-    expect(result.searchLanes).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        laneType: "scholarly",
-        query: expect.stringContaining("site:scholar.google.com"),
-      }),
-    ]));
+    expect(result.searchLanes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          laneType: "scholarly",
+          query: expect.stringContaining("site:scholar.google.com"),
+        }),
+      ]),
+    );
     expect(result.auditLog.scholarlyRouting).toMatchObject({
       active: true,
       laneCount: 1,
@@ -254,7 +268,9 @@ describe("research source retrieval recovery", () => {
       {
         domain: { id: "general_research", recencyHalfLifeYears: 4 },
         queryMatrix: {
-          scholarlyDiscoveryLanes: ["how does quantum computing threaten encryption site:scholar.google.com"],
+          scholarlyDiscoveryLanes: [
+            "how does quantum computing threaten encryption site:scholar.google.com",
+          ],
           scholarlyProviderBias: ["openalex", "crossref"],
         },
         scholarlyHarvest: {
@@ -264,10 +280,18 @@ describe("research source retrieval recovery", () => {
     );
 
     const byUrl = new Map(ranked.map((item) => [item.url, item]));
-    expect(byUrl.get("https://openalex.org/W1")?.scoreComponents.scholarlyBoost).toBeGreaterThan(0);
-    expect(byUrl.get("https://crypto.stanford.edu/post-quantum-notes")?.scoreComponents.scholarlyBoost).toBeGreaterThan(0);
-    expect(byUrl.get("https://openalex.org/W1")?.scoreComponents.scholarlyBoost).toBeGreaterThan(
-      byUrl.get("https://news.example.com/quantum-crypto")?.scoreComponents.scholarlyBoost ?? 0,
+    expect(
+      byUrl.get("https://openalex.org/W1")?.scoreComponents.scholarlyBoost,
+    ).toBeGreaterThan(0);
+    expect(
+      byUrl.get("https://crypto.stanford.edu/post-quantum-notes")
+        ?.scoreComponents.scholarlyBoost,
+    ).toBeGreaterThan(0);
+    expect(
+      byUrl.get("https://openalex.org/W1")?.scoreComponents.scholarlyBoost,
+    ).toBeGreaterThan(
+      byUrl.get("https://news.example.com/quantum-crypto")?.scoreComponents
+        .scholarlyBoost ?? 0,
     );
   });
 });

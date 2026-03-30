@@ -1,11 +1,11 @@
-import React from 'react';
-import { SessionCard } from './SessionCard.jsx';
-import { CardSkeleton } from '../UI/Skeleton.jsx';
+import React from "react";
+import { SessionCard } from "./SessionCard.jsx";
+import { CardSkeleton } from "../UI/Skeleton.jsx";
 
 /**
  * SessionList Component
  * Filterable list of session cards
- * 
+ *
  * @param {array} sessions - Array of session objects
  * @param {function} onView - View handler
  * @param {function} onDelete - Delete handler
@@ -27,7 +27,7 @@ export function SessionList({
   selectedSessions = [],
   onSelect,
 }) {
-  const sessionCountLabel = `${sessions.length} saved session${sessions.length === 1 ? '' : 's'}`;
+  const sessionCountLabel = `${sessions.length} saved session${sessions.length === 1 ? "" : "s"}`;
 
   if (isLoading) {
     return (
@@ -44,16 +44,18 @@ export function SessionList({
       <div className="session-list session-list--empty">
         <div className="session-list__empty">
           <div className="session-list__empty-eyebrow">Archive empty</div>
-          <h3 className="session-list__empty-title">No sessions match this view</h3>
+          <h3 className="session-list__empty-title">
+            No sessions match this view
+          </h3>
           <p className="session-list__empty-text">
             {selectable
-              ? 'Widen the current slice or leave selection mode to see the rest of the archive.'
-              : 'Saved research shows up here once a run is worth keeping.'}
+              ? "Widen the current slice or leave selection mode to see the rest of the archive."
+              : "Saved research shows up here once a run is worth keeping."}
           </p>
           <p className="session-list__empty-note">
             {selectable
-              ? 'Relax filters or leave bulk mode.'
-              : 'Each saved session keeps the query, answer, attachments, and source trail together.'}
+              ? "Relax filters or leave bulk mode."
+              : "Each saved session keeps the query, answer, attachments, and source trail together."}
           </p>
         </div>
       </div>
@@ -65,13 +67,13 @@ export function SessionList({
       <div className="session-list__summary">
         <div className="session-list__summary-copy">
           <div className="session-list__summary-eyebrow">
-            {selectable ? 'Selection mode' : 'Archive view'}
+            {selectable ? "Selection mode" : "Archive view"}
           </div>
           <h2 className="session-list__summary-title">{sessionCountLabel}</h2>
           <p className="session-list__summary-body">
             {selectable
-              ? 'Choose the sessions you want to export or remove.'
-              : 'Open saved answers quickly with the source trail still attached.'}
+              ? "Choose the sessions you want to export or remove."
+              : "Open saved answers quickly with the source trail still attached."}
           </p>
         </div>
 

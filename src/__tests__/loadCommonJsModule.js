@@ -15,7 +15,11 @@ const resolveCandidates = (baseDir, specifier) => {
   ];
 };
 
-export const loadCommonJsModule = (modulePath, mocks = {}, cache = new Map()) => {
+export const loadCommonJsModule = (
+  modulePath,
+  mocks = {},
+  cache = new Map(),
+) => {
   const resolvedPath = path.resolve(modulePath);
   if (cache.has(resolvedPath)) {
     return cache.get(resolvedPath).exports;
@@ -31,7 +35,10 @@ export const loadCommonJsModule = (modulePath, mocks = {}, cache = new Map()) =>
     }
 
     if (specifier.startsWith(".") || specifier.startsWith("/")) {
-      const candidates = resolveCandidates(path.dirname(resolvedPath), specifier);
+      const candidates = resolveCandidates(
+        path.dirname(resolvedPath),
+        specifier,
+      );
       for (const candidate of candidates) {
         if (Object.prototype.hasOwnProperty.call(mocks, candidate)) {
           return mocks[candidate];
@@ -47,6 +54,12 @@ export const loadCommonJsModule = (modulePath, mocks = {}, cache = new Map()) =>
 
   const wrapped = `(function (exports, require, module, __filename, __dirname) {\n${source}\n})`;
   const compiled = vm.runInThisContext(wrapped, { filename: resolvedPath });
-  compiled(module.exports, requireFromModule, module, resolvedPath, path.dirname(resolvedPath));
+  compiled(
+    module.exports,
+    requireFromModule,
+    module,
+    resolvedPath,
+    path.dirname(resolvedPath),
+  );
   return module.exports;
 };

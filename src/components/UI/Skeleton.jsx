@@ -1,9 +1,9 @@
-import React from 'react';
+import React from "react";
 
 /**
  * Skeleton Component
  * Loading placeholder for content
- * 
+ *
  * @param {string} variant - Skeleton variant (text, circle, rect)
  * @param {string} width - Width of skeleton
  * @param {string} height - Height of skeleton
@@ -11,16 +11,16 @@ import React from 'react';
  * @param {string} className - Additional CSS classes
  */
 export function Skeleton({
-  variant = 'text',
+  variant = "text",
   width,
   height,
   lines = 1,
-  className = '',
+  className = "",
 }) {
-  const baseClasses = 'skeleton';
+  const baseClasses = "skeleton";
   const variantClasses = `skeleton--${variant}`;
 
-  if (variant === 'text' && lines > 1) {
+  if (variant === "text" && lines > 1) {
     return (
       <div className={`${baseClasses} ${baseClasses}--lines ${className}`}>
         {Array.from({ length: lines }).map((_, i) => (
@@ -28,7 +28,7 @@ export function Skeleton({
             key={i}
             className={`${baseClasses}__line ${variantClasses}`}
             style={{
-              width: i === lines - 1 ? '60%' : undefined,
+              width: i === lines - 1 ? "60%" : undefined,
               ...styleProps(width, height),
             }}
           />

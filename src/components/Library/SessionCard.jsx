@@ -1,10 +1,18 @@
-import React, { useState } from 'react';
-import { Calendar, FileText, Trash2, Edit2, Share2, ExternalLink, Paperclip } from 'lucide-react';
+import React, { useState } from "react";
+import {
+  Calendar,
+  FileText,
+  Trash2,
+  Edit2,
+  Share2,
+  ExternalLink,
+  Paperclip,
+} from "lucide-react";
 
 /**
  * SessionCard Component
  * Library item card with session preview
- * 
+ *
  * @param {object} session - Session object
  * @param {function} onView - View handler
  * @param {function} onDelete - Delete handler
@@ -24,12 +32,15 @@ export function SessionCard({
 }) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [showActions, setShowActions] = useState(false);
-  const isSelectionMode = typeof onSelect === 'function';
-  const cleanedPreview = (session.heading || session.body || '').replace(/[#*`\[\]]/g, '');
+  const isSelectionMode = typeof onSelect === "function";
+  const cleanedPreview = (session.heading || session.body || "").replace(
+    /[[\]#*`]/g,
+    "",
+  );
 
   const getDomain = (url) => {
     try {
-      return new URL(url).hostname.replace(/^www\./, '');
+      return new URL(url).hostname.replace(/^www\./, "");
     } catch {
       return url;
     }
@@ -49,8 +60,8 @@ export function SessionCard({
     const diffMs = now - date;
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
+    if (diffDays === 0) return "Today";
+    if (diffDays === 1) return "Yesterday";
     if (diffDays < 7) return `${diffDays} days ago`;
     if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
     if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
@@ -96,7 +107,7 @@ export function SessionCard({
 
   return (
     <div
-      className={`session-card ${isDeleting ? 'session-card--deleting' : ''} ${isSelected ? 'session-card--selected' : ''}`}
+      className={`session-card ${isDeleting ? "session-card--deleting" : ""} ${isSelected ? "session-card--selected" : ""}`}
       onClick={handleCardActivate}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
@@ -106,7 +117,7 @@ export function SessionCard({
       tabIndex={0}
       aria-pressed={isSelectionMode ? isSelected : undefined}
       onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
+        if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           handleCardActivate();
         }
@@ -135,7 +146,7 @@ export function SessionCard({
           {sourceCount > 0 && (
             <span className="session-card__sources">
               <FileText size={12} />
-              {sourceCount} source{sourceCount !== 1 ? 's' : ''}
+              {sourceCount} source{sourceCount !== 1 ? "s" : ""}
             </span>
           )}
           {hasAttachments && (
@@ -144,7 +155,9 @@ export function SessionCard({
               {attachmentCount}
             </span>
           )}
-          <span className="session-card__state">{sourceCount > 0 ? 'Sources attached' : 'Saved only'}</span>
+          <span className="session-card__state">
+            {sourceCount > 0 ? "Sources attached" : "Saved only"}
+          </span>
         </div>
       </div>
 
@@ -152,7 +165,7 @@ export function SessionCard({
 
       <p className="session-card__preview">
         {cleanedPreview.slice(0, 150)}
-        {cleanedPreview.length > 150 ? '...' : ''}
+        {cleanedPreview.length > 150 ? "..." : ""}
       </p>
 
       {firstSource?.url && (
@@ -163,14 +176,20 @@ export function SessionCard({
                 src={getFavicon(firstSource.url)}
                 alt=""
                 className="session-card__favicon"
-                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                }}
               />
             )}
-            <span className="session-card__domain">{getDomain(firstSource.url)}</span>
+            <span className="session-card__domain">
+              {getDomain(firstSource.url)}
+            </span>
           </div>
           <div className="session-card__source-tail">
             {sourceCount > 1 && (
-              <span className="session-card__source-more">+{sourceCount - 1} more</span>
+              <span className="session-card__source-more">
+                +{sourceCount - 1} more
+              </span>
             )}
           </div>
         </div>
@@ -179,13 +198,17 @@ export function SessionCard({
       <div className="session-card__footer">
         <span className="session-card__open">Open session</span>
         {hasAttachments ? (
-          <span className="session-card__footer-note">{attachmentCount} attachment{attachmentCount === 1 ? '' : 's'}</span>
+          <span className="session-card__footer-note">
+            {attachmentCount} attachment{attachmentCount === 1 ? "" : "s"}
+          </span>
         ) : (
           <span className="session-card__footer-note">Saved answer</span>
         )}
       </div>
 
-      <div className={`session-card__actions ${showActions ? 'session-card__actions--visible' : ''}`}>
+      <div
+        className={`session-card__actions ${showActions ? "session-card__actions--visible" : ""}`}
+      >
         <button
           className="session-card__action session-card__action--share"
           onClick={handleShare}

@@ -5,15 +5,20 @@ const planModule = loadCommonJsModule(
   "/root/.bot/.downloads/nubagent/lib/research-plan.js",
 );
 const { compileResearchPlan } = planModule;
-const { buildExportPayload, serializeResearchRun } = loadCommonJsModule(
-  "/root/.bot/.downloads/nubagent/lib/research-runtime.js",
-  {
+const { buildExportPayload, buildTaskFocusAssessment, serializeResearchRun } =
+  loadCommonJsModule("/root/.bot/.downloads/nubagent/lib/research-runtime.js", {
     "./litehost-chat": {
       runLiteHostChat: async () => ({ reply: { content: "" } }),
     },
     "./rag": {
       rankEvidenceEntriesForQuery: (_query, entries = []) => entries,
       getSourceDomain: () => "example.com",
+      extractQueryTerms: (text = "") =>
+        String(text)
+          .toLowerCase()
+          .split(/[^a-z0-9]+/)
+          .filter(Boolean)
+          .slice(0, 24),
     },
     "./research-plan": planModule,
     "./research-sources": {
@@ -38,8 +43,7 @@ const { buildExportPayload, serializeResearchRun } = loadCommonJsModule(
       formatResearchContext: () => "",
       pullPendingResearchControls: async () => [],
     },
-  },
-);
+  });
 
 const buildCompletedRun = () => {
   const plan = compileResearchPlan({
@@ -60,10 +64,13 @@ const buildCompletedRun = () => {
     result: {
       heading: "Retrieval Caching Decision",
       body: "Adopt retrieval caching for repeated lookups. [1]",
-      finalText: "# Retrieval Caching Decision\n\nAdopt retrieval caching for repeated lookups. [1]\n\n## Sources used\n[1]",
-      markdown: "# Retrieval Caching Decision\n\nAdopt retrieval caching for repeated lookups. [1]",
+      finalText:
+        "# Retrieval Caching Decision\n\nAdopt retrieval caching for repeated lookups. [1]\n\n## Sources used\n[1]",
+      markdown:
+        "# Retrieval Caching Decision\n\nAdopt retrieval caching for repeated lookups. [1]",
       slides: "1. Retrieval Caching Decision\n2. Research question",
-      datasetCsv: "\"type\",\"source_title\",\"source_url\",\"value\",\"metric\",\"notes\"\n\"effect_size\",\"Caching Benchmark\",\"https://example.com/paper\",\"0.42\",\"latency_delta\",\"\"",
+      datasetCsv:
+        '"type","source_title","source_url","value","metric","notes"\n"effect_size","Caching Benchmark","https://example.com/paper","0.42","latency_delta",""',
       sources: [
         {
           citationIndex: 1,
@@ -108,7 +115,9 @@ const buildCompletedRun = () => {
         uncertainty_calibration: 0.9,
       },
       targetedDimension: "contradiction_handling",
-      issues: ["contradiction_handling: Freshness caveat must remain explicit."],
+      issues: [
+        "contradiction_handling: Freshness caveat must remain explicit.",
+      ],
       rewriteBrief: "Keep the freshness caveat explicit.",
       aggregateScore: 0.89,
     },
@@ -188,40 +197,72 @@ const buildCompletedRun = () => {
 };
 
 describe("research runtime serialization", () => {
+  it("penalizes off-topic drafts in the task-focus assessment", () => {
+    const plan = compileResearchPlan({
+      query: "How does quantum computing threaten modern encryption?",
+      depthPreference: "balanced",
+    });
+
+    const assessment = buildTaskFocusAssessment({
+      plan,
+      currentDraft:
+        "# Answer\n\nThis draft wanders into product planning, hiring priorities, vendor procurement, and generic lab operations instead of addressing the user's actual security concern.",
+      evidenceEntries: [],
+    });
+
+    expect(assessment.score).toBeLessThan(0.75);
+    expect(assessment.issues.join(" ")).toMatch(/drift|key terms|background/i);
+    expect(assessment.rewrite_brief).toMatch(/primary question|encryption/i);
+  });
+
   it("surfaces verifier outcomes, checkpoints, events, and exports in serialized runs", () => {
     const run = buildCompletedRun();
 
     const serialized = serializeResearchRun(run);
 
     expect(serialized.researchMeta.outputMode.id).toBe("decision_brief");
-    expect(serialized.researchMeta.subagents.map((item) => item.id)).toEqual(expect.arrayContaining([
-      "claimVerifier",
-      "citationVerifier",
-      "contradictionVerifier",
-      "uncertaintyVerifier",
-    ]));
-    expect(serialized.researchMeta.subagents.find((item) => item.id === "claimVerifier")?.equipment).toEqual(expect.arrayContaining([
-      "Claim ledger",
-      "Evidence excerpts",
-    ]));
+    expect(serialized.researchMeta.subagents.map((item) => item.id)).toEqual(
+      expect.arrayContaining([
+        "claimVerifier",
+        "citationVerifier",
+        "contradictionVerifier",
+        "uncertaintyVerifier",
+      ]),
+    );
+    expect(
+      serialized.researchMeta.subagents.find(
+        (item) => item.id === "claimVerifier",
+      )?.equipment,
+    ).toEqual(expect.arrayContaining(["Claim ledger", "Evidence excerpts"]));
     expect(serialized.final.tribunal).toEqual(run.tribunal);
     expect(serialized.final.convergence).toEqual(run.convergence);
     expect(serialized.final.verifierSummary).toEqual(run.verifierSummary);
     expect(serialized.final.claimLedger).toEqual(run.state.claimLedger);
     expect(serialized.final.decision).toEqual(run.result.decision);
-    expect(serialized.structuredData.verifierSummary).toEqual(run.verifierSummary);
-    expect(serialized.structuredData.decisionLayer).toEqual(run.result.decision);
-    expect(serialized.final.exports.markdown).toContain("# Retrieval Caching Decision");
-    expect(serialized.outputs.dataset_csv).toContain("\"effect_size\"");
+    expect(serialized.structuredData.verifierSummary).toEqual(
+      run.verifierSummary,
+    );
+    expect(serialized.structuredData.decisionLayer).toEqual(
+      run.result.decision,
+    );
+    expect(serialized.final.exports.markdown).toContain(
+      "# Retrieval Caching Decision",
+    );
+    expect(serialized.outputs.dataset_csv).toContain('"effect_size"');
     expect(serialized.checkpoints).toMatchObject({
       draft: expect.objectContaining({ id: "draft" }),
       decision: expect.objectContaining({ id: "decision" }),
       final: expect.objectContaining({ id: "final" }),
     });
-    expect(serialized.events).toEqual(expect.arrayContaining([
-      expect.objectContaining({ type: "checkpoint", checkpoint: "draft" }),
-      expect.objectContaining({ type: "control_applied", restartNode: "adversarialQueryForge" }),
-    ]));
+    expect(serialized.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "checkpoint", checkpoint: "draft" }),
+        expect.objectContaining({
+          type: "control_applied",
+          restartNode: "adversarialQueryForge",
+        }),
+      ]),
+    );
   });
 
   it("builds markdown, csv, and json exports from the completed run payload", () => {

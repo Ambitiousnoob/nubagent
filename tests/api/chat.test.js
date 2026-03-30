@@ -57,7 +57,10 @@ const buildHandler = ({
     },
     "../lib/api-key-memory": {
       saveApiKeyMemoryEntries: vi.fn(async () => {}),
-      searchApiKeyMemoryDetailed: vi.fn(async () => ({ results: [], meta: null })),
+      searchApiKeyMemoryDetailed: vi.fn(async () => ({
+        results: [],
+        meta: null,
+      })),
       formatApiKeyMemoryContext: vi.fn(() => ""),
     },
   };
@@ -119,31 +122,33 @@ describe("/api/chat", () => {
 
     await handler(req, res);
 
-    expect(runLiteHostChat).toHaveBeenCalledWith(expect.objectContaining({
-      messages: [
-        {
-          role: "user",
-          content: "Research this and delegate if needed.",
+    expect(runLiteHostChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [
+          {
+            role: "user",
+            content: "Research this and delegate if needed.",
+          },
+        ],
+        delegationContext: {
+          scopeKey: "scope:test-chat",
+          scope: "state_key",
         },
-      ],
-      delegationContext: {
-        scopeKey: "scope:test-chat",
-        scope: "state_key",
-      },
-      searchProviderKeys: {
-        tavily: "tvly-test-key-1234567890",
-      },
-      researchProvider: "openrouter",
-      researchModel: "nvidia/nemotron-3-super-120b-a12b:free",
-      researchModelChain: [
-        "nvidia/nemotron-3-super-120b-a12b:free",
-        "meta-llama/llama-3.3-70b-instruct:free",
-      ],
-      researchRoundRobin: true,
-      researchProviderKeys: {
-        openrouter: "sk-or-v1-1234567890abcdefghijklmnop",
-      },
-    }));
+        searchProviderKeys: {
+          tavily: "tvly-test-key-1234567890",
+        },
+        researchProvider: "openrouter",
+        researchModel: "nvidia/nemotron-3-super-120b-a12b:free",
+        researchModelChain: [
+          "nvidia/nemotron-3-super-120b-a12b:free",
+          "meta-llama/llama-3.3-70b-instruct:free",
+        ],
+        researchRoundRobin: true,
+        researchProviderKeys: {
+          openrouter: "sk-or-v1-1234567890abcdefghijklmnop",
+        },
+      }),
+    );
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body)).toMatchObject({
       id: "chatcmpl-main",

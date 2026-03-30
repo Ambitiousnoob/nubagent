@@ -1,12 +1,20 @@
-import React from 'react';
-import { Modal } from '../UI/Modal.jsx';
-import { ApiKeyForm } from './ApiKeyForm.jsx';
-import { ThemeToggle } from './ThemeToggle.jsx';
-import { ModelSelector } from './ModelSelector.jsx';
-import { Button } from '../UI/Button.jsx';
-import { useSettingsStore } from '../../store/useSettingsStore.js';
-import { useUIStore } from '../../store/useUIStore.js';
-import { Settings, Key, Moon, Cpu, Bell, Trash2, RotateCcw } from 'lucide-react';
+import React from "react";
+import { Modal } from "../UI/Modal.jsx";
+import { ApiKeyForm } from "./ApiKeyForm.jsx";
+import { ThemeToggle } from "./ThemeToggle.jsx";
+import { ModelSelector } from "./ModelSelector.jsx";
+import { Button } from "../UI/Button.jsx";
+import { useSettingsStore } from "../../store/useSettingsStore.js";
+import { useUIStore } from "../../store/useUIStore.js";
+import {
+  Settings,
+  Key,
+  Moon,
+  Cpu,
+  Bell,
+  Trash2,
+  RotateCcw,
+} from "lucide-react";
 
 /**
  * SettingsModal Component
@@ -15,14 +23,14 @@ import { Settings, Key, Moon, Cpu, Bell, Trash2, RotateCcw } from 'lucide-react'
 export function SettingsModal() {
   const { modals, closeModal } = useUIStore();
   const { clearAllSettings } = useSettingsStore();
-  const [activeTab, setActiveTab] = React.useState('general');
+  const [activeTab, setActiveTab] = React.useState("general");
   const [showClearConfirm, setShowClearConfirm] = React.useState(false);
 
   const tabs = [
-    { id: 'general', label: 'General', icon: <Settings size={16} /> },
-    { id: 'api', label: 'API Keys', icon: <Key size={16} /> },
-    { id: 'model', label: 'Research Models', icon: <Cpu size={16} /> },
-    { id: 'notifications', label: 'Notifications', icon: <Bell size={16} /> },
+    { id: "general", label: "General", icon: <Settings size={16} /> },
+    { id: "api", label: "API Keys", icon: <Key size={16} /> },
+    { id: "model", label: "Research Models", icon: <Cpu size={16} /> },
+    { id: "notifications", label: "Notifications", icon: <Bell size={16} /> },
   ];
 
   const handleClearAll = () => {
@@ -32,7 +40,7 @@ export function SettingsModal() {
 
   const renderTabContent = () => {
     switch (activeTab) {
-      case 'general':
+      case "general":
         return (
           <div className="settings-tab">
             <div className="settings-section">
@@ -65,21 +73,21 @@ export function SettingsModal() {
           </div>
         );
 
-      case 'api':
+      case "api":
         return (
           <div className="settings-tab">
             <ApiKeyForm />
           </div>
         );
 
-      case 'model':
+      case "model":
         return (
           <div className="settings-tab">
             <ModelSelector />
           </div>
         );
 
-      case 'notifications':
+      case "notifications":
         return (
           <div className="settings-tab">
             <div className="settings-section">
@@ -91,7 +99,11 @@ export function SettingsModal() {
                 <div className="settings-item__label">
                   <span>Toast notifications</span>
                 </div>
-                <input type="checkbox" defaultChecked className="settings-toggle" />
+                <input
+                  type="checkbox"
+                  defaultChecked
+                  className="settings-toggle"
+                />
               </div>
               <div className="settings-item">
                 <div className="settings-item__label">
@@ -112,7 +124,7 @@ export function SettingsModal() {
     <>
       <Modal
         isOpen={modals.settings}
-        onClose={() => closeModal('settings')}
+        onClose={() => closeModal("settings")}
         title="Settings"
         size="lg"
         className="settings-modal"
@@ -122,7 +134,7 @@ export function SettingsModal() {
             {tabs.map((tab) => (
               <button
                 key={tab.id}
-                className={`settings-modal__tab ${activeTab === tab.id ? 'settings-modal__tab--active' : ''}`}
+                className={`settings-modal__tab ${activeTab === tab.id ? "settings-modal__tab--active" : ""}`}
                 onClick={() => setActiveTab(tab.id)}
               >
                 {tab.icon}
@@ -130,9 +142,7 @@ export function SettingsModal() {
               </button>
             ))}
           </div>
-          <div className="settings-modal__content">
-            {renderTabContent()}
-          </div>
+          <div className="settings-modal__content">{renderTabContent()}</div>
         </div>
       </Modal>
 
@@ -143,9 +153,15 @@ export function SettingsModal() {
         size="sm"
       >
         <div className="settings-clear-confirm">
-          <p>Are you sure you want to clear all settings? This action cannot be undone.</p>
+          <p>
+            Are you sure you want to clear all settings? This action cannot be
+            undone.
+          </p>
           <div className="settings-clear-confirm__actions">
-            <Button variant="outline" onClick={() => setShowClearConfirm(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setShowClearConfirm(false)}
+            >
               Cancel
             </Button>
             <Button variant="danger" onClick={handleClearAll}>

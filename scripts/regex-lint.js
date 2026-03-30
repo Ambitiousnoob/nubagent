@@ -27,88 +27,102 @@ const exts = new Set([".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"]);
 
 const files = [];
 function collect(dir) {
-    if (!fs.existsSync(dir)) return;
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-            collect(full);
-        } else if (entry.isFile() && exts.has(path.extname(entry.name))) {
-            files.push(full);
-        }
+  if (!fs.existsSync(dir)) return;
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      collect(full);
+    } else if (entry.isFile() && exts.has(path.extname(entry.name))) {
+      files.push(full);
     }
+  }
 }
 roots.forEach(collect);
 
 const failures = [];
 
 for (const file of files) {
-    let src;
-    try {
-        src = fs.readFileSync(file, "utf8");
-    } catch (e) {
-        failures.push({ file, message: `read error: ${e.message}` });
-        continue;
-    }
+  let src;
+  try {
+    src = fs.readFileSync(file, "utf8");
+  } catch (e) {
+    failures.push({ file, message: `read error: ${e.message}` });
+    continue;
+  }
 
-    let ast;
-    try {
+  let ast;
+  try {
     ast = Parser.parse(src, {
-        ecmaVersion: "latest",
-        sourceType: "module",
-        allowHashBang: true,
-        locations: true,
-        });
-    } catch (e) {
-        failures.push({ file, message: `parse error: ${e.message}` });
-        continue;
+      ecmaVersion: "latest",
+      sourceType: "module",
+      allowHashBang: true,
+      locations: true,
+    });
+  } catch (e) {
+    failures.push({ file, message: `parse error: ${e.message}` });
+    continue;
+  }
+
+  const testRegex = (pattern, flags, loc) => {
+    try {
+      new RegExp(pattern, flags);
+    } catch {
+      failures.push({
+        file,
+        message: `invalid regex /${pattern}/${flags || ""} at ${loc}`,
+      });
+    }
+  };
+
+  walk.simple(
+    ast,
+    {
+      Literal(node) {
+        if (node.regex) {
+          testRegex(node.regex.pattern, node.regex.flags, formatLoc(node.loc));
+        }
+      },
+      NewExpression: handleRegExpFactory,
+      CallExpression: handleRegExpFactory,
+    },
+    base,
+  );
+
+  function handleRegExpFactory(node) {
+    if (!(node.callee.type === "Identifier" && node.callee.name === "RegExp"))
+      return;
+    const arg = node.arguments[0];
+    const flagsArg = node.arguments[1];
+    const flags =
+      flagsArg && flagsArg.type === "Literal"
+        ? String(flagsArg.value || "")
+        : "";
+
+    if (arg && arg.type === "Literal" && typeof arg.value === "string") {
+      testRegex(arg.value, flags, formatLoc(node.loc));
+      return;
     }
 
-    const testRegex = (pattern, flags, loc) => {
-        try {
-            // eslint-disable-next-line no-new
-            new RegExp(pattern, flags);
-        } catch (e) {
-            failures.push({ file, message: `invalid regex /${pattern}/${flags || ""} at ${loc}` });
-        }
-    };
-
-    walk.simple(ast, {
-        Literal(node) {
-            if (node.regex) {
-                testRegex(node.regex.pattern, node.regex.flags, formatLoc(node.loc));
-            }
-        },
-        NewExpression: handleRegExpFactory,
-        CallExpression: handleRegExpFactory,
-    }, base);
-
-    function handleRegExpFactory(node) {
-        if (!(node.callee.type === "Identifier" && node.callee.name === "RegExp")) return;
-        const arg = node.arguments[0];
-        const flagsArg = node.arguments[1];
-        const flags = flagsArg && flagsArg.type === "Literal" ? String(flagsArg.value || "") : "";
-
-        if (arg && arg.type === "Literal" && typeof arg.value === "string") {
-            testRegex(arg.value, flags, formatLoc(node.loc));
-            return;
-        }
-
-        if (arg && arg.type === "TemplateLiteral" && arg.expressions.length === 0) {
-            testRegex(arg.quasis.map(q => q.value.cooked).join(""), flags, formatLoc(node.loc));
-        }
+    if (arg && arg.type === "TemplateLiteral" && arg.expressions.length === 0) {
+      testRegex(
+        arg.quasis.map((q) => q.value.cooked).join(""),
+        flags,
+        formatLoc(node.loc),
+      );
     }
+  }
 }
 
 if (failures.length) {
-    console.error(`\nInvalid regexes found (${failures.length}):`);
-    failures.forEach((f) => console.error(`- ${f.file}: ${f.message}`));
-    process.exitCode = 1;
+  console.error(`\nInvalid regexes found (${failures.length}):`);
+  failures.forEach((f) => console.error(`- ${f.file}: ${f.message}`));
+  process.exitCode = 1;
 } else {
-    console.log("All regex literals validated.");
+  console.log("All regex literals validated.");
 }
 
 function formatLoc(loc) {
-    if (!loc) return "unknown";
-    return `${loc.start.line}:${loc.start.column + 1}`;
+  if (!loc) return "unknown";
+  return `${loc.start.line}:${loc.start.column + 1}`;
 }

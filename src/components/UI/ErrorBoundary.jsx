@@ -1,6 +1,8 @@
-import React, { Component } from 'react';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
-import { Button } from './Button.jsx';
+import React, { Component } from "react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
+import { Button } from "./Button.jsx";
+
+const IS_DEV = Boolean(import.meta.env?.DEV);
 
 /**
  * Error Boundary Component
@@ -22,7 +24,7 @@ export class ErrorBoundary extends Component {
 
   componentDidCatch(error, errorInfo) {
     this.setState({ errorInfo });
-    console.error('ErrorBoundary caught:', error, errorInfo);
+    console.error("ErrorBoundary caught:", error, errorInfo);
 
     // Log to error tracking service if configured
     if (this.props.onError) {
@@ -51,9 +53,9 @@ export class ErrorBoundary extends Component {
           <h2 className="error-boundary__title">Something went wrong</h2>
           <p className="error-boundary__message">
             {this.props.errorMessage ||
-              'An unexpected error occurred. Please try again.'}
+              "An unexpected error occurred. Please try again."}
           </p>
-          {process.env.NODE_ENV === 'development' && this.state.error && (
+          {IS_DEV && this.state.error && (
             <details className="error-boundary__details">
               <summary>Error Details</summary>
               <pre className="error-boundary__stack">
@@ -89,7 +91,7 @@ export function ErrorFallback({ error, resetErrorBoundary }) {
       <p className="error-boundary__message">
         An unexpected error occurred. Please try again.
       </p>
-      {process.env.NODE_ENV === 'development' && error && (
+      {IS_DEV && error && (
         <details className="error-boundary__details">
           <summary>Error Details</summary>
           <pre className="error-boundary__stack">{error.toString()}</pre>

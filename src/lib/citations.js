@@ -1,13 +1,14 @@
 import { canonicalizeSourceUrl } from "./rag.js";
 
-const stripFetchMeta = (content = "") => (
+const stripFetchMeta = (content = "") =>
   String(content || "")
     .replace(/^<!--[\s\S]*?-->\s*/g, "")
-    .trim()
-);
+    .trim();
 
 const hasMeaningfulDescription = (value = "") => {
-  const normalized = String(value || "").trim().toLowerCase();
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
   return Boolean(normalized) && normalized !== "no description available";
 };
 
@@ -23,7 +24,9 @@ const dedupeSourcesByUrl = (items = [], limit = Infinity) => {
   for (const source of Array.isArray(items) ? items : []) {
     if (!source) continue;
     const citationIndex = toPositiveInteger(source?.citationIndex);
-    const key = canonicalizeSourceUrl(source?.url || "") || `citation:${citationIndex || merged.length + 1}`;
+    const key =
+      canonicalizeSourceUrl(source?.url || "") ||
+      `citation:${citationIndex || merged.length + 1}`;
     if (seen.has(key)) continue;
     seen.add(key);
     merged.push(source);
@@ -48,7 +51,7 @@ export function extractCitationNumbers(text = "") {
 }
 
 export function getDisplaySourceNumber(source, fallbackIndex = 0) {
-  return toPositiveInteger(source?.citationIndex) || (fallbackIndex + 1);
+  return toPositiveInteger(source?.citationIndex) || fallbackIndex + 1;
 }
 
 export function findSourceForCitation(citation, sources = []) {
@@ -57,19 +60,33 @@ export function findSourceForCitation(citation, sources = []) {
 
   const list = Array.isArray(sources) ? sources : [];
   return (
-    list.find((source) => toPositiveInteger(source?.citationIndex) === citationIndex)
-    || list[citationIndex - 1]
-    || null
+    list.find(
+      (source) => toPositiveInteger(source?.citationIndex) === citationIndex,
+    ) ||
+    list[citationIndex - 1] ||
+    null
   );
 }
 
-export function buildAttributedSourcesFromEvidence(answerText = "", evidenceEntries = [], limit = 24) {
-  const successfulEntries = (Array.isArray(evidenceEntries) ? evidenceEntries : [])
-    .filter((entry) => stripFetchMeta(entry?.content || "") || hasMeaningfulDescription(entry?.source?.description));
+export function buildAttributedSourcesFromEvidence(
+  answerText = "",
+  evidenceEntries = [],
+  limit = 24,
+) {
+  const successfulEntries = (
+    Array.isArray(evidenceEntries) ? evidenceEntries : []
+  ).filter(
+    (entry) =>
+      stripFetchMeta(entry?.content || "") ||
+      hasMeaningfulDescription(entry?.source?.description),
+  );
 
   const byCitation = new Map(
     successfulEntries
-      .map((entry) => [toPositiveInteger(entry?.source?.citationIndex), entry?.source])
+      .map((entry) => [
+        toPositiveInteger(entry?.source?.citationIndex),
+        entry?.source,
+      ])
       .filter(([citationIndex, source]) => citationIndex && source?.url),
   );
 
@@ -81,8 +98,16 @@ export function buildAttributedSourcesFromEvidence(answerText = "", evidenceEntr
   const fallbackSources = successfulEntries
     .map((entry) => entry?.source)
     .filter(Boolean)
-    .sort((left, right) => getDisplaySourceNumber(left) - getDisplaySourceNumber(right));
+    .sort(
+      (left, right) =>
+        getDisplaySourceNumber(left) - getDisplaySourceNumber(right),
+    );
 
-  return dedupeSourcesByUrl(citedSources.length ? citedSources : fallbackSources, limit)
-    .sort((left, right) => getDisplaySourceNumber(left) - getDisplaySourceNumber(right));
+  return dedupeSourcesByUrl(
+    citedSources.length ? citedSources : fallbackSources,
+    limit,
+  ).sort(
+    (left, right) =>
+      getDisplaySourceNumber(left) - getDisplaySourceNumber(right),
+  );
 }

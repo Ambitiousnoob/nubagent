@@ -11,8 +11,9 @@
     "test:coverage": "vitest --coverage",
     "test:ui": "vitest --ui",
     "lint:regex": "node scripts/regex-lint.js",
-    "lint": "eslint src --ext .js,.jsx",
-    "format": "prettier --write src/**/*.{js,jsx,css}"
+    "lint": "./node_modules/.bin/eslint api lib scripts src tests",
+    "format": "prettier --write \"index.html\" \"api/**/*.js\" \"lib/**/*.js\" \"scripts/**/*.js\" \"src/**/*.{js,jsx}\" \"tests/**/*.js\"",
+    "format:check": "prettier --check \"index.html\" \"api/**/*.js\" \"lib/**/*.js\" \"scripts/**/*.js\" \"src/**/*.{js,jsx}\" \"tests/**/*.js\""
   },
   "keywords": [
     "ai",
@@ -41,13 +42,19 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^14.3.1",
     "@vitejs/plugin-react": "^3.1.0",
     "acorn": "^8.16.0",
     "acorn-jsx": "^5.3.2",
     "acorn-walk": "^8.3.5",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "globals": "^17.4.0",
     "jsdom": "^23.2.0",
+    "prettier": "^3.8.1",
     "vite": "^4.5.14",
     "vitest": "^1.6.1"
   }

@@ -1,4 +1,10 @@
-import { create } from 'zustand';
+import { create } from "zustand";
+import { getAppViewFromLocation, normalizeAppView } from "../lib/appRoutes.js";
+
+const getInitialRoute = () => {
+  if (typeof window === "undefined") return "chat";
+  return normalizeAppView(getAppViewFromLocation(window.location));
+};
 
 /**
  * UI store for managing application UI state
@@ -9,7 +15,7 @@ export const useUIStore = create((set, get) => ({
   sidebar: {
     isOpen: true,
     isCollapsed: false,
-    activeTab: 'chat',
+    activeTab: getInitialRoute(),
   },
   modals: {
     settings: false,
@@ -19,7 +25,7 @@ export const useUIStore = create((set, get) => ({
     help: false,
   },
   toasts: [],
-  currentRoute: 'chat',
+  currentRoute: getInitialRoute(),
   isMobile: false,
 
   // Actions
@@ -39,10 +45,13 @@ export const useUIStore = create((set, get) => ({
     })),
 
   setActiveTab: (tab) =>
-    set((state) => ({
-      sidebar: { ...state.sidebar, activeTab: tab },
-      currentRoute: tab,
-    })),
+    set((state) => {
+      const nextRoute = normalizeAppView(tab);
+      return {
+        sidebar: { ...state.sidebar, activeTab: nextRoute },
+        currentRoute: nextRoute,
+      };
+    }),
 
   openModal: (modal) =>
     set((state) => ({
@@ -75,9 +84,9 @@ export const useUIStore = create((set, get) => ({
     const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const newToast = {
       id,
-      title: toast.title || '',
-      description: toast.description || '',
-      type: toast.type || 'default', // default, success, error, warning, info
+      title: toast.title || "",
+      description: toast.description || "",
+      type: toast.type || "default", // default, success, error, warning, info
       duration: toast.duration || 5000,
       action: toast.action,
     };
@@ -104,7 +113,14 @@ export const useUIStore = create((set, get) => ({
   clearToasts: () => set({ toasts: [] }),
 
   // Route actions
-  setRoute: (route) => set({ currentRoute: route }),
+  setRoute: (route) =>
+    set((state) => {
+      const nextRoute = normalizeAppView(route);
+      return {
+        currentRoute: nextRoute,
+        sidebar: { ...state.sidebar, activeTab: nextRoute },
+      };
+    }),
 
   setIsMobile: (isMobile) => set({ isMobile }),
 
@@ -114,11 +130,11 @@ export const useUIStore = create((set, get) => ({
       set({
         modals: { ...get().modals, confirm: true },
         confirmOptions: {
-          title: options.title || 'Confirm',
-          description: options.description || 'Are you sure?',
-          confirmText: options.confirmText || 'Confirm',
-          cancelText: options.cancelText || 'Cancel',
-          variant: options.variant || 'default', // default, danger
+          title: options.title || "Confirm",
+          description: options.description || "Are you sure?",
+          confirmText: options.confirmText || "Confirm",
+          cancelText: options.cancelText || "Cancel",
+          variant: options.variant || "default", // default, danger
           onConfirm: () => resolve(true),
           onCancel: () => resolve(false),
         },

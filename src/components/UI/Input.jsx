@@ -1,10 +1,10 @@
-import React, { forwardRef, useId } from 'react';
-import { AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
+import React, { forwardRef, useId } from "react";
+import { AlertCircle, CheckCircle2, XCircle } from "lucide-react";
 
 /**
  * Input Component
  * Styled input field with validation states
- * 
+ *
  * @param {string} type - Input type (text, email, password, etc.)
  * @param {string} value - Input value
  * @param {string} placeholder - Placeholder text
@@ -18,7 +18,7 @@ import { AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
  */
 export const Input = forwardRef(function Input(
   {
-    type = 'text',
+    type = "text",
     value,
     placeholder,
     label,
@@ -27,21 +27,21 @@ export const Input = forwardRef(function Input(
     disabled = false,
     onChange,
     onBlur,
-    className = '',
+    className = "",
     icon,
     ...props
   },
-  ref
+  ref,
 ) {
   const generatedId = useId();
   const inputId = props.id || generatedId;
   const hasError = Boolean(error);
   const hasSuccess = Boolean(success);
   const stateClass = hasError
-    ? 'input--error'
+    ? "input--error"
     : hasSuccess
-    ? 'input--success'
-    : '';
+      ? "input--success"
+      : "";
 
   return (
     <div className={`input-wrapper ${className}`}>
@@ -62,7 +62,7 @@ export const Input = forwardRef(function Input(
           disabled={disabled}
           onChange={onChange}
           onBlur={onBlur}
-          className={`input ${stateClass} ${icon ? 'input--with-icon' : ''}`}
+          className={`input ${stateClass} ${icon ? "input--with-icon" : ""}`}
           {...props}
         />
         {hasError && (
@@ -76,8 +76,14 @@ export const Input = forwardRef(function Input(
           </span>
         )}
       </div>
-      {error && <span className="input__message input__message--error">{error}</span>}
-      {success && <span className="input__message input__message--success">{success}</span>}
+      {error && (
+        <span className="input__message input__message--error">{error}</span>
+      )}
+      {success && (
+        <span className="input__message input__message--success">
+          {success}
+        </span>
+      )}
     </div>
   );
 });
@@ -95,16 +101,16 @@ export const Textarea = forwardRef(function Textarea(
     disabled = false,
     onChange,
     onBlur,
-    className = '',
+    className = "",
     rows = 4,
     ...props
   },
-  ref
+  ref,
 ) {
   const generatedId = useId();
   const textareaId = props.id || generatedId;
   const hasError = Boolean(error);
-  const stateClass = hasError ? 'input--error' : '';
+  const stateClass = hasError ? "input--error" : "";
 
   return (
     <div className={`input-wrapper ${className}`}>
@@ -126,7 +132,9 @@ export const Textarea = forwardRef(function Textarea(
         className={`input input--textarea ${stateClass}`}
         {...props}
       />
-      {error && <span className="input__message input__message--error">{error}</span>}
+      {error && (
+        <span className="input__message input__message--error">{error}</span>
+      )}
     </div>
   );
 });
