@@ -56,7 +56,7 @@ const hasDorkOperators = (query) => ANY_OPERATOR_RE.test(String(query || ""));
 const needsGoogle = (query) => GOOGLE_ONLY_OPERATORS_RE.test(String(query || ""));
 
 const getTavilyApiKey = () => {
-    const raw = process.env.TAVILY_API_KEYS || process.env.TAVILY_API_KEY || DEFAULT_TAVILY_API_KEYS;
+    const raw = process.env.TAVILY_API_KEYS || process.env.TAVILY_API_KEY;
     const keys = String(raw || "").split(",").map((key) => key.trim()).filter(Boolean);
     if (!keys.length) return null;
     const nextKey = keys[tavilyApiKeyIndex % keys.length];
