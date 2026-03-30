@@ -8,7 +8,6 @@ const SERPER_SEARCH_URL = "https://google.serper.dev/search";
 const JINA_SEARCH_URL = "https://s.jina.ai/";
 const BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search";
 const EXA_SEARCH_URL = "https://api.exa.ai/search";
-const DEFAULT_TAVILY_API_KEYS = "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";
 const RESULT_LINK_RE = /<a\b[^>]*class=(?:"[^"]*\b(?:result__a|result-link)\b[^"]*"|'[^']*\b(?:result__a|result-link)\b[^']*')[^>]*href=(?:"([^"]+)"|'([^']+)')[^>]*>([\s\S]*?)<\/a>/gi;
 const RESULT_SNIPPET_RE = /<(?:a|div|span)\b[^>]*class=(?:"[^"]*\b(?:result__snippet|result-snippet)\b[^"]*"|'[^']*\b(?:result__snippet|result-snippet)\b[^']*')[^>]*>([\s\S]*?)<\/(?:a|div|span)>/i;
 const GOOGLE_ONLY_OPERATORS_RE = /\b(intitle:|inurl:|intext:|before:|after:|filetype:(?!pdf))/i;

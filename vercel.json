@@ -1,57 +1,48 @@
 {
   "version": 2,
-  "builds": [
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": "vite",
+  "rewrites": [
     {
-      "src": "api/*.js",
-      "use": "@vercel/node"
+      "source": "/api/chat",
+      "destination": "/api/chat.js"
     },
     {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist"
-      }
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/chat",
-      "dest": "/api/chat.js"
+      "source": "/api/messenger",
+      "destination": "/api/messenger.js"
     },
     {
-      "src": "/api/messenger",
-      "dest": "/api/messenger.js"
+      "source": "/api/memory",
+      "destination": "/api/memory.js"
     },
     {
-      "src": "/api/memory",
-      "dest": "/api/memory.js"
+      "source": "/api/state",
+      "destination": "/api/state.js"
     },
     {
-      "src": "/api/state",
-      "dest": "/api/state.js"
+      "source": "/api/read",
+      "destination": "/api/read.js"
     },
     {
-      "src": "/api/read",
-      "dest": "/api/read.js"
+      "source": "/api/search",
+      "destination": "/api/search.js"
     },
     {
-      "src": "/api/search",
-      "dest": "/api/search.js"
+      "source": "/api/fetch",
+      "destination": "/api/fetch.js"
     },
     {
-      "src": "/api/fetch",
-      "dest": "/api/fetch.js"
+      "source": "/api/crawl",
+      "destination": "/api/crawl.js"
     },
     {
-      "src": "/api/crawl",
-      "dest": "/api/crawl.js"
+      "source": "/api/web",
+      "destination": "/api/web.js"
     },
     {
-      "handle": "filesystem"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }

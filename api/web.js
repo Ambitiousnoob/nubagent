@@ -1,7 +1,7 @@
 const { readBody } = require("../lib/web");
 const { handler: webSearchHandler } = require("./tools/web_search");
 const { handler: webFetchHandler } = require("./tools/web_fetch");
-const { rerankSourcesForQuery, rankSourcesWithRag, buildRagEvidenceBlock, RAG_FETCH_MAX_CHARS, RAG_EXCERPT_MAX_CHARS } = require("../src/lib/rag.js");
+const { rerankSourcesForQuery, rankSourcesWithRag, buildRagEvidenceBlock, RAG_FETCH_MAX_CHARS, RAG_EXCERPT_MAX_CHARS } = require("../lib/rag");
 
 const writeCorsHeaders = (res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
