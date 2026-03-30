@@ -113,6 +113,118 @@ When `research_mode: true`, the response is optimized for research synthesis:
 
 ---
 
+### `GET /api/web`
+
+Web research endpoint metadata.
+
+**Response:**
+```json
+{
+  "ok": true,
+  "endpoint": "/api/web",
+  "methods": ["GET", "POST"],
+  "description": "Combined web research endpoint with search, fetch, and RAG ranking",
+  "features": [
+    "Multi-backend search (DuckDuckGo, Tavily, Serper, Jina, Brave)",
+    "Content extraction with Jina/Firecrawl fallbacks",
+    "RAG re-ranking for query-focused results",
+    "Evidence block generation for synthesis"
+  ]
+}
+```
+
+---
+
+### `POST /api/web`
+
+Combined web research endpoint. Performs search, content fetching, and RAG ranking in a single request.
+
+**Request Body:**
+```typescript
+{
+  query?: string;           // Search query (optional if URLs provided)
+  urls?: string[];          // Specific URLs to fetch (optional)
+  maxResults?: number;      // Max search results (default: 20, max: 30)
+  fetchContent?: boolean;   // Fetch full content of search results
+  rag?: boolean;            // Enable RAG re-ranking and evidence blocks
+}
+```
+
+**Example - Search only:**
+```bash
+curl -X POST http://localhost:3000/api/web \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "quantum computing breakthroughs 2025",
+    "maxResults": 15
+  }'
+```
+
+**Example - Search with content fetching:**
+```bash
+curl -X POST http://localhost:3000/api/web \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "RAG systems evaluation",
+    "fetchContent": true,
+    "rag": true
+  }'
+```
+
+**Example - Fetch specific URLs:**
+```bash
+curl -X POST http://localhost:3000/api/web \
+  -H "Content-Type: application/json" \
+  -d '{
+    "urls": [
+      "https://arxiv.org/abs/2401.12345",
+      "https://example.com/research"
+    ]
+  }'
+```
+
+**Response:**
+```json
+{
+  "ok": true,
+  "query": "quantum computing breakthroughs 2025",
+  "sources": [
+    {
+      "rank": 1,
+      "title": "Quantum Computing Breakthrough...",
+      "url": "https://example.com/quantum",
+      "description": "Researchers achieve...",
+      "source": "tavily",
+      "citationIndex": 1
+    }
+  ],
+  "fetched": [
+    {
+      "source": {...},
+      "content": "# Article Title\n\nFull markdown content..."
+    }
+  ],
+  "evidence": [
+    "[1] Example Domain\nURL: https://example.com\nFetched excerpt (query-focused): ..."
+  ],
+  "urlContent": [
+    {
+      "url": "https://arxiv.org/abs/2401.12345",
+      "content": "# Paper Title\n\n...",
+      "success": true
+    }
+  ]
+}
+```
+
+**Features:**
+- **Multi-backend search**: Queries DuckDuckGo, Tavily, Serper, Jina, and Brave simultaneously
+- **RAG re-ranking**: Re-ranks sources by query relevance and domain authority
+- **Evidence blocks**: Generates structured evidence for synthesis
+- **Concurrent fetching**: Fetches up to 12 pages with 4 concurrent workers
+
+---
+
 ### `GET /api/search`
 
 Search endpoint metadata.
@@ -494,24 +606,86 @@ Evaluates mathematical expressions.
 
 ### `web_search`
 
-Performs web searches with multiple backends.
+Performs web searches with multiple backends and automatic routing based on query operators.
 
-**Backends (priority order):**
-1. DuckDuckGo (default, no key required)
-2. Tavily (if `TAVILY_API_KEY` configured)
-3. Serper/Google (if `SERPER_API_KEY` configured, supports dork operators)
-4. Jina enrichment (if `JINA_API_KEY` configured)
+**Backends:**
+| Backend | API Key Required | Features |
+|---------|------------------|----------|
+| DuckDuckGo | No | Default, privacy-focused |
+| Tavily | `TAVILY_API_KEY` | AI-ready results with answer |
+| Serper (Google) | `SERPER_API_KEY` | Full dork operator support |
+| Jina | `JINA_API_KEY` | Search enrichment |
+| Brave | `BRAVE_API_KEY` | Privacy-focused alternative |
+
+**Automatic Routing:**
+- Queries with Google dork operators (`site:`, `filetype:`, `intitle:`, etc.) automatically route to Serper when configured
+- Standard queries use all available backends with result merging
+
+**Supported Dork Operators:**
+- `site:domain.com` - Restrict to domain
+- `filetype:pdf` - Restrict to file type
+- `intitle:keyword` - Search in title
+- `inurl:keyword` - Search in URL
+- `intext:keyword` - Search in body text
+- `after:YYYY-MM-DD` / `before:YYYY-MM-DD` - Date range
+- `"exact phrase"` - Exact match
+- `-exclude` - Exclude terms
+- `OR` - Logical OR
+
+**Example with operators:**
+```bash
+curl -X POST http://localhost:3000/api/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "site:arxiv.org \"transformer\" after:2024-01-01 filetype:pdf"
+  }'
+```
 
 ---
 
 ### `web_fetch`
 
-Fetches and extracts content from URLs.
+Fetches and extracts content from URLs with intelligent fallbacks.
+
+**Fetch Strategy (in order):**
+1. **Jina AI Reader** - Most reliable, handles anti-bot
+2. **Firecrawl** - If `FIRECRAWL_API_KEY` configured
+3. **Direct fetch** - Fallback with lib/web.js
 
 **Features:**
 - HTML to markdown conversion
-- Content extraction (article/main body)
-- Metadata extraction (title, description, canonical URL)
+- Main content extraction (removes nav, ads, footers)
+- Metadata extraction (title, description, published time)
+- JavaScript-heavy page support
+- Anti-bot bypass
+- Automatic retry with exponential backoff
+- Link extraction (optional)
+
+**Output Format:**
+```markdown
+<!-- Source: https://example.com/article -->
+<!-- Title: Article Title -->
+<!-- Format: markdown | Characters: 5432 | Est. tokens: ~1358 -->
+<!-- Fetched via: jina -->
+<!-- Description: Article description... -->
+<!-- Published: 2024-01-15T10:00:00Z -->
+
+# Article Title
+
+Main content here...
+```
+
+**Example with link extraction:**
+```bash
+curl -X POST http://localhost:3000/api/fetch \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://example.com/article",
+    "format": "markdown",
+    "max_chars": 10000,
+    "extract_links": true
+  }'
+```
 
 ---
 
@@ -611,15 +785,32 @@ If the primary model fails, requests fall back to:
 
 ### Optional
 
+#### Web Search & Fetch
+
+| Variable | Description |
+|----------|-------------|
+| `TAVILY_API_KEY` / `TAVILY_API_KEYS` | Tavily AI search backend |
+| `SERPER_API_KEY` / `SERPER_API_KEYS` | Google Search via Serper (dork operators) |
+| `JINA_API_KEY` / `JINA_API_KEYS` | Jina AI reader & search enrichment |
+| `BRAVE_API_KEY` / `BRAVE_API_KEYS` | Brave Search API |
+| `FIRECRAWL_API_KEY` | Firecrawl web scraper (enhanced fetch) |
+
+#### AI & Memory
+
 | Variable | Description |
 |----------|-------------|
 | `CEREBRAS_API_KEY` | Enables Cerebras memory reranking |
 | `CEREBRAS_MEMORY_MODEL` | Override retrieval model |
-| `SERPER_API_KEY` / `SERPER_API_KEYS` | Google search with dork support |
-| `JINA_API_KEY` / `JINA_API_KEYS` | Jina search enrichment |
-| `TAVILY_API_KEY` | Tavily search backend |
-| `PAGE_ACCESS_TOKEN` | Facebook Page token |
-| `VERIFY_TOKEN` | Messenger webhook token |
+
+#### Facebook Messenger
+
+| Variable | Description |
+|----------|-------------|
+| `PAGE_ACCESS_TOKEN` | Facebook Page access token |
+| `VERIFY_TOKEN` / `MESSENGER_VERIFY_TOKEN` | Messenger webhook verification |
+| `FB_GRAPH_API` | Override Graph API origin (default: `https://graph.facebook.com/v21.0`) |
+| `MESSENGER_SYSTEM_PROMPT` | Custom system instruction for Messenger |
+| `MESSENGER_MAX_MESSAGE_CHARS` | Max characters per outbound message |
 
 ---
 

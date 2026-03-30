@@ -6,6 +6,8 @@ const DUCKDUCKGO_HTML_URL = "https://html.duckduckgo.com/html/";
 const TAVILY_SEARCH_URL = "https://api.tavily.com/search";
 const SERPER_SEARCH_URL = "https://google.serper.dev/search";
 const JINA_SEARCH_URL = "https://s.jina.ai/";
+const BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search";
+const EXA_SEARCH_URL = "https://api.exa.ai/search";
 const DEFAULT_TAVILY_API_KEYS = "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";
 const RESULT_LINK_RE = /<a\b[^>]*class=(?:"[^"]*\b(?:result__a|result-link)\b[^"]*"|'[^']*\b(?:result__a|result-link)\b[^']*')[^>]*href=(?:"([^"]+)"|'([^']+)')[^>]*>([\s\S]*?)<\/a>/gi;
 const RESULT_SNIPPET_RE = /<(?:a|div|span)\b[^>]*class=(?:"[^"]*\b(?:result__snippet|result-snippet)\b[^"]*"|'[^']*\b(?:result__snippet|result-snippet)\b[^']*')[^>]*>([\s\S]*?)<\/(?:a|div|span)>/i;
@@ -14,6 +16,7 @@ const ANY_OPERATOR_RE = /\b(site:|filetype:|intitle:|inurl:|intext:|before:|afte
 let tavilyApiKeyIndex = 0;
 let serperApiKeyIndex = 0;
 let jinaApiKeyIndex = 0;
+let braveApiKeyIndex = 0;
 
 const normalizeText = (value) => (
     String(value || "")
@@ -94,6 +97,21 @@ const getJinaApiKey = () => {
     return nextKey;
 };
 
+const getBraveApiKeys = () => (
+    String(process.env.BRAVE_API_KEYS || process.env.BRAVE_API_KEY || "")
+        .split(",")
+        .map((key) => key.trim())
+        .filter(Boolean)
+);
+
+const getBraveApiKey = () => {
+    const keys = getBraveApiKeys();
+    if (!keys.length) return null;
+    const nextKey = keys[braveApiKeyIndex % keys.length];
+    braveApiKeyIndex = (braveApiKeyIndex + 1) % keys.length;
+    return nextKey;
+};
+
 const parseDuckDuckGoResults = (html, limit = MAX_RESULTS) => {
     const results = [];
     const seen = new Set();
@@ -160,9 +178,11 @@ const fetchTavilyResults = async (query, limit = MAX_RESULTS) => {
             body: JSON.stringify({
                 api_key: apiKey,
                 query,
-                search_depth: "basic",
-                include_answer: false,
+                search_depth: "advanced",
+                include_answer: true,
+                include_raw_content: false,
                 max_results: limit,
+                topic: "general",
             }),
         });
 
@@ -171,12 +191,26 @@ const fetchTavilyResults = async (query, limit = MAX_RESULTS) => {
         }
 
         const data = await response.json();
-        return (Array.isArray(data?.results) ? data.results : []).map((item) => ({
+        const results = (Array.isArray(data?.results) ? data.results : []).map((item) => ({
             title: normalizeText(item?.title),
             url: normalizeUrl(item?.url) || String(item?.url || "").trim(),
             description: normalizeText(item?.content || item?.description || "") || "No description available",
+            score: item?.score,
             source: "tavily",
         })).filter((item) => item.title && item.url);
+
+        // Include Tavily's AI answer if available
+        if (data?.answer) {
+            results.unshift({
+                title: "AI Answer",
+                url: "",
+                description: normalizeText(data.answer),
+                score: 1.0,
+                source: "tavily-answer",
+            });
+        }
+
+        return results;
     });
 };
 
@@ -222,9 +256,23 @@ const fetchSerperResults = async (query, limit = MAX_RESULTS) => {
                 url: normalizeUrl(item?.link) || String(item?.link || "").trim(),
                 description: normalizeText(item?.snippet || "") || "No description available",
                 date: normalizeText(item?.date),
+                position: item?.position,
                 source: "serper",
             });
             if (results.length >= limit) break;
+        }
+
+        // Include knowledge graph if available
+        if (data?.knowledgeGraph) {
+            const kg = data.knowledgeGraph;
+            if (kg.description) {
+                results.push({
+                    title: normalizeText(kg.title || "Knowledge"),
+                    url: normalizeUrl(kg.website) || "",
+                    description: normalizeText(kg.description),
+                    source: "serper-knowledge",
+                });
+            }
         }
 
         return results.filter((item) => item.title && item.url);
@@ -263,6 +311,38 @@ const fetchJinaResults = async (query, limit = MAX_RESULTS) => {
     });
 };
 
+const fetchBraveResults = async (query, limit = MAX_RESULTS) => {
+    const apiKey = getBraveApiKey();
+    if (!apiKey) return [];
+
+    return withTimeout(async (signal) => {
+        const response = await fetch(`${BRAVE_SEARCH_URL}?q=${encodeURIComponent(query)}&count=${Math.min(limit, 20)}`, {
+            method: "GET",
+            signal,
+            headers: {
+                "Accept": "application/json",
+                "X-Subscription-Token": apiKey,
+            },
+        });
+
+        if (!response.ok) {
+            throw new Error(`Brave search returned status ${response.status}`);
+        }
+
+        const data = await response.json();
+        return (Array.isArray(data?.web?.results) ? data.web.results : [])
+            .slice(0, limit)
+            .map((item) => ({
+                title: normalizeText(item?.title),
+                url: normalizeUrl(item?.url) || String(item?.url || "").trim(),
+                description: normalizeText(item?.description || "") || "No description available",
+                age: normalizeText(item?.age),
+                source: "brave",
+            }))
+            .filter((item) => item.title && item.url);
+    });
+};
+
 const mergeResults = (...sources) => {
     const merged = [];
     const seen = new Set();
@@ -288,6 +368,8 @@ const formatResults = (query, combined, settledResults) => {
             url: item.url,
             description: item.description,
             ...(item.date ? { date: item.date } : {}),
+            ...(item.age ? { age: item.age } : {}),
+            ...(typeof item.score === "number" ? { score: item.score } : {}),
             source: item.source,
         })));
     }
@@ -308,13 +390,13 @@ module.exports = {
         function: {
             name: "web_search",
             strict: true,
-            description: "Search the web. Supports Google dork operators for precision: site:domain.com, filetype:pdf, intitle:keyword, inurl:keyword, intext:keyword, after:YYYY-MM-DD, before:YYYY-MM-DD, exact phrases, -exclude, and OR. Operators route to Google automatically when Serper is configured. Returns up to 30 results with titles, links, snippets, and dates when available.",
+            description: "Search the web with multiple backends. Supports Google dork operators: site:domain.com, filetype:pdf, intitle:keyword, inurl:keyword, intext:keyword, after:YYYY-MM-DD, before:YYYY-MM-DD, exact phrases, -exclude, OR. Auto-routes to Google when operators detected. Returns up to 30 ranked results with titles, URLs, descriptions, and dates.",
             parameters: {
                 type: "object",
                 properties: {
                     query: {
                         type: "string",
-                        description: "The specific search query. If checking the date or time, include the timezone or location.",
+                        description: "The search query. Include timezone/location for time-sensitive queries.",
                     },
                 },
                 required: ["query"],
@@ -329,9 +411,11 @@ module.exports = {
         const usesOperators = hasDorkOperators(query);
         const requiresGoogle = needsGoogle(query);
         const hasSerper = getSerperApiKeys().length > 0;
+        const hasBrave = getBraveApiKeys().length > 0;
 
         let searches;
 
+        // Google operators detected + Serper available
         if (requiresGoogle && hasSerper) {
             searches = await Promise.allSettled([
                 fetchSerperResults(query, MAX_RESULTS),
@@ -346,6 +430,7 @@ module.exports = {
             );
         }
 
+        // Dork operators + Serper available
         if (usesOperators && hasSerper) {
             searches = await Promise.allSettled([
                 fetchSerperResults(query, MAX_RESULTS),
@@ -362,14 +447,27 @@ module.exports = {
             );
         }
 
-        searches = await Promise.allSettled([
+        // Standard search with all available backends
+        const promises = [
             fetchDuckDuckGoResults(query, MAX_RESULTS),
             fetchTavilyResults(query, MAX_RESULTS),
-            ...(hasSerper ? [fetchSerperResults(query, 10)] : []),
-            ...(getJinaApiKeys().length ? [fetchJinaResults(query, 10)] : []),
-        ]);
+        ];
 
-        const [duckDuckGo, tavily, serper, jina] = searches;
+        if (hasSerper) {
+            promises.push(fetchSerperResults(query, 10));
+        }
+
+        if (getJinaApiKeys().length) {
+            promises.push(fetchJinaResults(query, 10));
+        }
+
+        if (hasBrave) {
+            promises.push(fetchBraveResults(query, 10));
+        }
+
+        searches = await Promise.allSettled(promises);
+
+        const [duckDuckGo, tavily, serper, jina, brave] = searches;
         return formatResults(
             query,
             mergeResults(
@@ -377,9 +475,9 @@ module.exports = {
                 tavily.status === "fulfilled" ? tavily.value : [],
                 serper?.status === "fulfilled" ? serper.value : [],
                 jina?.status === "fulfilled" ? jina.value : [],
+                brave?.status === "fulfilled" ? brave.value : [],
             ).slice(0, MAX_RESULTS),
             searches,
         );
-
     },
 };
