@@ -5,7 +5,7 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/__tests__/setup.js'],
-    include: ['src/**/*.{test,spec}.{js,jsx}', 'api/**/*.{test,spec}.js'],
+    include: ['src/**/*.{test,spec}.{js,jsx}', 'api/**/*.{test,spec}.js', 'tests/**/*.{test,spec}.js'],
     exclude: ['node_modules', 'dist', '.git', '.cache'],
     coverage: {
       reporter: ['text', 'json', 'html'],

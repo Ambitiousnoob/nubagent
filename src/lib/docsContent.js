@@ -72,7 +72,7 @@ export const API_REFERENCE_SECTIONS = [
   "endpoint": "/api/search",
   "results": [{ "title": "...", "url": "...", "description": "...", "source": "serper" }]
 }`,
-    implementationFiles: ['api/search.js', 'api/tools/web_search.js'],
+    implementationFiles: ['api/search.js', 'lib/tools/web_search.js'],
   },
   {
     id: 'content-aliases',
@@ -96,7 +96,7 @@ export const API_REFERENCE_SECTIONS = [
   "url": "https://developers.openai.com",
   "title": "..."
 }`,
-    implementationFiles: ['api/content.js', 'api/tools/web_fetch.js', 'vercel.json'],
+    implementationFiles: ['api/content.js', 'lib/tools/web_fetch.js', 'vercel.json'],
   },
   {
     id: 'memory-api',

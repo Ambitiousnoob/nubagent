@@ -1,6 +1,6 @@
 const { readBody, parseFetchToolPayload, stripFetchMeta } = require("../lib/web");
-const { handler: webSearchHandler } = require("./tools/web_search");
-const { handler: webFetchHandler } = require("./tools/web_fetch");
+const { handler: webSearchHandler } = require("../lib/tools/web_search");
+const { handler: webFetchHandler } = require("../lib/tools/web_fetch");
 const { rerankSourcesForQuery, rankSourcesWithRag, selectSourcesForFetch, rankEvidenceEntriesForQuery, buildRagEvidenceBlock, RAG_FETCH_MAX_CHARS } = require("../lib/rag");
 
 const writeCorsHeaders = (res) => {

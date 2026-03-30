@@ -9,7 +9,7 @@
  */
 
 const { readBody, parseFetchToolPayload } = require('../lib/web');
-const { handler: webFetchHandler } = require('./tools/web_fetch');
+const { handler: webFetchHandler } = require('../lib/tools/web_fetch');
 
 const writeCorsHeaders = (res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");

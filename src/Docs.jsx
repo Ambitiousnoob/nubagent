@@ -297,7 +297,7 @@ export default function Docs() {
               <code>api/&lt;name&gt;.js</code>
               <code>api/content.js</code>
               <code>api/utils-handler.cjs</code>
-              <code>api/tools/&lt;tool&gt;.js</code>
+              <code>lib/tools/&lt;tool&gt;.js</code>
               <code>vercel.json</code>
               <code>API.md</code>
             </div>
