@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './lib/queryClient.js';
 import { ThemeProvider } from './components/UI/ThemeProvider.jsx';
@@ -27,10 +27,11 @@ import {
  * Root component with navigation and routing
  */
 export default function App() {
-  const { sidebar, setActiveTab, toggleSidebar, setSidebarCollapsed, openModal, isMobile } = useUIStore();
+  const { sidebar, setActiveTab, toggleSidebar, setSidebarCollapsed, openModal, isMobile, closeSidebar } = useUIStore();
   const { loadSessions, selectSession, clearSelectedSession } = useLibraryStore();
   const [currentView, setCurrentView] = useState('chat');
   const [selectedSession, setSelectedSession] = useState(null);
+  const sidebarRef = useRef(null);
 
   // Load sessions on mount
   useEffect(() => {
@@ -41,7 +42,6 @@ export default function App() {
   useEffect(() => {
     const checkMobile = () => {
       const mobile = window.innerWidth < 768;
-      // Store in a way that components can access
       window.__nubagent_is_mobile = mobile;
     };
 
@@ -49,6 +49,29 @@ export default function App() {
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  // Handle body class for sidebar state
+  useEffect(() => {
+    if (isMobile && sidebar.isOpen) {
+      document.body.classList.add('sidebar-open');
+    } else {
+      document.body.classList.remove('sidebar-open');
+    }
+  }, [sidebar.isOpen, isMobile]);
+
+  // Close sidebar when clicking outside on mobile
+  useEffect(() => {
+    if (!isMobile || !sidebar.isOpen) return;
+
+    const handleClickOutside = (event) => {
+      if (sidebarRef.current && !sidebarRef.current.contains(event.target)) {
+        closeSidebar();
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isMobile, sidebar.isOpen, closeSidebar]);
 
   const handleNewChat = () => {
     setCurrentView('chat');
@@ -86,7 +109,10 @@ export default function App() {
         <ErrorBoundary>
           <div className="app">
             {/* Sidebar */}
-            <aside className={`sidebar ${sidebar.isOpen ? 'sidebar--open' : 'sidebar--closed'} ${sidebar.isCollapsed ? 'sidebar--collapsed' : ''}`}>
+            <aside
+              ref={sidebarRef}
+              className={`sidebar ${sidebar.isOpen ? 'sidebar--open' : 'sidebar--closed'} ${sidebar.isCollapsed ? 'sidebar--collapsed' : ''}`}
+            >
               <div className="sidebar__header">
                 <div className="sidebar__logo">
                   <span className="sidebar__logo-icon">🤖</span>

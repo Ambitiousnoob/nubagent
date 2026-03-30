@@ -2459,22 +2459,39 @@ body::before {
 @media (max-width: 768px) {
   .app__main {
     margin-left: 0;
+    margin-top: var(--header-height);
   }
-  
+
   .app__mobile-header {
     display: flex;
   }
-  
+
   .sidebar {
     transform: translateX(-100%);
   }
-  
+
   .sidebar--open {
     transform: translateX(0);
+    box-shadow: var(--shadow-xl);
   }
-  
+
+  /* Sidebar overlay backdrop for mobile */
+  .sidebar--open::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: -1;
+    animation: fadeIn 0.2s ease;
+  }
+
   .sidebar__collapse {
     display: none;
+  }
+
+  /* Prevent body scroll when sidebar is open */
+  body.sidebar-open {
+    overflow: hidden;
   }
   
   .library-page {
@@ -2551,6 +2568,27 @@ body::before {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* ============================================
+   Animations
+   ============================================ */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
 }
 
 .text-center { text-align: center; }
