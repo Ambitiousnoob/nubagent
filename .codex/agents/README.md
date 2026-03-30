@@ -11,6 +11,11 @@ That file defines the smallest practical owner for each slice of the research pi
 Working rule:
 
 - start with the smallest matching `nub_*` owner
+- use `nub_competitive_analyst` when the first task is choosing between external options rather than editing code
+- use `nub_data_researcher` when the first task is gathering quantitative evidence or dataset-backed decision support
+- use `nub_docs_researcher` when the first task is verifying external API or framework behavior from primary docs rather than editing repo docs
+- use `nub_research_analyst` for broader technical investigations that are not primarily option comparison, quantitative evidence work, or direct docs verification
+- use `nub_search_specialist` for fast discovery and triage when the immediate need is finding the highest-signal files or external references before deeper work starts
 - escalate to the management layer for broad or cross-cutting work
 - finish with `nub_test_engineer`, `nub_code_reviewer`, `nub_docs_sync`, or `nub_release_ops` when the change requires them
 

@@ -27,6 +27,19 @@ Use these agents to define scope and sequencing before implementation:
 - `.codex/agents/nub_system_architect.toml`
 - `.codex/agents/nub_release_ops.toml`
 
+## Decision Support Ownership
+
+- `.codex/agents/nub_competitive_analyst.toml`
+  Scope: criteria-based comparison of models, providers, libraries, products, and implementation options before committing to an approach.
+- `.codex/agents/nub_data_researcher.toml`
+  Scope: dataset, metric, pipeline, and quantitative evidence research used to support product, architecture, and operational decisions.
+- `.codex/agents/nub_docs_researcher.toml`
+  Scope: documentation-backed verification of external APIs, framework behavior, version differences, defaults, and migration caveats.
+- `.codex/agents/nub_research_analyst.toml`
+  Scope: broader technical investigations, design questions, and implementation-approach research when no narrower decision-support owner is a better fit.
+- `.codex/agents/nub_search_specialist.toml`
+  Scope: fast discovery and ranked high-signal search hits across the codebase or external sources before deeper analysis begins.
+
 ## Active Search UI Ownership
 
 Use these as the default owners for the live search-first product surface:
@@ -84,6 +97,9 @@ Use these as the default owners for the live search-first product surface:
   Scope: keeping docs aligned when behavior changes.
 - `.codex/agents/nub_release_ops.toml`
   Scope: deploy readiness, environment assumptions, rollout risk.
+
+Use `nub_docs_researcher` for external documentation verification.
+Use `nub_docs_owner` and `nub_docs_sync` for editing NubAgent's own repo docs.
 
 ## SearchEngine Micro-Scope Baseline
 
