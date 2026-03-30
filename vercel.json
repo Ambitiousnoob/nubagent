@@ -21,24 +21,44 @@
       "destination": "/api/state.js"
     },
     {
-      "source": "/api/read",
-      "destination": "/api/read.js"
-    },
-    {
       "source": "/api/search",
       "destination": "/api/search.js"
     },
     {
+      "source": "/api/web",
+      "destination": "/api/web.js"
+    },
+    {
+      "source": "/api/utils",
+      "destination": "/api/utils.js"
+    },
+    {
+      "source": "/api/content",
+      "destination": "/api/content.js"
+    },
+    {
+      "source": "/api/health",
+      "destination": "/api/utils.js"
+    },
+    {
+      "source": "/api/analytics",
+      "destination": "/api/utils.js"
+    },
+    {
+      "source": "/api/export",
+      "destination": "/api/utils.js"
+    },
+    {
       "source": "/api/fetch",
-      "destination": "/api/fetch.js"
+      "destination": "/api/content.js"
+    },
+    {
+      "source": "/api/read",
+      "destination": "/api/content.js"
     },
     {
       "source": "/api/crawl",
-      "destination": "/api/crawl.js"
-    },
-    {
-      "source": "/api/web",
-      "destination": "/api/web.js"
+      "destination": "/api/content.js"
     },
     {
       "source": "/(.*)",

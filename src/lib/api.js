@@ -149,9 +149,10 @@ export const searchApi = {
 
 /**
  * Fetch API endpoints
+ * Uses consolidated /api/content endpoint
  */
 export const fetchApi_client = {
-  fetch: (url) => post('/api/fetch', { url }, { timeout: 30000 }),
+  fetch: (url) => post('/api/content?action=fetch', { url }, { timeout: 30000 }),
 };
 
 /**
@@ -176,24 +177,28 @@ export const libraryApi = {
 
 /**
  * Health check endpoint
+ * Uses consolidated /api/utils endpoint
  */
 export const healthApi = {
-  check: () => get('/api/health'),
+  check: () => get('/api/utils?action=health'),
 };
 
 /**
  * Analytics endpoint
+ * Uses consolidated /api/utils endpoint
  */
 export const analyticsApi = {
-  track: (event, properties) => post('/api/analytics', { event, properties }),
+  track: (event, properties) => post('/api/utils?action=analytics', { event, properties }),
+  getStats: () => get('/api/utils?action=analytics'),
 };
 
 /**
  * Export endpoint
+ * Uses consolidated /api/utils endpoint
  */
 export const exportApi = {
   export: (format, sessionIds) =>
-    post('/api/export', { format, sessionIds }, { timeout: 60000 }),
+    post('/api/utils?action=export', { format, sessionIds }, { timeout: 60000 }),
 };
 
 export default {

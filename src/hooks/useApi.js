@@ -45,9 +45,27 @@ export function useSearch() {
  * Hook for tracking analytics events
  */
 export function useAnalytics() {
+  const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: ({ event, properties }) =>
       analyticsApi.track(event, properties),
+    onSuccess: () => {
+      // Invalidate analytics stats after tracking
+      queryClient.invalidateQueries(['analytics']);
+    },
+  });
+}
+
+/**
+ * Hook for getting analytics stats
+ */
+export function useAnalyticsStats() {
+  return useQuery({
+    queryKey: ['analytics'],
+    queryFn: () => analyticsApi.getStats(),
+    retry: false,
+    refetchInterval: 60000, // Check every minute
   });
 }
 
@@ -132,6 +150,7 @@ export default {
   useChat,
   useSearch,
   useAnalytics,
+  useAnalyticsStats,
   useExport,
   useChatStream,
 };
