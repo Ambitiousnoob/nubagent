@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { sanitizeSummaryText } from "./lib/sanitizeSummaryText.js";
-import { expandLiteratureQuery } from "./lib/researchQuery.js";
+import Company, { prepareSearchQuery, finalizeResearchAnswer } from "./lib/index.js";
 
 const CHAT_API = "/api/chat";
 const SEARCH_API = "/api/search";
@@ -11,7 +10,6 @@ const FETCH_TARGET = 24;
 const SEARCH_SWARM_SIZE = 3;
 const SYNTHESIS_SWARM_SIZE = 3;
 const FETCH_CONCURRENCY = 4;
-const FETCH_MAX_CHARS = 900;
 const MAX_UPLOAD_FILES = 6;
 const MAX_TEXT_ATTACHMENT_CHARS = 12000;
 const MAX_TOTAL_ATTACHMENT_CHARS = 32000;
@@ -230,19 +228,6 @@ const stripFetchMeta = (content = "") => (
         .trim()
 );
 
-const buildEvidenceBlock = (entry, index) => {
-    const source = entry?.source || {};
-    const excerpt = stripFetchMeta(entry?.content || "").replace(/\s+/g, " ").trim();
-    const parts = [
-        `[${index}] ${source.title || getDomain(source.url || "")}`,
-        `URL: ${source.url || ""}`,
-    ];
-
-    if (source.description) parts.push(`Search snippet: ${source.description}`);
-    if (excerpt) parts.push(`Fetched excerpt: ${excerpt}`);
-    return parts.join("\n");
-};
-
 const buildAttachmentBadge = (attachment) => {
     if (!attachment) return "";
     const parts = [attachment.kind === "image" ? "Image" : "Text", formatBytes(attachment.size)];
@@ -455,6 +440,12 @@ const buildCoverageRows = (query, researchMeta = {}, sources = []) => {
             label: "Sites ranked",
             spec: `${Math.max(rankedSites, sources.length)} unique site${Math.max(rankedSites, sources.length) === 1 ? "" : "s"} kept after dedupe`,
         },
+        ...(researchMeta?.ragLexical
+            ? [{
+                label: "Retrieval (RAG)",
+                spec: "Sources re-ranked by query terms; page excerpts are query-focused before synthesis",
+            }]
+            : []),
         {
             label: "Pages fetched",
             spec: `${fetchedSites} page${fetchedSites === 1 ? "" : "s"} read for evidence extraction`,
@@ -1193,7 +1184,7 @@ export default function SearchEngine() {
 
     const runSearch = useCallback(async (rawQuery, uploadsOverride = pendingUploads) => {
         const query = normalizeTextBlock(rawQuery);
-        const searchQuery = expandLiteratureQuery(query);
+        const searchQuery = prepareSearchQuery(query);
         const attachments = buildSessionAttachments(uploadsOverride || []);
         if ((!query && !attachments.length) || streaming) return;
 
@@ -1282,15 +1273,15 @@ export default function SearchEngine() {
                 swarmQueries.map((workerQuery) => postJson(SEARCH_API, { query: workerQuery }, signal)),
             );
 
-            const mergedSources = dedupeSources(
-                searchSettled.flatMap((item) => (
-                    item.status === "fulfilled" ? item.value.results || [] : []
-                )),
-                SOURCE_TARGET,
-            ).map((source, index) => ({
-                ...source,
-                citationIndex: index + 1,
-            }));
+            const mergedSources = Company.rag.rankSourcesWithRag(
+                searchQuery,
+                dedupeSources(
+                    searchSettled.flatMap((item) => (
+                        item.status === "fulfilled" ? item.value.results || [] : []
+                    )),
+                    SOURCE_TARGET,
+                ),
+            );
 
             if (!mergedSources.length) {
                 throw new Error("No searchable sources were found.");
@@ -1308,7 +1299,7 @@ export default function SearchEngine() {
                     const fetchResult = await postJson(FETCH_API, {
                         url: source.url,
                         format: "text",
-                        max_chars: FETCH_MAX_CHARS,
+                        max_chars: Company.rag.RAG_FETCH_MAX_CHARS,
                     }, signal);
 
                     fetchedCount += 1;
@@ -1349,7 +1340,7 @@ export default function SearchEngine() {
             const draftSettled = await Promise.allSettled(
                 evidenceChunks.map((chunk, index) => {
                     const evidenceBlock = chunk
-                        .map((entry) => buildEvidenceBlock(entry, entry.source.citationIndex))
+                        .map((entry) => Company.rag.buildRagEvidenceBlock(entry, searchQuery))
                         .join("\n\n---\n\n");
 
                     return postJson(CHAT_API, {
@@ -1411,7 +1402,7 @@ export default function SearchEngine() {
                 ],
             }, signal);
 
-            const fullText = sanitizeSummaryText(getChatText(finalPayload));
+            const fullText = finalizeResearchAnswer(getChatText(finalPayload));
             await delay(250);
             const attributedSources = buildAttributedSources(fullText, fetchedEvidenceEntries);
             await revealAnswer(sessionId, fullText, attributedSources, signal, {
@@ -1422,6 +1413,7 @@ export default function SearchEngine() {
                     rankedSites: mergedSources.length,
                     fetchedSites: fetchedEvidenceEntries.length,
                     synthesisWorkers: evidenceChunks.length,
+                    ragLexical: true,
                 },
             });
         } catch (error) {
@@ -1806,14 +1798,6 @@ html,body,#root{height:100%;background:var(--bg)}
                     type="file"
                     multiple
                     accept=".txt,.md,.markdown,.json,.csv,.js,.mjs,.cjs,.ts,.jsx,.tsx,.py,.rb,.go,.rs,.java,.c,.h,.cpp,.hpp,.html,.css,.scss,.sass,.xml,.yaml,.yml,.toml,.ini,.env,.log,text/*,application/json,image/*"
-                    style={{ display: "none" }}
-                    onChange={handleFileUpload}
-                />
-            </div>
-        </div>
-    );
-}
-p,.html,.css,.scss,.sass,.xml,.yaml,.yml,.toml,.ini,.env,.log,text/*,application/json,image/*"
                     style={{ display: "none" }}
                     onChange={handleFileUpload}
                 />
