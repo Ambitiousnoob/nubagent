@@ -129,8 +129,8 @@ export default function App() {
                 )}
                 {isMobile && (
                   <button
-                    className="sidebar__close"
-                    onClick={toggleSidebar}
+                    className="sidebar__close-mobile"
+                    onClick={closeSidebar}
                     aria-label="Close sidebar"
                   >
                     <X size={20} />

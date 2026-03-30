@@ -273,6 +273,25 @@ body::before {
   color: var(--color-text-primary);
 }
 
+.sidebar__close-mobile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.sidebar__close-mobile:hover {
+  background: var(--color-error);
+  color: white;
+}
+
 .sidebar__nav {
   flex: 1;
   padding: var(--spacing-md);
