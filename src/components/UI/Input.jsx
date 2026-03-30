@@ -1,4 +1,4 @@
-import React, { forwardRef } from 'react';
+import React, { forwardRef, useId } from 'react';
 import { AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
 
 /**
@@ -33,6 +33,8 @@ export const Input = forwardRef(function Input(
   },
   ref
 ) {
+  const generatedId = useId();
+  const inputId = props.id || generatedId;
   const hasError = Boolean(error);
   const hasSuccess = Boolean(success);
   const stateClass = hasError
@@ -44,7 +46,7 @@ export const Input = forwardRef(function Input(
   return (
     <div className={`input-wrapper ${className}`}>
       {label && (
-        <label className="input__label">
+        <label className="input__label" htmlFor={inputId}>
           {label}
           {props.required && <span className="input__required">*</span>}
         </label>
@@ -52,6 +54,7 @@ export const Input = forwardRef(function Input(
       <div className="input__container">
         {icon && <span className="input__icon">{icon}</span>}
         <input
+          id={inputId}
           ref={ref}
           type={type}
           value={value}
@@ -98,18 +101,21 @@ export const Textarea = forwardRef(function Textarea(
   },
   ref
 ) {
+  const generatedId = useId();
+  const textareaId = props.id || generatedId;
   const hasError = Boolean(error);
   const stateClass = hasError ? 'input--error' : '';
 
   return (
     <div className={`input-wrapper ${className}`}>
       {label && (
-        <label className="input__label">
+        <label className="input__label" htmlFor={textareaId}>
           {label}
           {props.required && <span className="input__required">*</span>}
         </label>
       )}
       <textarea
+        id={textareaId}
         ref={ref}
         value={value}
         placeholder={placeholder}

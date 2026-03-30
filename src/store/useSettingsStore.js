@@ -22,13 +22,7 @@ export const useSettingsStore = create(
       },
 
       // Actions
-      setTheme: (theme) => {
-        set({ theme });
-        // Apply theme to document
-        if (typeof document !== 'undefined') {
-          document.documentElement.setAttribute('data-theme', theme);
-        }
-      },
+      setTheme: (theme) => set({ theme }),
 
       toggleTheme: () => {
         const current = get().theme;
@@ -37,14 +31,20 @@ export const useSettingsStore = create(
       },
 
       setApiKey: (key, provider = 'default') =>
-        set((state) => ({
-          apiKey: key,
-          apiKeys: { ...state.apiKeys, [provider]: key },
-        })),
+        set((state) => {
+          const nextApiKeys = { ...state.apiKeys, [provider]: key };
+          return {
+            apiKey: provider === 'default' ? key : state.apiKey,
+            apiKeys: nextApiKeys,
+          };
+        }),
 
       getApiKey: (provider = 'default') => {
         const state = get();
-        return state.apiKeys[provider] || state.apiKey;
+        if (provider === 'default') {
+          return state.apiKeys.default ?? state.apiKey ?? undefined;
+        }
+        return state.apiKeys[provider];
       },
 
       removeApiKey: (provider = 'default') =>

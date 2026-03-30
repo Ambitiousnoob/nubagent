@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useSettingsStore } from '../../store/useSettingsStore.js';
 
 /**
@@ -6,9 +6,19 @@ import { useSettingsStore } from '../../store/useSettingsStore.js';
  */
 const ThemeContext = createContext({
   theme: 'dark',
+  resolvedTheme: 'dark',
+  isDark: true,
+  isLight: false,
   toggleTheme: () => {},
   setTheme: () => {},
 });
+
+const getSystemTheme = () => {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return 'dark';
+  }
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+};
 
 /**
  * Theme Provider Component
@@ -16,41 +26,39 @@ const ThemeContext = createContext({
  */
 export function ThemeProvider({ children }) {
   const { theme, setTheme, toggleTheme } = useSettingsStore();
+  const [systemTheme, setSystemTheme] = useState(getSystemTheme);
+  const resolvedTheme = theme === 'system' ? systemTheme : theme;
 
-  // Apply theme to document
   useEffect(() => {
-    const root = document.documentElement;
-    root.setAttribute('data-theme', theme);
-    root.classList.remove('theme-dark', 'theme-light');
-    root.classList.add(`theme-${theme}`);
-  }, [theme]);
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return undefined;
+    }
 
-  // Listen for system theme preference
-  useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-
-    const handleChange = (e) => {
-      // Only auto-switch if user hasn't explicitly set a preference
-      const stored = localStorage.getItem('nubagent-settings-storage');
-      if (!stored) {
-        setTheme(e.matches ? 'dark' : 'light');
-      }
+    const handleChange = (event) => {
+      setSystemTheme(event.matches ? 'dark' : 'light');
     };
 
+    setSystemTheme(mediaQuery.matches ? 'dark' : 'light');
     mediaQuery.addEventListener('change', handleChange);
     return () => mediaQuery.removeEventListener('change', handleChange);
-  }, [setTheme]);
+  }, []);
 
-  const contextValue = useCallback(
-    () => ({
-      theme,
-      toggleTheme,
-      setTheme,
-      isDark: theme === 'dark',
-      isLight: theme === 'light',
-    }),
-    [theme, toggleTheme, setTheme]
-  );
+  useEffect(() => {
+    const root = document.documentElement;
+    root.setAttribute('data-theme', resolvedTheme);
+    root.classList.remove('theme-dark', 'theme-light');
+    root.classList.add(`theme-${resolvedTheme}`);
+  }, [resolvedTheme]);
+
+  const contextValue = {
+    theme,
+    resolvedTheme,
+    toggleTheme,
+    setTheme,
+    isDark: resolvedTheme === 'dark',
+    isLight: resolvedTheme === 'light',
+  };
 
   return (
     <ThemeContext.Provider value={contextValue}>
@@ -68,7 +76,7 @@ export function useTheme() {
   if (!context) {
     throw new Error('useTheme must be used within a ThemeProvider');
   }
-  return context();
+  return context;
 }
 
 export default ThemeProvider;

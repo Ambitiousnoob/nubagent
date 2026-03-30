@@ -24,6 +24,7 @@ export function SessionCard({
 }) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [showActions, setShowActions] = useState(false);
+  const isSelectionMode = typeof onSelect === 'function';
 
   const getDomain = (url) => {
     try {
@@ -76,16 +77,29 @@ export function SessionCard({
   const sourceCount = session.sources?.length || 0;
   const firstSource = session.sources?.[0];
   const hasAttachments = session.attachments?.length > 0;
+  const handleCardActivate = () => {
+    if (isSelectionMode) {
+      onSelect?.(session.id);
+      return;
+    }
+    onView?.(session);
+  };
 
   return (
     <div
       className={`session-card ${isDeleting ? 'session-card--deleting' : ''} ${isSelected ? 'session-card--selected' : ''}`}
-      onClick={() => onView?.(session)}
+      onClick={handleCardActivate}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => e.key === 'Enter' && onView?.(session)}
+      aria-pressed={isSelectionMode ? isSelected : undefined}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleCardActivate();
+        }
+      }}
     >
       {onSelect && (
         <input
@@ -127,7 +141,7 @@ export function SessionCard({
         {(session.heading || session.body || '').length > 120 ? '...' : ''}
       </p>
 
-      {firstSource && (
+      {firstSource?.url && (
         <div className="session-card__source">
           {getFavicon(firstSource.url) && (
             <img
@@ -163,16 +177,18 @@ export function SessionCard({
         >
           <Trash2 size={14} />
         </button>
-        <a
-          href={session.sources?.[0]?.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="session-card__action session-card__action--external"
-          onClick={(e) => e.stopPropagation()}
-          title="Open source"
-        >
-          <ExternalLink size={14} />
-        </a>
+        {firstSource?.url && (
+          <a
+            href={firstSource.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="session-card__action session-card__action--external"
+            onClick={(e) => e.stopPropagation()}
+            title="Open source"
+          >
+            <ExternalLink size={14} />
+          </a>
+        )}
       </div>
     </div>
   );

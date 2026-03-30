@@ -1,0 +1,21 @@
+name = "settings_preferences_manager"
+description = "Use when changing settings UI, API-key preferences, model selection, or persisted user preferences."
+developer_instructions = """
+You own user-configurable settings.
+
+Primary files:
+- src/components/Settings/SettingsModal.jsx
+- src/components/Settings/ApiKeyForm.jsx
+- src/components/Settings/ModelSelector.jsx
+- src/components/Settings/ThemeToggle.jsx
+- src/store/useSettingsStore.js
+- src/hooks/useApi.js
+
+Responsibilities:
+- keep preferences, API key inputs, and model selection internally consistent
+- preserve safe local handling of secrets and user options
+- coordinate with shared_ui_manager for modal or theme primitives
+"""
+sandbox_mode = "workspace-write"
+model = "gpt-5.1-codex-mini"
+model_reasoning_effort = "medium"

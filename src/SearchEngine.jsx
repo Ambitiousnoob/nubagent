@@ -18,8 +18,160 @@ const MAX_TOTAL_ATTACHMENT_CHARS = 32000;
 const MAX_IMAGE_UPLOAD_BYTES = 8 * 1024 * 1024;
 const TEXT_FILE_NAME_RE = /\.(txt|md|markdown|json|csv|js|mjs|cjs|ts|jsx|tsx|py|rb|go|rs|java|c|h|cpp|hpp|html|css|scss|sass|xml|yaml|yml|toml|ini|env|log)$/i;
 const IMAGE_FILE_NAME_RE = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
+const RESEARCH_SUBAGENT_SPECS = Object.freeze({
+    queryPlanner: {
+        label: "Query Planner",
+        scope: "query cleanup and variant expansion",
+    },
+    attachmentAnalyst: {
+        label: "Attachment Analyst",
+        scope: "upload digestion and attachment evidence prep",
+    },
+    searchDispatcher: {
+        label: "Search Dispatcher",
+        scope: "search fan-out across query variants",
+    },
+    sourceRanker: {
+        label: "Source Ranker",
+        scope: "dedupe and lexical RAG ordering",
+    },
+    fetchCoordinator: {
+        label: "Fetch Coordinator",
+        scope: "bounded page reads and skip handling",
+    },
+    evidenceCurator: {
+        label: "Evidence Curator",
+        scope: "evidence blocks and source indexing",
+    },
+    draftSynthesizer: {
+        label: "Draft Synthesizer",
+        scope: "chunk-level evidence digests",
+    },
+    answerComposer: {
+        label: "Answer Composer",
+        scope: "final answer merge",
+    },
+    citationAuditor: {
+        label: "Citation Auditor",
+        scope: "citation-to-source attribution",
+    },
+    sessionArchivist: {
+        label: "Session Archivist",
+        scope: "session library persistence",
+    },
+});
+const SUBAGENT_STAGE_LABELS = Object.freeze({
+    queryPlanner: "Planning & query decomposition",
+    attachmentAnalyst: "Attachment handling",
+    searchDispatcher: "Search dispatch",
+    sourceRanker: "Ranking & dedupe",
+    fetchCoordinator: "Fetch coordination",
+    evidenceCurator: "Evidence distillation",
+    draftSynthesizer: "Draft synthesis",
+    answerComposer: "Final synthesis",
+    citationAuditor: "Citation stewardship",
+    sessionArchivist: "Session persistence",
+});
 
 const createId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+const pluralize = (count, singular, plural = `${singular}s`) => (
+    `${count} ${count === 1 ? singular : plural}`
+);
+
+const createSubagentDescriptor = (id, options = {}) => {
+    const spec = RESEARCH_SUBAGENT_SPECS[id];
+    if (!spec) return null;
+
+    return {
+        id,
+        label: spec.label,
+        scope: spec.scope,
+        count: Math.max(1, Number(options.count) || 1),
+        detail: options.detail ? String(options.detail) : "",
+    };
+};
+
+const countSubagentAssignments = (items = []) => (
+    (Array.isArray(items) ? items : []).reduce((sum, item) => sum + Math.max(1, Number(item?.count) || 1), 0)
+);
+
+const formatSubagentDescriptor = (descriptor) => {
+    if (!descriptor?.label) return "";
+    const countPrefix = descriptor.count > 1 ? `${descriptor.count}x ` : "";
+    return `${countPrefix}${descriptor.label}${descriptor.detail ? ` (${descriptor.detail})` : ""}`;
+};
+
+const summarizeSubagents = (items = []) => (
+    (Array.isArray(items) ? items : [])
+        .map((item) => formatSubagentDescriptor(item))
+        .filter(Boolean)
+        .join("; ")
+);
+
+const formatSubagentStatus = (id, detail) => {
+    const label = RESEARCH_SUBAGENT_SPECS[id]?.label;
+    return label ? `${label}: ${detail}` : detail;
+};
+
+const buildResearchSubagents = ({
+    hasQuery = false,
+    attachmentCount = 0,
+    searchCount = 0,
+    rankedSites = 0,
+    fetchedSites = 0,
+    synthesisWorkers = 0,
+    citedSources = 0,
+} = {}) => {
+    const subagents = [];
+
+    if (hasQuery) {
+        subagents.push(createSubagentDescriptor("queryPlanner", {
+            detail: pluralize(Math.max(searchCount, 1), "query variant"),
+        }));
+    }
+
+    if (attachmentCount) {
+        subagents.push(createSubagentDescriptor("attachmentAnalyst", {
+            detail: pluralize(attachmentCount, "attachment"),
+        }));
+    }
+
+    if (hasQuery) {
+        subagents.push(createSubagentDescriptor("searchDispatcher", {
+            detail: pluralize(Math.max(searchCount, 1), "search worker"),
+        }));
+        subagents.push(createSubagentDescriptor("sourceRanker", {
+            detail: rankedSites > 0 ? pluralize(rankedSites, "ranked site") : "dedupe queue",
+        }));
+        subagents.push(createSubagentDescriptor("fetchCoordinator", {
+            detail: fetchedSites > 0 ? pluralize(fetchedSites, "fetched page") : "fetch queue",
+        }));
+        subagents.push(createSubagentDescriptor("evidenceCurator", {
+            detail: fetchedSites > 0 ? pluralize(fetchedSites, "evidence block") : "evidence pack",
+        }));
+        subagents.push(createSubagentDescriptor("draftSynthesizer", {
+            count: Math.max(synthesisWorkers, 1),
+            detail: "parallel evidence digests",
+        }));
+        subagents.push(createSubagentDescriptor("answerComposer", {
+            detail: "final cited answer",
+        }));
+        subagents.push(createSubagentDescriptor("citationAuditor", {
+            detail: citedSources > 0 ? pluralize(citedSources, "cited source") : "source carry-forward",
+        }));
+    } else {
+        subagents.push(createSubagentDescriptor("answerComposer", {
+            detail: "attachment-only answer",
+        }));
+    }
+
+    subagents.push(createSubagentDescriptor("sessionArchivist", {
+        detail: "saved session record",
+    }));
+
+    return subagents.filter(Boolean);
+};
 
 const getDomain = (url) => {
     try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
@@ -427,6 +579,8 @@ const buildCoverageRows = (query, researchMeta = {}, sources = []) => {
     const rankedSites = Number(researchMeta?.rankedSites || 0);
     const fetchedSites = Number(researchMeta?.fetchedSites || 0);
     const synthesisWorkers = Number(researchMeta?.synthesisWorkers || 0);
+    const subagents = Array.isArray(researchMeta?.subagents) ? researchMeta.subagents.filter(Boolean) : [];
+    const dedicatedSubagentCount = countSubagentAssignments(subagents);
     const rows = [
         {
             label: "Search mode",
@@ -466,6 +620,13 @@ const buildCoverageRows = (query, researchMeta = {}, sources = []) => {
         rows.push({
             label: "Attachments",
             spec: `${attachmentCount} uploaded file${attachmentCount === 1 ? "" : "s"} used as extra evidence`,
+        });
+    }
+
+    if (subagents.length) {
+        rows.push({
+            label: "Dedicated subagents",
+            spec: `${dedicatedSubagentCount} dedicated subagent${dedicatedSubagentCount === 1 ? "" : "s"}: ${summarizeSubagents(subagents)}`,
         });
     }
 
@@ -573,10 +734,10 @@ function SearchingCard({
 }
 
 const STEPS = [
-    ["Identifying", "key search areas and topics"],
-    ["Preparing", "autonomous research workflow"],
-    ["Analyzing", "query for optimal results"],
-    ["Selecting", "search strategies and operators"],
+    ["Assigning", "micro-subagent owners to each research part"],
+    ["Decomposing", "query paths for dedicated search dispatchers"],
+    ["Reserving", "fetch and evidence curators for each source lane"],
+    ["Preparing", "draft synthesizers and final citation merge owners"],
 ];
 
 function PlanningCard({ done }) {
@@ -598,7 +759,7 @@ function PlanningCard({ done }) {
                 <span className="scard__icon">💡</span>
                 <div>
                     <div className="scard__title">Research Planning</div>
-                    <div className="scard__sub">Analyzing requirements</div>
+                    <div className="scard__sub">Allocating dedicated subagents</div>
                 </div>
             </div>
             <div className="scard__steps">
@@ -720,6 +881,52 @@ function LibertyCoverageTable({ query, researchMeta = {}, sources = [] }) {
     );
 }
 
+function SubagentOwnershipTable({ researchMeta = {} }) {
+    const rows = (Array.isArray(researchMeta?.subagents) ? researchMeta.subagents : [])
+        .filter((entry) => entry?.id && entry?.label && entry?.scope)
+        .map((entry) => ({
+            key: String(entry.id),
+            label: SUBAGENT_STAGE_LABELS[entry.id] || entry.label,
+            owner: entry.count > 1 ? `${entry.count}x ${entry.label}` : entry.label,
+            focus: `${entry.scope}${entry.detail ? `; ${entry.detail}` : ""}`,
+        }));
+    if (!rows.length) return null;
+
+    return (
+        <LibertyTableCard
+            icon="⚙"
+            title="Subagent Ownership"
+            badge={`${rows.length} owners`}
+            note="Every micro-stage is owned by a dedicated subagent for clear accountability."
+        >
+            <div className="la-table-wrap">
+                <table className="la-table la-table--subagents">
+                    <thead>
+                        <tr>
+                            <th className="col-part">Part</th>
+                            <th className="col-owner">Subagent</th>
+                            <th className="col-focus">Focus</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows.map((row) => (
+                            <tr key={row.key}>
+                                <td className="col-part"><span className="la-criterion-label">{row.label}</span></td>
+                                <td className="col-owner">
+                                    <span className="subagent-owner__name">{row.owner}</span>
+                                </td>
+                                <td className="col-focus">
+                                    <span className="subagent-owner__focus">{row.focus}</span>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </LibertyTableCard>
+    );
+}
+
 function LibertyResultCard({ query, heading, body, sources = [], searchCount = 0, researchMeta = {} }) {
     const visibleSources = sources.slice(0, 20);
     const summary = buildResultSummary(body);
@@ -761,6 +968,7 @@ function LibertyResultCard({ query, heading, body, sources = [], searchCount = 0
                     <div className="la-tables">
                         <LibertySourceTable sources={visibleSources} />
                         <LibertyCoverageTable query={query} researchMeta={{ ...researchMeta, searchCount }} sources={visibleSources} />
+                        <SubagentOwnershipTable researchMeta={researchMeta} />
                     </div>
                 ) : null}
             </div>
@@ -1230,8 +1438,8 @@ export default function SearchEngine() {
                     queries: swarmQueries,
                     searchDone: false,
                     statusText: query
-                        ? `Launching ${swarmQueries.length} search workers...`
-                        : `Reading ${attachments.length} uploaded file${attachments.length > 1 ? "s" : ""}...`,
+                        ? formatSubagentStatus("queryPlanner", `mapped ${swarmQueries.length} query path${swarmQueries.length === 1 ? "" : "s"}; Search Dispatcher launching workers...`)
+                        : formatSubagentStatus("attachmentAnalyst", `reading ${attachments.length} uploaded file${attachments.length > 1 ? "s" : ""}...`),
                     activityTitle,
                     activityDoneTitle,
                     activityIcon,
@@ -1253,14 +1461,14 @@ export default function SearchEngine() {
             let attachmentDigest = "";
             if (attachments.length) {
                 patchLastBot(sessionId, {
-                    statusText: `Reading ${attachments.length} uploaded file${attachments.length > 1 ? "s" : ""}...`,
+                    statusText: formatSubagentStatus("attachmentAnalyst", `reading ${attachments.length} uploaded file${attachments.length > 1 ? "s" : ""}...`),
                 });
                 try {
                     attachmentDigest = await analyzeAttachments(searchQuery, attachments, signal);
                 } catch (error) {
                     if (!query) throw error;
                     patchLastBot(sessionId, {
-                        statusText: `Upload read failed (${error.message || "unknown error"}). Continuing with web research...`,
+                        statusText: formatSubagentStatus("attachmentAnalyst", `upload read failed (${error.message || "unknown error"}). Continuing with Search Dispatcher...`),
                     });
                 }
             }
@@ -1269,21 +1477,25 @@ export default function SearchEngine() {
                 if (!attachmentDigest) {
                     throw new Error("No readable attachment content was found.");
                 }
+                const researchMeta = {
+                    attachments: attachments.length,
+                    generatedAt: new Date().toISOString(),
+                    searchCount: 0,
+                    rankedSites: 0,
+                    fetchedSites: 0,
+                    synthesisWorkers: 1,
+                    subagents: buildResearchSubagents({
+                        attachmentCount: attachments.length,
+                    }),
+                };
                 await revealAnswer(sessionId, attachmentDigest, [], signal, {
-                    researchMeta: {
-                        attachments: attachments.length,
-                        generatedAt: new Date().toISOString(),
-                        searchCount: 0,
-                        rankedSites: 0,
-                        fetchedSites: 0,
-                        synthesisWorkers: 1,
-                    },
+                    researchMeta,
                 });
                 return;
             }
 
             patchLastBot(sessionId, {
-                statusText: `Running ${swarmQueries.length} search workers to collect up to ${SOURCE_TARGET} sites...`,
+                statusText: formatSubagentStatus("searchDispatcher", `running ${swarmQueries.length} search worker${swarmQueries.length === 1 ? "" : "s"} over Query Planner paths to collect up to ${SOURCE_TARGET} sites...`),
             });
 
             const searchSettled = await Promise.allSettled(
@@ -1306,7 +1518,7 @@ export default function SearchEngine() {
 
             patchLastBot(sessionId, {
                 showPlanning: false,
-                statusText: `Ranked ${mergedSources.length} sites. Starting ${FETCH_CONCURRENCY} fetch workers...`,
+                statusText: formatSubagentStatus("sourceRanker", `ranked ${mergedSources.length} site${mergedSources.length === 1 ? "" : "s"}. Fetch Coordinator starting ${FETCH_CONCURRENCY} fetch worker${FETCH_CONCURRENCY === 1 ? "" : "s"}...`),
                 sources: mergedSources,
             });
 
@@ -1321,7 +1533,7 @@ export default function SearchEngine() {
 
                     fetchedCount += 1;
                     patchLastBot(sessionId, {
-                        statusText: `Fetched ${fetchedCount}/${mergedSources.length} sites. Building evidence graph...`,
+                        statusText: formatSubagentStatus("fetchCoordinator", `fetched ${fetchedCount}/${mergedSources.length} site${mergedSources.length === 1 ? "" : "s"}. Evidence Curator is building the evidence graph...`),
                     });
 
                     return {
@@ -1332,7 +1544,7 @@ export default function SearchEngine() {
                     if (error?.name === "AbortError") throw error;
                     fetchedCount += 1;
                     patchLastBot(sessionId, {
-                        statusText: `Fetched ${fetchedCount}/${mergedSources.length} sites. Some fetches were skipped.`,
+                        statusText: formatSubagentStatus("fetchCoordinator", `fetched ${fetchedCount}/${mergedSources.length} site${mergedSources.length === 1 ? "" : "s"}. Some fetches were skipped.`),
                     });
                     return {
                         source,
@@ -1351,7 +1563,7 @@ export default function SearchEngine() {
             const evidenceChunks = chunkArray(fetchedEvidenceEntries, chunkSize).slice(0, SYNTHESIS_SWARM_SIZE);
 
             patchLastBot(sessionId, {
-                statusText: `Running ${evidenceChunks.length} synthesis workers over ${fetchedEvidenceEntries.length} fetched sites...`,
+                statusText: formatSubagentStatus("draftSynthesizer", `running ${evidenceChunks.length} synthesis worker${evidenceChunks.length === 1 ? "" : "s"} over ${fetchedEvidenceEntries.length} fetched site${fetchedEvidenceEntries.length === 1 ? "" : "s"}...`),
             });
 
             const draftSettled = await Promise.allSettled(
@@ -1399,7 +1611,7 @@ export default function SearchEngine() {
                 .join("\n");
 
             patchLastBot(sessionId, {
-                statusText: `Merging ${workerDrafts.length} research agents into the final cited answer...`,
+                statusText: formatSubagentStatus("answerComposer", `merging ${workerDrafts.length} research agent${workerDrafts.length === 1 ? "" : "s"} into the final cited answer...`),
             });
 
             const finalPayload = await postJson(CHAT_API, {
@@ -1422,16 +1634,26 @@ export default function SearchEngine() {
             const fullText = finalizeResearchAnswer(getChatText(finalPayload));
             await delay(250);
             const attributedSources = buildAttributedSources(fullText, fetchedEvidenceEntries);
-            await revealAnswer(sessionId, fullText, attributedSources, signal, {
-                researchMeta: {
-                    attachments: attachments.length,
-                    generatedAt: new Date().toISOString(),
+            const researchMeta = {
+                attachments: attachments.length,
+                generatedAt: new Date().toISOString(),
+                searchCount: swarmQueries.length,
+                rankedSites: mergedSources.length,
+                fetchedSites: fetchedEvidenceEntries.length,
+                synthesisWorkers: evidenceChunks.length,
+                ragLexical: true,
+                subagents: buildResearchSubagents({
+                    hasQuery: true,
+                    attachmentCount: attachments.length,
                     searchCount: swarmQueries.length,
                     rankedSites: mergedSources.length,
                     fetchedSites: fetchedEvidenceEntries.length,
                     synthesisWorkers: evidenceChunks.length,
-                    ragLexical: true,
-                },
+                    citedSources: attributedSources.length,
+                }),
+            };
+            await revealAnswer(sessionId, fullText, attributedSources, signal, {
+                researchMeta,
             });
         } catch (error) {
             if (error.name === "AbortError") {
@@ -1597,6 +1819,11 @@ html,body,#root{height:100%;background:var(--bg)}
 .la-table .col-findings{min-width:280px}
 .la-table .col-criterion{min-width:140px;white-space:nowrap}
 .la-table .col-spec{min-width:300px}
+.la-table--subagents .col-part{min-width:170px}
+.la-table--subagents .col-owner{min-width:150px}
+.la-table--subagents .col-focus{min-width:260px}
+.subagent-owner__name{display:block;font-weight:600;color:var(--la-text-heading);letter-spacing:-.01em}
+.subagent-owner__focus{display:block;font-size:11px;color:var(--la-text);margin-top:4px;line-height:1.4}
 .la-source-name{color:var(--la-text-bright);font-weight:500}
 .la-source-ref{font-size:11px;color:var(--la-text-dim);margin-top:2px}
 .la-source-url{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--la-accent);margin-top:4px;opacity:.85;text-decoration:none}

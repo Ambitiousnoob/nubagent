@@ -1,5 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useId } from 'react';
 import { X } from 'lucide-react';
+
+let activeModalCount = 0;
 
 /**
  * Modal Component
@@ -25,6 +27,8 @@ export function Modal({
   showCloseButton = true,
   className = '',
 }) {
+  const titleId = useId();
+
   // Handle escape key
   useEffect(() => {
     if (!isOpen) return;
@@ -36,11 +40,15 @@ export function Modal({
     };
 
     document.addEventListener('keydown', handleEscape);
+    activeModalCount += 1;
     document.body.style.overflow = 'hidden';
 
     return () => {
       document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = '';
+      activeModalCount = Math.max(0, activeModalCount - 1);
+      if (activeModalCount === 0) {
+        document.body.style.overflow = '';
+      }
     };
   }, [isOpen, onClose]);
 
@@ -54,10 +62,15 @@ export function Modal({
 
   return (
     <div className="modal-overlay" onClick={handleOverlayClick}>
-      <div className={`modal modal--${size} ${className}`}>
+      <div
+        className={`modal modal--${size} ${className}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={title ? titleId : undefined}
+      >
         {(title || showCloseButton) && (
           <div className="modal__header">
-            {title && <h2 className="modal__title">{title}</h2>}
+            {title && <h2 id={titleId} className="modal__title">{title}</h2>}
             {showCloseButton && (
               <button className="modal__close" onClick={onClose} aria-label="Close modal">
                 <X size={20} />

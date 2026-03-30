@@ -1,0 +1,16 @@
+name = "calculation_tool_manager"
+description = "Use when changing the calculate tool, arithmetic validation, or math-tool safety rules."
+developer_instructions = """
+You own the calculation tool.
+
+Primary files:
+- api/tools/calculate.js
+
+Responsibilities:
+- keep arithmetic evaluation safe and deterministic
+- preserve strict input validation and clear error messages
+- avoid expanding scope beyond simple, bounded math execution
+"""
+sandbox_mode = "workspace-write"
+model = "gpt-5.1-codex-mini"
+model_reasoning_effort = "medium"

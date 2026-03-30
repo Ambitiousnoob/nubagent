@@ -112,6 +112,11 @@ export const useLibraryStore = create(
 
       clearSelectedSession: () => set({ selectedSession: null }),
 
+      setSelectedSessions: (ids = []) =>
+        set({
+          selectedSessions: Array.from(new Set(ids)),
+        }),
+
       toggleSessionSelection: (id) =>
         set((state) => ({
           selectedSessions: state.selectedSessions.includes(id)
@@ -121,10 +126,10 @@ export const useLibraryStore = create(
 
       clearSelection: () => set({ selectedSessions: [] }),
 
-      selectAll: () =>
-        set((state) => ({
-          selectedSessions: state.filteredSessions?.map((s) => s.id) || [],
-        })),
+      selectAll: (sessionIds = []) =>
+        set({
+          selectedSessions: Array.from(new Set(sessionIds)),
+        }),
 
       getFilteredSessions: () => {
         const state = get();

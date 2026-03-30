@@ -1,6 +1,5 @@
 import React from 'react';
-import { Toaster } from 'sonner';
-import { useUIStore } from '../../store/useUIStore.js';
+import { Toaster, toast as sonnerToast } from 'sonner';
 import { AlertCircle, CheckCircle2, Info, X, AlertTriangle } from 'lucide-react';
 
 /**
@@ -8,11 +7,11 @@ import { AlertCircle, CheckCircle2, Info, X, AlertTriangle } from 'lucide-react'
  * Wraps Sonner toaster with custom styling
  */
 export function ToastProvider() {
-  const { toasts, removeToast } = useUIStore();
-
   return (
     <Toaster
       position="top-right"
+      closeButton
+      richColors
       toastOptions={{
         duration: 5000,
         className: 'toast',
@@ -41,34 +40,51 @@ export function ToastProvider() {
  * Programmatic toast notifications
  */
 export function useToast() {
-  const { addToast, removeToast } = useUIStore();
+  const invokeToast = (variant, title, description, options = {}) => {
+    const method = typeof sonnerToast[variant] === 'function' ? sonnerToast[variant] : sonnerToast;
+    return method(title, {
+      description,
+      ...options,
+    });
+  };
 
   const toast = (options) => {
-    return addToast(options);
+    const {
+      title = '',
+      description,
+      type = 'default',
+      duration,
+      action,
+    } = options || {};
+
+    return invokeToast(type, title || description || '', description && title ? description : undefined, {
+      duration,
+      action,
+    });
   };
 
   const success = (title, description) => {
-    return addToast({ title, description, type: 'success' });
+    return invokeToast('success', title, description);
   };
 
   const error = (title, description) => {
-    return addToast({ title, description, type: 'error' });
+    return invokeToast('error', title, description);
   };
 
   const warning = (title, description) => {
-    return addToast({ title, description, type: 'warning' });
+    return invokeToast('warning', title, description);
   };
 
   const info = (title, description) => {
-    return addToast({ title, description, type: 'info' });
+    return invokeToast('info', title, description);
   };
 
   const loading = (title, description) => {
-    return addToast({ title, description, type: 'loading', duration: 0 });
+    return invokeToast('loading', title, description, { duration: Infinity });
   };
 
   const dismiss = (id) => {
-    removeToast(id);
+    sonnerToast.dismiss(id);
   };
 
   return {

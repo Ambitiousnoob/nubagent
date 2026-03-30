@@ -17,8 +17,11 @@ export function SearchFilters({
 }) {
   const [isOpen, setIsOpen] = React.useState(false);
 
-  const hasActiveFilters = Object.values(filters).some(
-    (value) => value && value !== 'all' && value !== false
+  const hasActiveFilters = (
+    (filters.dateRange && filters.dateRange !== 'all')
+    || Boolean(filters.hasAttachments)
+    || (filters.sortBy && filters.sortBy !== 'date')
+    || (filters.sortOrder && filters.sortOrder !== 'desc')
   );
 
   const handleFilterChange = (key, value) => {
@@ -64,7 +67,7 @@ export function SearchFilters({
               onChange={(e) => handleFilterChange('dateRange', e.target.value)}
             >
               <option value="all">Any time</option>
-              <option value="day">Past 24 hours</option>
+              <option value="today">Past 24 hours</option>
               <option value="week">Past week</option>
               <option value="month">Past month</option>
               <option value="year">Past year</option>
@@ -72,17 +75,14 @@ export function SearchFilters({
           </div>
 
           <div className="search-filters__group">
-            <label className="search-filters__label">Source Type</label>
+            <label className="search-filters__label">Attachments</label>
             <select
               className="search-filters__select"
-              value={filters.sourceType || 'all'}
-              onChange={(e) => handleFilterChange('sourceType', e.target.value)}
+              value={filters.hasAttachments ? 'with-attachments' : 'all'}
+              onChange={(e) => handleFilterChange('hasAttachments', e.target.value === 'with-attachments')}
             >
-              <option value="all">All sources</option>
-              <option value="government">Government</option>
-              <option value="research">Research</option>
-              <option value="news">News</option>
-              <option value="vendor">Vendor</option>
+              <option value="all">All sessions</option>
+              <option value="with-attachments">With attachments</option>
             </select>
           </div>
 
@@ -90,12 +90,24 @@ export function SearchFilters({
             <label className="search-filters__label">Sort By</label>
             <select
               className="search-filters__select"
-              value={filters.sortBy || 'relevance'}
+              value={filters.sortBy || 'date'}
               onChange={(e) => handleFilterChange('sortBy', e.target.value)}
             >
-              <option value="relevance">Relevance</option>
               <option value="date">Date</option>
-              <option value="domain">Domain</option>
+              <option value="title">Title</option>
+              <option value="sources">Sources</option>
+            </select>
+          </div>
+
+          <div className="search-filters__group">
+            <label className="search-filters__label">Order</label>
+            <select
+              className="search-filters__select"
+              value={filters.sortOrder || 'desc'}
+              onChange={(e) => handleFilterChange('sortOrder', e.target.value)}
+            >
+              <option value="desc">Newest first</option>
+              <option value="asc">Oldest first</option>
             </select>
           </div>
         </div>

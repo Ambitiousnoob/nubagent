@@ -24,6 +24,12 @@ It intentionally omits secrets and raw API keys.
 - Legacy UI still exists but is not the active entrypoint:
   - `src/ai.jsx`
 
+## Subagent Policy Snapshot
+
+- Every meaningful work slice treated in this repo must map to a dedicated subagent owner and scope statement.
+- `SUBAGENTS.md` is the source of truth for that policy; consult it before further decomposition.
+- Record the smallest coherent responsible party for each change so the orchestrator and workers stay aligned as work progresses.
+
 ## Product Shape Right Now
 
 The active app is no longer a generic chat-first UI. It is a search-first research interface.
@@ -232,4 +238,3 @@ If resuming work later, the highest-value cleanup items are:
 3. Decide whether `src/ai.jsx` should be kept or retired
 4. Replace legacy `vercel.json` `builds` usage with the current Vercel config style
 5. Redeploy production after UI-only GitHub pushes
-

@@ -97,7 +97,7 @@ describe('Utility Functions', () => {
     it('truncates long text', () => {
       const longText = 'a'.repeat(200);
       expect(truncateText(longText, 100)).toHaveLength(103); // 100 + '...'
-      expect(truncateText(longText, 100)).endsWith('...');
+      expect(truncateText(longText, 100)).toMatch(/\.\.\.$/);
     });
 
     it('does not truncate short text', () => {

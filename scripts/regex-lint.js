@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-const fs = require("fs");
-const path = require("path");
-const acorn = require("acorn");
-const jsx = require("acorn-jsx");
-const walk = require("acorn-walk");
+import fs from "node:fs";
+import path from "node:path";
+import * as acorn from "acorn";
+import jsx from "acorn-jsx";
+import * as walk from "acorn-walk";
 const Parser = acorn.Parser.extend(jsx());
 const base = { ...walk.base };
 

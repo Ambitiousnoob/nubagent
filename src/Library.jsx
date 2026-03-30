@@ -1,19 +1,14 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useLibraryStore } from './store/useLibraryStore.js';
-import { useUIStore } from './store/useUIStore.js';
 import { SessionList } from './components/Library/SessionList.jsx';
 import { SessionActions, BulkActions } from './components/Library/SessionActions.jsx';
 import { SearchFilters } from './components/Search/SearchFilters.jsx';
 import { Button } from './components/UI/Button.jsx';
-import { Input } from './components/UI/Input.jsx';
 import { useToast } from './components/UI/ToastProvider.jsx';
 import {
   Search,
   ArrowLeft,
   Plus,
-  Filter,
-  Trash2,
-  Download,
   CheckSquare,
   Square,
 } from 'lucide-react';
@@ -37,10 +32,10 @@ export default function Library({ onBack, onViewSession, onNewSearch }) {
     getFilteredSessions,
     loadSessions,
     clearSelection,
+    setSelectedSessions,
     toggleSessionSelection,
   } = useLibraryStore();
 
-  const { openModal } = useUIStore();
   const { success, error, info } = useToast();
   const [actionsModalOpen, setActionsModalOpen] = useState(false);
   const [selectedSessionForActions, setSelectedSessionForActions] = useState(null);
@@ -97,11 +92,9 @@ export default function Library({ onBack, onViewSession, onNewSearch }) {
     if (selectedSessions.length === filteredSessions.length) {
       clearSelection();
     } else {
-      filteredSessions.forEach((session) => {
-        toggleSessionSelection(session.id);
-      });
+      setSelectedSessions(filteredSessions.map((session) => session.id));
     }
-  }, [filteredSessions, selectedSessions.length, clearSelection, toggleSessionSelection]);
+  }, [filteredSessions, selectedSessions.length, clearSelection, setSelectedSessions]);
 
   const handleShare = useCallback((session) => {
     info('Share', 'Share functionality coming soon');
@@ -133,7 +126,10 @@ export default function Library({ onBack, onViewSession, onNewSearch }) {
         <div className="library-page__actions">
           {isSelectionMode ? (
             <>
-              <Button variant="outline" size="sm" onClick={() => setIsSelectionMode(false)}>
+              <Button variant="outline" size="sm" onClick={() => {
+                clearSelection();
+                setIsSelectionMode(false);
+              }}>
                 Cancel
               </Button>
               <Button variant="ghost" size="sm" onClick={handleSelectAll}>

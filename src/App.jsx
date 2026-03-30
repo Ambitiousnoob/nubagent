@@ -24,8 +24,8 @@ import {
  * Root component with navigation and routing
  */
 export default function App() {
-  const { sidebar, setActiveTab, toggleSidebar, setSidebarCollapsed, openModal, isMobile, setIsMobile } = useUIStore();
-  const { loadSessions, selectSession, clearSelectedSession } = useLibraryStore();
+  const { sidebar, setActiveTab, toggleSidebar, setSidebarOpen, setSidebarCollapsed, openModal, isMobile, setIsMobile } = useUIStore();
+  const { loadSessions, clearSelectedSession } = useLibraryStore();
   const [currentView, setCurrentView] = useState('chat');
   const [selectedSession, setSelectedSession] = useState(null);
   const sidebarRef = useRef(null);
@@ -75,19 +75,26 @@ export default function App() {
 
     const handleClickOutside = (event) => {
       if (sidebarRef.current && !sidebarRef.current.contains(event.target)) {
-        toggleSidebar();
+        setSidebarOpen(false);
       }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isMobile, sidebar.isOpen, toggleSidebar]);
+  }, [isMobile, sidebar.isOpen, setSidebarOpen]);
+
+  const closeSidebarForMobile = () => {
+    if (isMobile) {
+      setSidebarOpen(false);
+    }
+  };
 
   const handleNewChat = () => {
     setCurrentView('chat');
     setActiveTab('chat');
     clearSelectedSession();
     setSelectedSession(null);
+    closeSidebarForMobile();
     // Trigger new chat in SearchEngine via custom event
     window.dispatchEvent(new CustomEvent('nubagent:new-chat'));
   };
@@ -96,6 +103,7 @@ export default function App() {
     setSelectedSession(session);
     setCurrentView('chat');
     setActiveTab('chat');
+    closeSidebarForMobile();
     // Trigger session load via custom event
     window.dispatchEvent(new CustomEvent('nubagent:load-session', { detail: session }));
   };
@@ -106,6 +114,7 @@ export default function App() {
     if (view === 'library') {
       loadSessions();
     }
+    closeSidebarForMobile();
   };
 
   const navItems = [
@@ -177,7 +186,7 @@ export default function App() {
                 <button
                   className="app__menu-btn"
                   onClick={toggleSidebar}
-                  aria-label="Open menu"
+                  aria-label={sidebar.isOpen ? 'Close menu' : 'Open menu'}
                 >
                   <Menu size={24} />
                 </button>

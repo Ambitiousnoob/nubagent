@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Input } from '../UI/Input.jsx';
 import { Button } from '../UI/Button.jsx';
 import { useSettingsStore } from '../../store/useSettingsStore.js';
@@ -10,7 +10,7 @@ import { Key, Eye, EyeOff, Check, Save } from 'lucide-react';
  * API key management form
  */
 export function ApiKeyForm() {
-  const { apiKey, apiKeys, setApiKey, removeApiKey } = useSettingsStore();
+  const { setApiKey, removeApiKey, getApiKey } = useSettingsStore();
   const { success, error } = useToast();
   const [showKey, setShowKey] = useState(false);
   const [inputValue, setInputValue] = useState('');
@@ -23,7 +23,13 @@ export function ApiKeyForm() {
     { id: 'google', label: 'Google' },
   ];
 
-  const hasKey = Boolean(apiKeys[provider] || (provider === 'default' && apiKey));
+  const activeKey = getApiKey(provider);
+  const hasKey = Boolean(activeKey);
+
+  useEffect(() => {
+    setShowKey(false);
+    setInputValue('');
+  }, [provider]);
 
   const handleSave = () => {
     if (!inputValue.trim()) {
@@ -76,7 +82,7 @@ export function ApiKeyForm() {
         <div className="api-key-form__existing">
           <div className="api-key-form__key-display">
             <span className="api-key-form__key-masked">
-              {maskKey(apiKeys[provider] || apiKey)}
+              {maskKey(activeKey)}
             </span>
             <button
               className="api-key-form__key-toggle"
@@ -88,7 +94,7 @@ export function ApiKeyForm() {
           </div>
           {showKey && (
             <div className="api-key-form__key-visible">
-              {apiKeys[provider] || apiKey}
+              {activeKey}
             </div>
           )}
           <div className="api-key-form__actions">

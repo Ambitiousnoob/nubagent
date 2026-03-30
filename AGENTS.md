@@ -35,6 +35,21 @@
 - Functions are stateless; persist memory in the database (`agent_memory` table) and keep secrets out of client bundles.
 
 ## Agent-Specific Notes
+- Project-scoped Codex agents live in `.codex/agents/`; route work to the smallest matching owner and use `SUBAGENTS.md` as the ownership map.
+- Treat `src/SearchEngine.jsx` as the active product surface and `src/ai.jsx` as legacy unless a task is explicitly about migration or retirement.
 - Default model: `gemini-1.5-flash` via Google, branded as “gemini-3-flash”.
-- Rate limiting uses a mutex queue; avoid spawning parallel API calls unless needed.
+- Rate limiting uses a mutex queue; dedicated ownership does not imply unbounded parallel API calls.
 - Emit detailed logs for tool calls and model invocations; call tools only when necessary to answer the request.
+- Assign a dedicated subagent owner to every meaningful work slice, including small independent parts (single helper updates, isolated validations, narrow doc edits).
+- In the active research flow, split leaf ownership across query planning, attachment analysis, search dispatch, ranking, fetching, evidence packaging, synthesis, citation auditing, and session persistence.
+- Define write ownership before implementation: each subagent should have a bounded file or module scope and a concrete deliverable.
+- Avoid overlapping file edits across subagents unless explicitly coordinated by the orchestrator.
+- Keep micro-slices independent where possible; merge through orchestrator review rather than shared live editing.
+
+## Subagent Delegation Policy
+- Before touching code or docs, consult `SUBAGENTS.md`; that file contains the current company structure and dictates how the orchestrator parcels work.
+- Keep `SUBAGENTS.md` aligned with the executable project-scoped agent definitions in `.codex/agents/`.
+- Treat only the agent names listed in `SUBAGENTS.md` as canonical routing targets.
+- Translate each request into the smallest coherent work unit that still delivers value (e.g., a helper function, a validation rule, a doc paragraph) and assign it to a named subagent before editing.
+- Be pragmatic: if a tiny change is tightly coupled to other updates, group them under the same owner rather than splitting hairs; the goal is clarity, not needless fragmentation.
+- Record the owner and scope in your working notes so the orchestrator can verify each subagent stayed within bounds.
