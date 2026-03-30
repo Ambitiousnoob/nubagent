@@ -42,6 +42,7 @@
 - Emit detailed logs for tool calls and model invocations; call tools only when necessary to answer the request.
 - Assign a dedicated subagent owner to every meaningful work slice, including small independent parts (single helper updates, isolated validations, narrow doc edits).
 - In the active research flow, split leaf ownership across query planning, attachment analysis, search dispatch, ranking, fetching, evidence packaging, synthesis, citation auditing, and session persistence.
+- When a task depends on external facts, fetched evidence, or user-facing research output, add the verifier category before finalization: `nub_claim_verifier`, `nub_citation_verifier`, `nub_contradiction_verifier`, and `nub_uncertainty_verifier`, with `nub_answer_verification_orchestrator` coordinating the gate when multiple verifier lanes are active.
 - Define write ownership before implementation: each subagent should have a bounded file or module scope and a concrete deliverable.
 - Avoid overlapping file edits across subagents unless explicitly coordinated by the orchestrator.
 - Keep micro-slices independent where possible; merge through orchestrator review rather than shared live editing.
@@ -50,6 +51,8 @@
 - Before touching code or docs, consult `SUBAGENTS.md`; that file contains the current company structure and dictates how the orchestrator parcels work.
 - Keep `SUBAGENTS.md` aligned with the executable project-scoped agent definitions in `.codex/agents/`.
 - Treat only the agent names listed in `SUBAGENTS.md` as canonical routing targets.
+- When work is expressed as discrete points, categories, or tracks, spawn the needed subagents per point, wait for all of them, and summarize the result for each point.
+- When the task involves preventing hallucinations or validating externally grounded output, run a multi-verifier pass instead of a single generic review: claim support, citation integrity, contradiction surfacing, and uncertainty calibration should each have a dedicated verifier owner.
 - Translate each request into the smallest coherent work unit that still delivers value (e.g., a helper function, a validation rule, a doc paragraph) and assign it to a named subagent before editing.
 - Be pragmatic: if a tiny change is tightly coupled to other updates, group them under the same owner rather than splitting hairs; the goal is clarity, not needless fragmentation.
 - Record the owner and scope in your working notes so the orchestrator can verify each subagent stayed within bounds.

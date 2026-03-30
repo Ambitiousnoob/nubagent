@@ -28,6 +28,23 @@ Use these agents to define scope and sequencing before implementation:
 - `.codex/agents/nub_answer_verification_orchestrator.toml`
 - `.codex/agents/nub_release_ops.toml`
 
+## Verifier Category
+
+Use these agents as the hallucination-prevention stack before externally grounded answers are trusted:
+
+- `.codex/agents/nub_answer_verification_orchestrator.toml`
+  Scope: coordinates the verifier swarm, blocks answer finalization when verification coverage is incomplete, and decides which verifier lanes must rerun.
+- `.codex/agents/nub_fetched_info_verifier.toml`
+  Scope: verification that fetched pages, excerpts, evidence blocks, and citation targets actually support the facts NubAgent plans to synthesize or present.
+- `.codex/agents/nub_claim_verifier.toml`
+  Scope: verifies that each material factual claim in a draft has explicit evidence support and flags unsupported or overreaching statements.
+- `.codex/agents/nub_citation_verifier.toml`
+  Scope: checks citation integrity, excerpt-to-claim alignment, citation drift, and weak-source leakage into high-confidence narrative.
+- `.codex/agents/nub_contradiction_verifier.toml`
+  Scope: searches for omitted counterevidence, disagreement, unresolved caveats, and false-consensus wording before answer finalization.
+- `.codex/agents/nub_uncertainty_verifier.toml`
+  Scope: calibrates uncertainty language, confidence statements, residual ambiguity, and strength-of-evidence framing so the answer does not overclaim.
+
 ## Decision Support Ownership
 
 - `.codex/agents/nub_competitive_analyst.toml`
@@ -36,8 +53,6 @@ Use these agents to define scope and sequencing before implementation:
   Scope: dataset, metric, pipeline, and quantitative evidence research used to support product, architecture, and operational decisions.
 - `.codex/agents/nub_docs_researcher.toml`
   Scope: documentation-backed verification of external APIs, framework behavior, version differences, defaults, and migration caveats.
-- `.codex/agents/nub_fetched_info_verifier.toml`
-  Scope: verification that fetched pages, excerpts, evidence blocks, and citation targets actually support the facts NubAgent plans to synthesize or present.
 - `.codex/agents/nub_research_analyst.toml`
   Scope: broader technical investigations, design questions, and implementation-approach research when no narrower decision-support owner is a better fit.
 - `.codex/agents/nub_search_specialist.toml`
@@ -92,8 +107,6 @@ Use these as the default owners for the live search-first product surface:
 
 - `.codex/agents/nub_answer_verification_orchestrator.toml`
   Scope: enforcing that fetched-evidence or docs verification happens before any user-facing answer is finalized.
-- `.codex/agents/nub_fetched_info_verifier.toml`
-  Scope: fetched-evidence validation, claim-to-source support checks, contradiction surfacing, and weak-evidence filtering before synthesis or user-facing answer claims.
 - `.codex/agents/nub_test_engineer.toml`
   Scope: tests, verification commands, regression coverage.
 - `.codex/agents/nub_code_reviewer.toml`
@@ -120,9 +133,9 @@ For `src/SearchEngine.jsx`, default to these micro-owners:
 
 Even when a request changes only a tiny piece of `src/SearchEngine.jsx`, route it to the matching micro-owner instead of a generic frontend agent.
 
-When the touched path includes fetched excerpts, evidence blocks, or citation support that need factual validation before answer text is trusted, add `nub_fetched_info_verifier` as the verification owner after the fetch or pipeline owner finishes.
+When the touched path includes fetched excerpts, evidence blocks, or citation support that need factual validation before answer text is trusted, add the verifier category after the fetch or pipeline owner finishes. At minimum, use `nub_claim_verifier` and `nub_citation_verifier`; add `nub_contradiction_verifier` and `nub_uncertainty_verifier` when the answer presents synthesis or recommendations.
 
-When the task includes producing or approving a user-facing answer from fetched information, add `nub_answer_verification_orchestrator` to enforce that the verification pass happens before answer finalization.
+When the task includes producing or approving a user-facing answer from fetched information, add `nub_answer_verification_orchestrator` to enforce that the verifier lanes complete before answer finalization.
 
 ## Micro-Scope Assignment Protocol
 
@@ -142,6 +155,7 @@ Do not allow overlapping edits unless the orchestrator explicitly coordinates th
 2. Architecture and placement: the system architect confirms boundaries when the change crosses surfaces.
 3. Micro-assignment: each touched part gets a dedicated owner from `.codex/agents/`.
 4. Implementation: owners edit only within their bounded scope.
-5. Answer verification gate: `nub_answer_verification_orchestrator` ensures fetched-evidence or docs verification runs before user-facing answer finalization.
-6. Verification: test and review agents validate the merged result.
-7. Docs and release: update docs and deploy notes when behavior changes.
+5. Verifier gate: `nub_claim_verifier`, `nub_citation_verifier`, `nub_contradiction_verifier`, and `nub_uncertainty_verifier` verify support, citation integrity, disagreement, and calibration for externally grounded output.
+6. Answer verification orchestration: `nub_answer_verification_orchestrator` ensures the verifier stack is complete before user-facing answer finalization.
+7. Verification: test and review agents validate the merged result.
+8. Docs and release: update docs and deploy notes when behavior changes.

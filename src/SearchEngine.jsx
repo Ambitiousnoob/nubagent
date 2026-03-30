@@ -1,8 +1,17 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import Company, { prepareSearchQuery, finalizeResearchAnswer } from "./lib/index.js";
 import { buildAttributedSourcesFromEvidence, findSourceForCitation, getDisplaySourceNumber } from "./lib/citations.js";
-import { buildSearchQueries } from "./lib/searchPlanner.js";
-import { saveSession, getSessionById } from "./lib/library.js";
+import { buildSessionShareUrl, getSavedSessions, promptToCopySessionUrl, saveSession } from "./lib/library.js";
+import {
+    PLANNING_STEPS,
+    SUBAGENT_STAGE_LABELS,
+    compileResearchPlan,
+    countSubagentAssignments,
+    formatSubagentStatus,
+    summarizeDag,
+    summarizeSubagents,
+} from "./lib/researchOrchestration.js";
+import { invokeResearchRuntime, sendResearchControl } from "./lib/researchClient.js";
 import Library from "./Library.jsx";
 
 const CHAT_API = "/api/chat";
@@ -22,160 +31,8 @@ const MAX_TOTAL_ATTACHMENT_CHARS = 32000;
 const MAX_IMAGE_UPLOAD_BYTES = 8 * 1024 * 1024;
 const TEXT_FILE_NAME_RE = /\.(txt|md|markdown|json|csv|js|mjs|cjs|ts|jsx|tsx|py|rb|go|rs|java|c|h|cpp|hpp|html|css|scss|sass|xml|yaml|yml|toml|ini|env|log)$/i;
 const IMAGE_FILE_NAME_RE = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
-const RESEARCH_SUBAGENT_SPECS = Object.freeze({
-    queryPlanner: {
-        label: "Query Planner",
-        scope: "query cleanup and variant expansion",
-    },
-    attachmentAnalyst: {
-        label: "Attachment Analyst",
-        scope: "upload digestion and attachment evidence prep",
-    },
-    searchDispatcher: {
-        label: "Search Dispatcher",
-        scope: "search fan-out across query variants",
-    },
-    sourceRanker: {
-        label: "Source Ranker",
-        scope: "dedupe and lexical RAG ordering",
-    },
-    fetchCoordinator: {
-        label: "Fetch Coordinator",
-        scope: "bounded page reads and skip handling",
-    },
-    evidenceCurator: {
-        label: "Evidence Curator",
-        scope: "evidence blocks and source indexing",
-    },
-    draftSynthesizer: {
-        label: "Draft Synthesizer",
-        scope: "chunk-level evidence digests",
-    },
-    answerComposer: {
-        label: "Answer Composer",
-        scope: "final answer merge",
-    },
-    citationAuditor: {
-        label: "Citation Auditor",
-        scope: "citation-to-source attribution",
-    },
-    sessionArchivist: {
-        label: "Session Archivist",
-        scope: "session library persistence",
-    },
-});
-const SUBAGENT_STAGE_LABELS = Object.freeze({
-    queryPlanner: "Planning & query decomposition",
-    attachmentAnalyst: "Attachment handling",
-    searchDispatcher: "Search dispatch",
-    sourceRanker: "Ranking & dedupe",
-    fetchCoordinator: "Fetch coordination",
-    evidenceCurator: "Evidence distillation",
-    draftSynthesizer: "Draft synthesis",
-    answerComposer: "Final synthesis",
-    citationAuditor: "Citation stewardship",
-    sessionArchivist: "Session persistence",
-});
 
 const createId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-
-const pluralize = (count, singular, plural = `${singular}s`) => (
-    `${count} ${count === 1 ? singular : plural}`
-);
-
-const createSubagentDescriptor = (id, options = {}) => {
-    const spec = RESEARCH_SUBAGENT_SPECS[id];
-    if (!spec) return null;
-
-    return {
-        id,
-        label: spec.label,
-        scope: spec.scope,
-        count: Math.max(1, Number(options.count) || 1),
-        detail: options.detail ? String(options.detail) : "",
-    };
-};
-
-const countSubagentAssignments = (items = []) => (
-    (Array.isArray(items) ? items : []).reduce((sum, item) => sum + Math.max(1, Number(item?.count) || 1), 0)
-);
-
-const formatSubagentDescriptor = (descriptor) => {
-    if (!descriptor?.label) return "";
-    const countPrefix = descriptor.count > 1 ? `${descriptor.count}x ` : "";
-    return `${countPrefix}${descriptor.label}${descriptor.detail ? ` (${descriptor.detail})` : ""}`;
-};
-
-const summarizeSubagents = (items = []) => (
-    (Array.isArray(items) ? items : [])
-        .map((item) => formatSubagentDescriptor(item))
-        .filter(Boolean)
-        .join("; ")
-);
-
-const formatSubagentStatus = (id, detail) => {
-    const label = RESEARCH_SUBAGENT_SPECS[id]?.label;
-    return label ? `${label}: ${detail}` : detail;
-};
-
-const buildResearchSubagents = ({
-    hasQuery = false,
-    attachmentCount = 0,
-    searchCount = 0,
-    rankedSites = 0,
-    fetchedSites = 0,
-    synthesisWorkers = 0,
-    citedSources = 0,
-} = {}) => {
-    const subagents = [];
-
-    if (hasQuery) {
-        subagents.push(createSubagentDescriptor("queryPlanner", {
-            detail: pluralize(Math.max(searchCount, 1), "query variant"),
-        }));
-    }
-
-    if (attachmentCount) {
-        subagents.push(createSubagentDescriptor("attachmentAnalyst", {
-            detail: pluralize(attachmentCount, "attachment"),
-        }));
-    }
-
-    if (hasQuery) {
-        subagents.push(createSubagentDescriptor("searchDispatcher", {
-            detail: pluralize(Math.max(searchCount, 1), "search worker"),
-        }));
-        subagents.push(createSubagentDescriptor("sourceRanker", {
-            detail: rankedSites > 0 ? pluralize(rankedSites, "ranked site") : "dedupe queue",
-        }));
-        subagents.push(createSubagentDescriptor("fetchCoordinator", {
-            detail: fetchedSites > 0 ? pluralize(fetchedSites, "fetched page") : "fetch queue",
-        }));
-        subagents.push(createSubagentDescriptor("evidenceCurator", {
-            detail: fetchedSites > 0 ? pluralize(fetchedSites, "evidence block") : "evidence pack",
-        }));
-        subagents.push(createSubagentDescriptor("draftSynthesizer", {
-            count: Math.max(synthesisWorkers, 1),
-            detail: "parallel evidence digests",
-        }));
-        subagents.push(createSubagentDescriptor("answerComposer", {
-            detail: "final cited answer",
-        }));
-        subagents.push(createSubagentDescriptor("citationAuditor", {
-            detail: citedSources > 0 ? pluralize(citedSources, "cited source") : "source carry-forward",
-        }));
-    } else {
-        subagents.push(createSubagentDescriptor("answerComposer", {
-            detail: "attachment-only answer",
-        }));
-    }
-
-    subagents.push(createSubagentDescriptor("sessionArchivist", {
-        detail: "saved session record",
-    }));
-
-    return subagents.filter(Boolean);
-};
 
 const getDomain = (url) => {
     try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
@@ -307,7 +164,124 @@ const postJson = async (url, payload, signal) => {
     return response.json();
 };
 
-const buildSwarmQueries = (query) => buildSearchQueries(query, { maxQueries: SEARCH_SWARM_SIZE });
+const inferDepthPreference = (query) => {
+    const normalized = normalizeTextBlock(query).toLowerCase();
+    if (!normalized) return "balanced";
+    if (/\b(quick|brief|fast|speed|high level|high-level|tl;dr)\b/.test(normalized)) return "speed";
+    if (/\b(deep|deeper|thorough|exhaustive|comprehensive|detailed|deep dive)\b/.test(normalized)) return "deep";
+    return "balanced";
+};
+
+const extractJsonObject = (text = "") => {
+    const raw = String(text || "").trim();
+    if (!raw) return null;
+
+    const fencedMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    const candidate = fencedMatch?.[1] || raw;
+    const start = candidate.indexOf("{");
+    const end = candidate.lastIndexOf("}");
+    if (start < 0 || end <= start) return null;
+
+    try {
+        return JSON.parse(candidate.slice(start, end + 1));
+    } catch {
+        return null;
+    }
+};
+
+const clampScore = (value, fallback = 0.5) => {
+    const resolved = Number(value);
+    if (!Number.isFinite(resolved)) return fallback;
+    return Math.max(0, Math.min(1, resolved));
+};
+
+const parseTribunalResponse = (text = "") => {
+    const parsed = extractJsonObject(text);
+    if (!parsed || typeof parsed !== "object") return null;
+    const critics = parsed.critics && typeof parsed.critics === "object" ? parsed.critics : {};
+    const targetedDimension = String(
+        parsed.targeted_dimension
+        || parsed.targetedDimension
+        || parsed.focus
+        || "",
+    ).trim();
+
+    return {
+        internal_consistency: clampScore(
+            critics.internal_consistency ?? critics.internalConsistency ?? parsed.internal_consistency ?? parsed.internalConsistency,
+            0.72,
+        ),
+        coverage: clampScore(
+            critics.coverage ?? parsed.coverage,
+            0.72,
+        ),
+        user_goal_alignment: clampScore(
+            critics.user_goal_alignment ?? critics.userGoalAlignment ?? parsed.user_goal_alignment ?? parsed.userGoalAlignment,
+            0.74,
+        ),
+        targeted_dimension: targetedDimension || "coverage",
+        rewrite_brief: String(parsed.rewrite_brief || parsed.rewriteBrief || parsed.guidance || "").trim(),
+    };
+};
+
+const formatDimensionLabel = (value = "") => (
+    String(value || "").replace(/_/g, " ").trim() || "coverage"
+);
+
+const buildResearchPlanBrief = (plan = {}) => {
+    const lines = [
+        `Framework: Research Framework v${plan.frameworkVersion || "3.0"}`,
+        `Domain: ${plan.domain?.label || "General Research"}${plan.domain?.taxonomy ? ` (${plan.domain.taxonomy})` : ""}`,
+        `Scope: ${plan.scope?.label || "Broad Research"}`,
+        `Output mode: ${plan.outputMode?.label || "State-of-the-Field"}`,
+        `Pareto mode: ${plan.pareto?.mode || "balanced"}`,
+        `Search lanes: ${Math.max(1, Number(plan.searchQueries?.length) || 0)}`,
+        `Counter-hypotheses: ${(plan.queryMatrix?.counterHypotheses || []).length}`,
+        `Safety checks: ${plan.safety?.activeCount || 0}`,
+    ];
+
+    const ambiguousAxes = Array.isArray(plan.intentConfidence?.ambiguousAxes)
+        ? plan.intentConfidence.ambiguousAxes.filter(Boolean)
+        : [];
+    if (ambiguousAxes.length) {
+        lines.push(`Ambiguous axes: ${ambiguousAxes.join(", ")}`);
+    }
+
+    if (plan.continuity?.active && plan.continuity?.overlap) {
+        lines.push(`Session continuity overlap: ${Math.round(plan.continuity.overlap * 100)}%`);
+    }
+
+    return lines.join("\n");
+};
+
+const buildOutputModeInstruction = (outputMode = {}) => {
+    switch (outputMode?.id) {
+    case "tutorial":
+        return "Organize the response as a tutorial with setup, core concepts, and practical application guidance.";
+    case "controversy_map":
+        return "Organize the response as a controversy map with the dominant view, strongest counter-view, and unresolved tensions.";
+    case "gap_analysis":
+        return "Organize the response as a gap analysis with current consensus, missing evidence, and the highest-value next questions.";
+    case "replication_crisis_report":
+        return "Organize the response as a replication crisis report with reproducibility risks, failed replications, and robustness signals.";
+    case "foundational_review":
+        return "Organize the response as a foundational review with historical context, seminal ideas, and the current field position.";
+    case "decision_brief":
+        return "Organize the response as a decision brief with recommendation, tradeoffs, risk profile, confidence, and reversibility.";
+    case "policy_recommendation":
+        return "Organize the response as a policy recommendation with recommendation, stakeholder impact, risk profile, and implementation caveats.";
+    case "engineering_action_plan":
+        return "Organize the response as an engineering action plan with recommendation, rollout steps, risk profile, and reversibility.";
+    default:
+        return "Organize the response as a state-of-the-field briefing with consensus, disagreement, evidence quality, and practical takeaways.";
+    }
+};
+
+const buildContinuityBlock = (continuity = {}) => (
+    continuity?.active && continuity?.summary
+        ? `Prior session continuity (${Math.round((continuity.overlap || 0) * 100)}% overlap):\n${continuity.summary}`
+        : ""
+);
 
 const dedupeSources = (items = [], limit = SOURCE_TARGET) => {
     return Company.rag.mergeSourcesByCanonicalUrl(items, { limit });
@@ -379,6 +353,75 @@ const buildSessionAttachments = (attachments = []) => (
         textContent: attachment.kind === "text" ? String(attachment.textContent || "") : "",
     }))
 );
+
+const buildPersistedAttachments = (attachments = []) => (
+    attachments.map((attachment) => ({
+        id: attachment.id || createId(),
+        name: attachment.name || "attachment",
+        kind: attachment.kind === "image" ? "image" : "text",
+        size: Number(attachment.size) || 0,
+        mimeType: String(attachment.mimeType || ""),
+        truncated: Boolean(attachment.truncated),
+    }))
+);
+
+const hydrateSavedSession = (session) => {
+    const query = String(session?.query || "").trim();
+    const heading = String(session?.heading || query || "Saved Session").trim();
+    const body = String(session?.body || "").trim();
+
+    return {
+        id: session?.id || createId(),
+        query: query || heading,
+        messages: [
+            {
+                id: createId(),
+                role: "user",
+                text: query || heading,
+                attachments: buildSessionAttachments(session?.attachments || []),
+            },
+            {
+                id: createId(),
+                role: "bot",
+                heading,
+                body: body || heading,
+                sources: Array.isArray(session?.sources) ? session.sources : [],
+                showPlanning: false,
+                showSearching: false,
+                searchDone: true,
+                researchMeta: session?.researchMeta,
+            },
+        ],
+    };
+};
+
+const buildSavedSessionRecord = ({
+    id,
+    query,
+    heading = "",
+    body = "",
+    sources = [],
+    attachments = [],
+    researchMeta = null,
+} = {}) => ({
+    id,
+    query: String(query || ""),
+    heading: String(heading || ""),
+    body: String(body || ""),
+    sources: Array.isArray(sources) ? sources : [],
+    attachments: buildPersistedAttachments(attachments),
+    researchMeta: researchMeta && typeof researchMeta === "object" ? researchMeta : null,
+});
+
+const clearSharedSessionUrl = () => {
+    if (typeof window === "undefined") return;
+
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("session")) return;
+
+    url.searchParams.delete("session");
+    window.history.replaceState({}, "", url.toString());
+};
 
 const analyzeAttachments = async (query, attachments, signal) => {
     if (!attachments.length) return "";
@@ -574,13 +617,49 @@ const buildCoverageRows = (query, researchMeta = {}, sources = []) => {
     const multiQuerySources = sources.filter((source) => Number(source?.queryHitCount || 0) > 1).length;
     const subagents = Array.isArray(researchMeta?.subagents) ? researchMeta.subagents.filter(Boolean) : [];
     const dedicatedSubagentCount = countSubagentAssignments(subagents);
+    const dagSummary = String(researchMeta?.dagSummary || summarizeDag(researchMeta?.dag || {})).trim();
+    const ambiguousAxes = Array.isArray(researchMeta?.intentConfidence?.ambiguousAxes)
+        ? researchMeta.intentConfidence.ambiguousAxes.filter(Boolean)
+        : [];
+    const tribunal = researchMeta?.tribunal || null;
+    const convergence = researchMeta?.convergence || null;
     const rows = [
+        ...(researchMeta?.frameworkVersion
+            ? [{
+                label: "Framework",
+                spec: `Research Framework v${researchMeta.frameworkVersion} with compiled DAG orchestration`,
+            }]
+            : []),
         {
             label: "Search mode",
             spec: normalizedQuery
                 ? (operatorMode ? "Operator-guided web research with targeted query expansion" : "Natural-language web research with query expansion")
                 : "Attachment-only analysis",
         },
+        ...((researchMeta?.domain?.label || researchMeta?.scope?.label || researchMeta?.outputMode?.label)
+            ? [{
+                label: "Intent decomposition",
+                spec: `Domain: ${researchMeta?.domain?.label || "General Research"}; scope: ${researchMeta?.scope?.label || "Broad Research"}; output: ${researchMeta?.outputMode?.label || "State-of-the-Field"}${ambiguousAxes.length ? `; low-confidence axes: ${ambiguousAxes.join(", ")}` : ""}`,
+            }]
+            : []),
+        ...(researchMeta?.pareto?.mode
+            ? [{
+                label: "Pareto profile",
+                spec: `${researchMeta.pareto.mode} mode${researchMeta?.pareto?.explanation ? `; ${researchMeta.pareto.explanation}` : ""}`,
+            }]
+            : []),
+        ...(researchMeta?.continuity?.active
+            ? [{
+                label: "Session continuity",
+                spec: `Linked prior session context into Phase 1 with ${Math.round((researchMeta.continuity.overlap || 0) * 100)}% overlap`,
+            }]
+            : []),
+        ...(dagSummary
+            ? [{
+                label: "Pipeline DAG",
+                spec: dagSummary,
+            }]
+            : []),
         {
             label: "Query workers",
             spec: `${Math.max(queryCount, normalizedQuery ? 1 : 0)} search path${Math.max(queryCount, normalizedQuery ? 1 : 0) === 1 ? "" : "s"} executed`,
@@ -617,7 +696,7 @@ const buildCoverageRows = (query, researchMeta = {}, sources = []) => {
             : []),
         {
             label: "Synthesis",
-            spec: `${Math.max(synthesisWorkers, 1)} summarization worker${Math.max(synthesisWorkers, 1) === 1 ? "" : "s"} merged into one final response`,
+            spec: `${Math.max(synthesisWorkers, 1)} synthesis worker${Math.max(synthesisWorkers, 1) === 1 ? "" : "s"} used across position mapping, debate, and narrative compilation`,
         },
     ];
 
@@ -632,6 +711,27 @@ const buildCoverageRows = (query, researchMeta = {}, sources = []) => {
         rows.push({
             label: "Dedicated subagents",
             spec: `${dedicatedSubagentCount} dedicated subagent${dedicatedSubagentCount === 1 ? "" : "s"}: ${summarizeSubagents(subagents)}`,
+        });
+    }
+
+    if (researchMeta?.safety?.activeCount) {
+        rows.push({
+            label: "Safety & ethics",
+            spec: `${researchMeta.safety.activeCount} active check${researchMeta.safety.activeCount === 1 ? "" : "s"} spanning dual-use, funding conflicts, predatory journals, and statistical manipulation`,
+        });
+    }
+
+    if (tribunal) {
+        rows.push({
+            label: "Quality tribunal",
+            spec: `${tribunal.refinement_cycles}/${tribunal.refinement_budget} cycle${tribunal.refinement_cycles === 1 ? "" : "s"}; targeted ${formatDimensionLabel(tribunal.targeted_dimension)}; critics: consistency ${tribunal.critics?.internal_consistency ?? "n/a"}, coverage ${tribunal.critics?.coverage ?? "n/a"}, alignment ${tribunal.critics?.user_goal_alignment ?? "n/a"}`,
+        });
+    }
+
+    if (convergence) {
+        rows.push({
+            label: "Convergence",
+            spec: `stability ${convergence.stability_score}; coverage delta ${convergence.evidence_coverage_delta}; residual uncertainty ${convergence.residual_uncertainty}; stop condition ${formatDimensionLabel(convergence.stop_condition)}`,
         });
     }
 
@@ -738,12 +838,7 @@ function SearchingCard({
     );
 }
 
-const STEPS = [
-    ["Assigning", "micro-subagent owners to each research part"],
-    ["Decomposing", "query paths for dedicated search dispatchers"],
-    ["Reserving", "fetch and evidence curators for each source lane"],
-    ["Preparing", "draft synthesizers and final citation merge owners"],
-];
+const STEPS = PLANNING_STEPS;
 
 function PlanningCard({ done }) {
     const [visible, setVisible] = useState(0);
@@ -764,7 +859,7 @@ function PlanningCard({ done }) {
                 <span className="scard__icon">💡</span>
                 <div>
                     <div className="scard__title">Research Planning</div>
-                    <div className="scard__sub">Allocating dedicated subagents</div>
+                    <div className="scard__sub">Compiling a dynamic research DAG</div>
                 </div>
             </div>
             <div className="scard__steps">
@@ -940,23 +1035,70 @@ function LibertyResultCard({ query, heading, body, sources = [], searchCount = 0
     const summary = buildResultSummary(body);
     const points = extractHighlightPoints(body, 4);
     const topDomains = [...new Set(visibleSources.map((source) => getDomain(source.url)).filter(Boolean))];
+    const modeLabel = researchMeta?.outputMode?.label || "State-of-the-Field";
+    const paretoLabel = researchMeta?.pareto?.mode || "balanced";
+    const convergenceLabel = researchMeta?.convergence?.stability_score
+        ? `Stability ${researchMeta.convergence.stability_score}`
+        : null;
+    const frameworkLabel = researchMeta?.frameworkVersion ? `Framework v${researchMeta.frameworkVersion}` : null;
 
     return (
         <div className="la-result">
             <div className="la-header">
-                <div className="la-logo">✳</div>
-                <span className="la-brand">nub-agent</span>
-                <span className="la-badge">{sources.length} Source{sources.length === 1 ? "" : "s"}</span>
+                <div className="la-header-main">
+                    <div className="la-logo">✳</div>
+                    <div className="la-header-copy">
+                        <span className="la-brand">nub-agent</span>
+                        <span className="la-kicker">Research synthesis</span>
+                    </div>
+                </div>
+                <div className="la-header-badges">
+                    {frameworkLabel ? <span className="la-badge">{frameworkLabel}</span> : null}
+                    <span className="la-badge">{modeLabel}</span>
+                    <span className="la-badge">{sources.length} Source{sources.length === 1 ? "" : "s"}</span>
+                </div>
             </div>
 
             <div className="la-body">
-                <div className="la-query">Query</div>
-                <div className="la-question">{renderInlineMarkup(query || heading, sources)}</div>
+                <div className="la-hero">
+                    <div className="la-hero-copy">
+                        <div className="la-query">Research Question</div>
+                        <div className="la-question">{renderInlineMarkup(query || heading, sources)}</div>
+                    </div>
+                    <div className="la-hero-stats">
+                        <div className="la-stat">
+                            <span className="la-stat__label">Mode</span>
+                            <strong>{modeLabel}</strong>
+                        </div>
+                        <div className="la-stat">
+                            <span className="la-stat__label">Search Lanes</span>
+                            <strong>{Math.max(searchCount, 1)}</strong>
+                        </div>
+                        <div className="la-stat">
+                            <span className="la-stat__label">Pareto</span>
+                            <strong>{paretoLabel}</strong>
+                        </div>
+                        {convergenceLabel ? (
+                            <div className="la-stat">
+                                <span className="la-stat__label">Convergence</span>
+                                <strong>{convergenceLabel}</strong>
+                            </div>
+                        ) : null}
+                    </div>
+                </div>
                 <div className="la-divider" />
 
-                <div className="la-summary-label">AI Summary</div>
+                <div className="la-summary-label">Synthesized Answer</div>
                 <div className="la-summary-title">{renderInlineMarkup(heading, sources)}</div>
                 {summary ? <div className="la-summary-text">{renderInlineMarkup(summary, sources)}</div> : null}
+
+                {topDomains.length ? (
+                    <div className="la-domain-strip">
+                        {topDomains.slice(0, 6).map((domain) => (
+                            <span key={domain} className="la-domain-pill">{domain}</span>
+                        ))}
+                    </div>
+                ) : null}
 
                 {points.length ? (
                     <div className="la-points">
@@ -1059,8 +1201,13 @@ function UserMsg({ text, attachments = [], onEdit }) {
     return (
         <div className="umsg">
             <div className="umsg__av"><span>U</span></div>
-            <div className="umsg__body">
-                <div className="umsg__name">You</div>
+            <div className="umsg__body umsg__card">
+                <div className="umsg__head">
+                    <div className="umsg__name">You</div>
+                    <div className="umsg__meta">
+                        {attachments.length ? `${attachments.length} attachment${attachments.length === 1 ? "" : "s"}` : "Research prompt"}
+                    </div>
+                </div>
                 {text ? <div className="umsg__text">{text}</div> : null}
                 <AttachmentList attachments={attachments} />
             </div>
@@ -1133,17 +1280,44 @@ function Landing({ onSearch, uploads = [], onOpenUpload, onRemoveUpload, uploadS
     };
 
     const examples = [
-        "How does quantum computing threaten modern encryption?",
-        'site:arxiv.org "retrieval augmented generation" after:2024-01-01',
-        "Best open source LLMs benchmark 2025",
-        "intitle:CVE Apache Log4j critical vulnerability",
+        {
+            label: "Threat analysis",
+            detail: "Cross-check a fast-moving technical risk with cited evidence.",
+            query: "How does quantum computing threaten modern encryption?",
+        },
+        {
+            label: "Operator search",
+            detail: "Use web operators to force a narrower evidence set.",
+            query: 'site:arxiv.org "retrieval augmented generation" after:2024-01-01',
+        },
+        {
+            label: "Market scan",
+            detail: "Survey the current field and surface the strongest contenders.",
+            query: "Best open source LLMs benchmark 2025",
+        },
+        {
+            label: "Incident research",
+            detail: "Investigate a vulnerability with prioritised source retrieval.",
+            query: "intitle:CVE Apache Log4j critical vulnerability",
+        },
+    ];
+    const capabilities = [
+        "Compiled research DAG",
+        "Verifier swarm and tribunal scoring",
+        "Streaming checkpoints with live steering",
     ];
 
     return (
         <div className="land">
+            <div className="land__eyebrow">Research Framework v3.1</div>
             <div className="land__logo"><span className="land__star">✳</span><span>nub-agent</span></div>
-            <h1 className="land__h1">What do you want to know?</h1>
-            <p className="land__sub">AI research with real citations, dork operators, and deep web reading.</p>
+            <h1 className="land__h1">Research the web like an operator, not a chatbot.</h1>
+            <p className="land__sub">Compiled search lanes, deep reading, verifier passes, and cited synthesis in one surface built for serious investigation.</p>
+            <div className="land__capabilities">
+                {capabilities.map((capability) => (
+                    <span key={capability} className="land__cap">{capability}</span>
+                ))}
+            </div>
             <form className="land__form" onSubmit={submit}>
                 <button type="button" className="land__attach" onClick={onOpenUpload} title="Attach files">📎</button>
                 <input
@@ -1166,14 +1340,39 @@ function Landing({ onSearch, uploads = [], onOpenUpload, onRemoveUpload, uploadS
                     {uploadStatus ? <div className="upload-status">{uploadStatus}</div> : null}
                 </div>
             )}
-            <div className="land__exs">
-                {examples.map((example) => <button key={example} className="land__ex" onClick={() => onSearch(example)}>{example}</button>)}
+            <div className="land__panels">
+                <div className="land__panel">
+                    <div className="land__panel-head">
+                        <div className="land__panel-eyebrow">Examples</div>
+                        <div className="land__panel-title">Start from a strong brief</div>
+                    </div>
+                    <div className="land__exs">
+                        {examples.map((example) => (
+                            <button key={example.query} className="land__ex" onClick={() => onSearch(example.query)}>
+                                <span className="land__ex-label">{example.label}</span>
+                                <span className="land__ex-detail">{example.detail}</span>
+                                <span className="land__ex-query">{example.query}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <div className="land__panel land__panel--summary">
+                    <div className="land__panel-head">
+                        <div className="land__panel-eyebrow">Workflow</div>
+                        <div className="land__panel-title">What the runtime does</div>
+                    </div>
+                    <div className="land__flow">
+                        <div className="land__flow-step"><span>01</span><strong>Decompose intent into domain, scope, and output mode.</strong></div>
+                        <div className="land__flow-step"><span>02</span><strong>Compile a dynamic search and evidence DAG.</strong></div>
+                        <div className="land__flow-step"><span>03</span><strong>Synthesize, verify, and stream checkpoints as they complete.</strong></div>
+                    </div>
+                </div>
             </div>
         </div>
     );
 }
 
-export default function SearchEngine() {
+export default function SearchEngine({ session = null, resetSignal = 0, onSessionLoaded } = {}) {
     const [sessions, setSessions] = useState([]);
     const [activeId, setActiveId] = useState(null);
     const [streaming, setStreaming] = useState(false);
@@ -1181,12 +1380,21 @@ export default function SearchEngine() {
     const [pendingUploads, setPendingUploads] = useState([]);
     const [uploadStatus, setUploadStatus] = useState("");
     const [showLibrary, setShowLibrary] = useState(false);
+    const [activeResearchRunId, setActiveResearchRunId] = useState("");
+    const [steeringStatus, setSteeringStatus] = useState("");
+    const [steeringBusy, setSteeringBusy] = useState(false);
+    const [steeringArea, setSteeringArea] = useState("");
+    const [steeringMode, setSteeringMode] = useState("gap_analysis");
+    const [excludedPreprints, setExcludedPreprints] = useState(false);
 
     const abortRef = useRef(null);
     const bottomRef = useRef(null);
     const inputRef = useRef(null);
     const fileInputRef = useRef(null);
     const uploadStatusTimerRef = useRef(null);
+    const steeringStatusTimerRef = useRef(null);
+    const resetSignalRef = useRef(resetSignal);
+    const sessionsRef = useRef(sessions);
 
     const active = sessions.find((session) => session.id === activeId);
     const isLanding = !active && !streaming;
@@ -1195,6 +1403,58 @@ export default function SearchEngine() {
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [sessions, streaming]);
+
+    useEffect(() => {
+        sessionsRef.current = sessions;
+    }, [sessions]);
+
+    const activateStoredSession = useCallback((savedSession) => {
+        if (!savedSession?.id) return;
+
+        abortRef.current?.abort();
+        abortRef.current = null;
+        const loadedSession = hydrateSavedSession(savedSession);
+        const shareUrl = buildSessionShareUrl(loadedSession.id);
+        setStreaming(false);
+        setSessions((previous) => {
+            const nextSessions = [
+                ...previous.filter((current) => current.id !== loadedSession.id),
+                loadedSession,
+            ];
+            sessionsRef.current = nextSessions;
+            return nextSessions;
+        });
+        setActiveId(loadedSession.id);
+        setInput("");
+        setPendingUploads([]);
+        setUploadStatus("");
+        setSteeringStatus("");
+        setSteeringArea("");
+        setSteeringMode("gap_analysis");
+        setExcludedPreprints(false);
+        setActiveResearchRunId("");
+        setShowLibrary(false);
+        if (shareUrl) {
+            window.history.replaceState({}, "", shareUrl);
+        }
+    }, []);
+
+    const resetComposer = useCallback(() => {
+        abortRef.current?.abort();
+        abortRef.current = null;
+        setStreaming(false);
+        setActiveId(null);
+        setInput("");
+        setPendingUploads([]);
+        setUploadStatus("");
+        setSteeringStatus("");
+        setSteeringArea("");
+        setSteeringMode("gap_analysis");
+        setExcludedPreprints(false);
+        setActiveResearchRunId("");
+        setShowLibrary(false);
+        clearSharedSessionUrl();
+    }, []);
 
     const setTransientUploadStatus = useCallback((value) => {
         if (uploadStatusTimerRef.current) {
@@ -1210,31 +1470,65 @@ export default function SearchEngine() {
         }
     }, []);
 
+    const setTransientSteeringStatus = useCallback((value) => {
+        if (steeringStatusTimerRef.current) {
+            clearTimeout(steeringStatusTimerRef.current);
+            steeringStatusTimerRef.current = null;
+        }
+        setSteeringStatus(value);
+        if (value) {
+            steeringStatusTimerRef.current = setTimeout(() => {
+                setSteeringStatus("");
+                steeringStatusTimerRef.current = null;
+            }, 3600);
+        }
+    }, []);
+
     useEffect(() => () => {
         if (uploadStatusTimerRef.current) clearTimeout(uploadStatusTimerRef.current);
+        if (steeringStatusTimerRef.current) clearTimeout(steeringStatusTimerRef.current);
+        abortRef.current?.abort();
+        abortRef.current = null;
     }, []);
+
+    useEffect(() => {
+        if (resetSignalRef.current === resetSignal) return;
+        resetSignalRef.current = resetSignal;
+
+        resetComposer();
+    }, [resetComposer, resetSignal]);
+
+    useEffect(() => {
+        if (!session?.id) return;
+        activateStoredSession(session);
+        onSessionLoaded?.();
+    }, [activateStoredSession, onSessionLoaded, session]);
 
     const patchLastBot = useCallback((sessionId, patch) => {
-        setSessions((previous) => previous.map((session) => {
-            if (session.id !== sessionId) return session;
-            const messages = [...session.messages];
-            let index = -1;
-            for (let i = messages.length - 1; i >= 0; i -= 1) {
-                if (messages[i].role === "bot") {
-                    index = i;
-                    break;
+        setSessions((previous) => {
+            const nextSessions = previous.map((session) => {
+                if (session.id !== sessionId) return session;
+                const messages = [...session.messages];
+                let index = -1;
+                for (let i = messages.length - 1; i >= 0; i -= 1) {
+                    if (messages[i].role === "bot") {
+                        index = i;
+                        break;
+                    }
                 }
-            }
-            if (index < 0) return session;
-            messages[index] = {
-                ...messages[index],
-                ...(typeof patch === "function" ? patch(messages[index]) : patch),
-            };
-            return { ...session, messages };
-        }));
+                if (index < 0) return session;
+                messages[index] = {
+                    ...messages[index],
+                    ...(typeof patch === "function" ? patch(messages[index]) : patch),
+                };
+                return { ...session, messages };
+            });
+            sessionsRef.current = nextSessions;
+            return nextSessions;
+        });
     }, []);
 
-    const revealAnswer = useCallback(async (sessionId, finalText, sources, signal, extraPatch = {}) => {
+    const revealAnswer = useCallback(async (sessionId, sessionQuery, finalText, sources, signal, extraPatch = {}) => {
         const { heading, body } = extractAnswerParts(finalText);
         patchLastBot(sessionId, {
             heading,
@@ -1274,19 +1568,41 @@ export default function SearchEngine() {
         });
 
         // Auto-save session to library
-        const session = sessions.find(s => s.id === sessionId);
-        if (session) {
-            const researchMeta = extraPatch?.researchMeta || {};
-            saveSession({
-                id: sessionId,
-                query: session.query,
-                heading,
-                body: body || heading,
-                sources,
-                researchMeta,
-            });
+        const savedSession = sessionsRef.current.find((item) => item.id === sessionId);
+        const researchMeta = extraPatch?.researchMeta || {};
+        const savedAttachments = savedSession?.messages
+            ?.find((message) => message.role === "user")
+            ?.attachments || [];
+        saveSession(buildSavedSessionRecord({
+            id: sessionId,
+            query: savedSession?.query || sessionQuery || heading,
+            heading,
+            body: body || heading,
+            sources,
+            attachments: savedAttachments,
+            researchMeta,
+        }));
+    }, [patchLastBot]);
+
+    const queueSteeringCommand = useCallback(async (control) => {
+        if (!streaming || !activeResearchRunId || !control?.type) return;
+        setSteeringBusy(true);
+
+        try {
+            await sendResearchControl(activeResearchRunId, control);
+            if (control.type === "exclude_source" && normalizeTextBlock(control.sourceType || control.typeId).toLowerCase() === "preprint") {
+                setExcludedPreprints(true);
+            }
+            if (control.type === "increase_depth") {
+                setSteeringArea("");
+            }
+            setTransientSteeringStatus(`Queued ${control.type.replace(/_/g, " ")}.`);
+        } catch (error) {
+            setTransientSteeringStatus(error?.message || "Unable to queue steering control.");
+        } finally {
+            setSteeringBusy(false);
         }
-    }, [patchLastBot, sessions]);
+    }, [activeResearchRunId, setTransientSteeringStatus, streaming]);
 
     const handleFileUpload = useCallback(async (event) => {
         const files = Array.from(event.target.files || []);
@@ -1422,13 +1738,39 @@ export default function SearchEngine() {
         if ((!query && !attachments.length) || streaming) return;
 
         const sessionId = createId();
-        const complex = Boolean(query) && (query.length > 35 || /site:|filetype:|intitle:|inurl:|after:|before:/.test(query));
-        const swarmQueries = query ? buildSwarmQueries(searchQuery) : attachments.map((attachment) => attachment.name).slice(0, 4);
+        const depthPreference = inferDepthPreference(searchQuery || query);
+        const compiledPlan = compileResearchPlan({
+            query: searchQuery,
+            attachments: attachments.length,
+            savedSessions: getSavedSessions(),
+            currentSessionId: sessionId,
+            maxQueries: SEARCH_SWARM_SIZE,
+            depthPreference,
+        });
+        const swarmQueries = query
+            ? (compiledPlan.searchQueries.length ? compiledPlan.searchQueries : [searchQuery])
+            : attachments.map((attachment) => attachment.name).slice(0, 4);
         const displayQuery = query || `Analyze ${attachments.length} attached file${attachments.length > 1 ? "s" : ""}`;
         const userText = query || getAttachmentAnalysisPrompt("", attachments);
         const activityTitle = query ? "Searching the web" : "Inspecting uploads";
         const activityDoneTitle = query ? "Searched the web" : "Inspected uploads";
         const activityIcon = query ? "🌐" : "📎";
+        const researchMetaBase = {
+            attachments: attachments.length,
+            frameworkVersion: compiledPlan.frameworkVersion,
+            domain: compiledPlan.domain,
+            scope: compiledPlan.scope,
+            outputMode: compiledPlan.outputMode,
+            intentConfidence: compiledPlan.intentConfidence,
+            pareto: compiledPlan.pareto,
+            continuity: compiledPlan.continuity,
+            safety: compiledPlan.safety,
+            dag: compiledPlan.dag,
+            dagSummary: summarizeDag(compiledPlan.dag),
+            queryMatrix: compiledPlan.queryMatrix,
+            refinementBudget: compiledPlan.refinementBudget,
+            subagents: compiledPlan.subagents,
+        };
 
         const newSession = {
             id: sessionId,
@@ -1441,13 +1783,13 @@ export default function SearchEngine() {
                     heading: "",
                     body: "",
                     sources: [],
-                    showPlanning: complex,
+                    showPlanning: Boolean(query),
                     showSearching: true,
                     queries: swarmQueries,
                     searchDone: false,
                     statusText: query
-                        ? formatSubagentStatus("queryPlanner", `mapped ${swarmQueries.length} query path${swarmQueries.length === 1 ? "" : "s"}; Search Dispatcher launching workers...`)
-                        : formatSubagentStatus("attachmentAnalyst", `reading ${attachments.length} uploaded file${attachments.length > 1 ? "s" : ""}...`),
+                        ? formatSubagentStatus("cognitiveCommandLayer", `compiled a ${compiledPlan.scope.label.toLowerCase()} DAG with ${swarmQueries.length} search lane${swarmQueries.length === 1 ? "" : "s"} and ${compiledPlan.refinementBudget} tribunal cycle${compiledPlan.refinementBudget === 1 ? "" : "s"} budgeted...`)
+                        : formatSubagentStatus("statisticalClaimExtractor", `reading ${attachments.length} uploaded file${attachments.length > 1 ? "s" : ""}...`),
                     activityTitle,
                     activityDoneTitle,
                     activityIcon,
@@ -1455,252 +1797,190 @@ export default function SearchEngine() {
             ],
         };
 
-        setSessions((previous) => [...previous, newSession]);
+        setSessions((previous) => {
+            const nextSessions = [...previous, newSession];
+            sessionsRef.current = nextSessions;
+            return nextSessions;
+        });
         setActiveId(sessionId);
         setStreaming(true);
         setInput("");
         setPendingUploads([]);
         setUploadStatus("");
+        setActiveResearchRunId("");
+        setSteeringStatus("");
+        setSteeringArea("");
+        setSteeringMode("gap_analysis");
+        setExcludedPreprints(false);
+        saveSession(buildSavedSessionRecord({
+            id: sessionId,
+            query: displayQuery,
+            body: query ? "Research in progress..." : "Attachment analysis in progress...",
+            attachments,
+            researchMeta: {
+                generatedAt: new Date().toISOString(),
+                status: "in_progress",
+                searchCount: swarmQueries.length,
+                ...researchMetaBase,
+            },
+        }));
 
         abortRef.current = new AbortController();
         const { signal } = abortRef.current;
+        let runtimeRunId = "";
 
         try {
-            let attachmentDigest = "";
-            if (attachments.length) {
-                patchLastBot(sessionId, {
-                    statusText: formatSubagentStatus("attachmentAnalyst", `reading ${attachments.length} uploaded file${attachments.length > 1 ? "s" : ""}...`),
-                });
-                try {
-                    attachmentDigest = await analyzeAttachments(searchQuery, attachments, signal);
-                } catch (error) {
-                    if (!query) throw error;
-                    patchLastBot(sessionId, {
-                        statusText: formatSubagentStatus("attachmentAnalyst", `upload read failed (${error.message || "unknown error"}). Continuing with Search Dispatcher...`),
-                    });
+            const streamResearchEvent = (event) => {
+                if (!event || typeof event !== "object") return;
+                if (event.runId) {
+                    runtimeRunId = String(event.runId);
+                    setActiveResearchRunId(runtimeRunId);
                 }
-            }
 
-            if (!query) {
-                if (!attachmentDigest) {
-                    throw new Error("No readable attachment content was found.");
+                if (event.type === "status") {
+                    patchLastBot(sessionId, (current) => ({
+                        statusText: event.detail || current.statusText,
+                        researchMeta: {
+                            ...(current.researchMeta || {}),
+                            ...(event.researchMeta || {}),
+                        },
+                    }));
+                    return;
                 }
-                const researchMeta = {
-                    attachments: attachments.length,
-                    generatedAt: new Date().toISOString(),
-                    searchCount: 0,
-                    rankedSites: 0,
-                    fetchedSites: 0,
-                    synthesisWorkers: 1,
-                    subagents: buildResearchSubagents({
-                        attachmentCount: attachments.length,
-                    }),
-                };
-                await revealAnswer(sessionId, attachmentDigest, [], signal, {
-                    researchMeta,
-                });
-                return;
-            }
 
-            patchLastBot(sessionId, {
-                statusText: formatSubagentStatus("searchDispatcher", `running ${swarmQueries.length} search worker${swarmQueries.length === 1 ? "" : "s"} over Query Planner paths to collect up to ${SOURCE_TARGET} sites...`),
-            });
-
-            const searchSettled = await Promise.allSettled(
-                swarmQueries.map((workerQuery) => postJson(SEARCH_API, {
-                    query: workerQuery,
-                    maxResults: SEARCH_VARIANT_RESULT_TARGET,
-                }, signal)),
-            );
-
-            const mergedSources = Company.rag.rankSourcesWithRag(
-                searchQuery,
-                dedupeSources(
-                    searchSettled.flatMap((item, index) => (
-                        item.status === "fulfilled"
-                            ? (item.value.results || []).map((source) => ({
-                                ...source,
-                                queryVariant: swarmQueries[index],
-                            }))
-                            : []
-                    )),
-                    SOURCE_TARGET,
-                ),
-            );
-
-            if (!mergedSources.length) {
-                throw new Error("No searchable sources were found.");
-            }
-
-            const fetchPlan = Company.rag.selectSourcesForFetch(searchQuery, mergedSources, {
-                limit: Math.min(mergedSources.length, FETCH_TARGET + FETCH_PLAN_BUFFER),
-                perDomainLimit: 2,
-            });
-
-            patchLastBot(sessionId, {
-                showPlanning: false,
-                statusText: formatSubagentStatus("sourceRanker", `ranked ${mergedSources.length} site${mergedSources.length === 1 ? "" : "s"}. Fetch Coordinator selected ${fetchPlan.length} diverse candidate page${fetchPlan.length === 1 ? "" : "s"}...`),
-                sources: mergedSources,
-            });
-
-            const fetchGoal = Math.min(FETCH_TARGET, fetchPlan.length || FETCH_TARGET);
-            let fetchAttempts = 0;
-            let fetchedCount = 0;
-            const fetchedEvidenceEntries = await collectSuccessfulResults(fetchPlan, fetchGoal, FETCH_CONCURRENCY, async (source) => {
-                try {
-                    const fetchResult = await postJson(READ_API, {
-                        url: source.url,
-                        mode: "article",
-                        maxChars: Company.rag.RAG_FETCH_MAX_CHARS,
-                    }, signal);
-
-                    fetchAttempts += 1;
-                    const resolvedUrl = Company.rag.canonicalizeSourceUrl(
-                        fetchResult?.canonicalUrl || fetchResult?.finalUrl || source.url,
-                    );
-                    const enrichedSource = {
-                        ...source,
-                        url: resolvedUrl || source.url,
-                        title: fetchResult?.title || source.title,
-                        description: source.description || fetchResult?.description || "",
-                        contentType: fetchResult?.contentType || source.contentType || null,
-                        via: fetchResult?.via || source.via || null,
-                    };
-                    const content = fetchResult?.content || "";
-                    if (!stripFetchMeta(content).trim()) {
-                        patchLastBot(sessionId, {
-                            statusText: formatSubagentStatus("fetchCoordinator", `kept ${fetchedCount}/${fetchGoal} readable page${fetchGoal === 1 ? "" : "s"} after ${fetchAttempts} fetch attempt${fetchAttempts === 1 ? "" : "s"}. Backfilling lower-ranked sources...`),
-                        });
-                        return null;
-                    }
-
-                    fetchedCount += 1;
-                    patchLastBot(sessionId, {
-                        statusText: formatSubagentStatus("fetchCoordinator", `kept ${fetchedCount}/${fetchGoal} readable page${fetchGoal === 1 ? "" : "s"} after ${fetchAttempts} fetch attempt${fetchAttempts === 1 ? "" : "s"}. Evidence Curator is building the evidence graph...`),
-                    });
-
-                    return {
-                        source: enrichedSource,
-                        content,
-                    };
-                } catch (error) {
-                    if (error?.name === "AbortError") throw error;
-                    fetchAttempts += 1;
-                    patchLastBot(sessionId, {
-                        statusText: formatSubagentStatus("fetchCoordinator", `kept ${fetchedCount}/${fetchGoal} readable page${fetchGoal === 1 ? "" : "s"} after ${fetchAttempts} fetch attempt${fetchAttempts === 1 ? "" : "s"}. Some fetches were skipped.`),
-                    });
-                    return null;
+                if (event.type === "inventory") {
+                    patchLastBot(sessionId, (current) => ({
+                        statusText: formatSubagentStatus(
+                            "tieredEpistemicFilter",
+                            `retained ${event.counts?.core || 0} core, ${event.counts?.supporting || 0} supporting, and ${event.counts?.peripheral || 0} peripheral sources.`,
+                        ),
+                        showPlanning: false,
+                        sources: Array.isArray(event.sources) && event.sources.length ? event.sources : current.sources,
+                        researchMeta: {
+                            ...(current.researchMeta || {}),
+                            ...(event.researchMeta || {}),
+                        },
+                    }));
+                    return;
                 }
-            });
 
-            const rankedEvidenceEntries = Company.rag
-                .rankEvidenceEntriesForQuery(
-                    searchQuery,
-                    fetchedEvidenceEntries,
-                )
-                .slice(0, fetchGoal);
-            if (!rankedEvidenceEntries.length) {
-                throw new Error("No readable source content was fetched.");
-            }
+                if (event.type === "summary") {
+                    patchLastBot(sessionId, (current) => ({
+                        statusText: formatSubagentStatus(
+                            "deepComprehensionEngine",
+                            `extracting evidence from ${event.source?.title || "selected sources"}...`,
+                        ),
+                        sources: event.source?.url
+                            ? [...current.sources, event.source].filter((source, index, array) => (
+                                array.findIndex((item) => item?.url === source?.url) === index
+                            ))
+                            : current.sources,
+                        researchMeta: {
+                            ...(current.researchMeta || {}),
+                            ...(event.researchMeta || {}),
+                        },
+                    }));
+                    return;
+                }
 
-            const chunkSize = Math.max(1, Math.ceil(rankedEvidenceEntries.length / SYNTHESIS_SWARM_SIZE));
-            const evidenceChunks = chunkArray(rankedEvidenceEntries, chunkSize).slice(0, SYNTHESIS_SWARM_SIZE);
+                if (event.type === "control_applied") {
+                    setTransientSteeringStatus(event.statusText || "Steering command applied.");
+                    patchLastBot(sessionId, (current) => ({
+                        statusText: event.statusText || current.statusText,
+                        researchMeta: {
+                            ...(current.researchMeta || {}),
+                            ...(event.researchMeta || {}),
+                        },
+                    }));
+                    return;
+                }
 
-            patchLastBot(sessionId, {
-                statusText: formatSubagentStatus("draftSynthesizer", `running ${evidenceChunks.length} synthesis worker${evidenceChunks.length === 1 ? "" : "s"} over ${rankedEvidenceEntries.length} fetched site${rankedEvidenceEntries.length === 1 ? "" : "s"}...`),
-            });
+                if (event.type === "warning") {
+                    patchLastBot(sessionId, (current) => ({
+                        statusText: event.detail || current.statusText,
+                        researchMeta: {
+                            ...(current.researchMeta || {}),
+                            ...(event.researchMeta || {}),
+                        },
+                    }));
+                    return;
+                }
 
-            const draftSettled = await Promise.allSettled(
-                evidenceChunks.map((chunk, index) => {
-                    const evidenceBlock = chunk
-                        .map((entry) => Company.rag.buildRagEvidenceBlock(entry, searchQuery))
-                        .join("\n\n---\n\n");
+                if (event.type !== "checkpoint") return;
+                const checkpointId = String(event.checkpoint || "");
+                const payload = event.payload || {};
 
-                    return postJson(CHAT_API, {
-                        model: MODEL_NAME,
-                        stream: false,
-                        use_tools: false,
-                        research_mode: true,
-                        messages: [
-                            {
-                                role: "system",
-                                content: `You are research worker ${index + 1}/${evidenceChunks.length}. Use only the supplied evidence. Pull out the most relevant facts for the user query. Cite with bracketed indices like [3] or [12] matching the evidence labels—never bare comma-separated numbers after sentences. Do not invent new sources.`,
-                            },
-                            {
-                                role: "user",
-                                content: `User query: ${searchQuery}${attachmentDigest ? `\n\nUploaded file evidence:\n${truncateText(attachmentDigest, 3000)}` : ""}\n\nEvidence set:\n\n${evidenceBlock}\n\nProduce a concise evidence digest with bullet points and bracketed citations [n] only.`,
-                            },
-                        ],
-                    }, signal);
-                }),
-            );
-
-            const workerDrafts = draftSettled
-                .map((item) => (
-                    item.status === "fulfilled"
-                        ? (item.value?.choices?.[0]?.message?.content || item.value?.output_text || "")
-                        : ""
-                ))
-                .filter(Boolean);
-
-            if (!workerDrafts.length) {
-                throw new Error("Research workers did not produce a final digest.");
-            }
-
-            const sourceIndex = rankedEvidenceEntries
-                .map((entry) => {
-                    const source = entry.source || {};
-                    return `[${source.citationIndex}] ${source.title} — ${source.url}`;
-                })
-                .join("\n");
-
-            patchLastBot(sessionId, {
-                statusText: formatSubagentStatus("answerComposer", `merging ${workerDrafts.length} research agent${workerDrafts.length === 1 ? "" : "s"} into the final cited answer...`),
-            });
-
-            const finalPayload = await postJson(CHAT_API, {
-                model: MODEL_NAME,
-                stream: false,
-                use_tools: false,
-                research_mode: true,
-                messages: [
-                    {
-                        role: "system",
-                        content: "You are a synthesis model for a search swarm. Merge the worker drafts into one coherent answer. Use only bracketed citations [n] that refer to the provided source index. Do not introduce yourself or your creator. Never use bare comma-separated numbers (e.g. \"4, 9, 11\") as citations. Start with a single H1 title. Then provide a concise but information-dense answer. End with a short section called ## Sources used listing the cited bracket numbers only.",
+                patchLastBot(sessionId, (current) => ({
+                    statusText: checkpointId === "plan"
+                        ? formatSubagentStatus("cognitiveCommandLayer", `compiled a ${compiledPlan.scope.label.toLowerCase()} DAG with ${swarmQueries.length} search lane${swarmQueries.length === 1 ? "" : "s"} and ${compiledPlan.refinementBudget} tribunal cycle${compiledPlan.refinementBudget === 1 ? "" : "s"} budgeted...`)
+                        : checkpointId === "inventory"
+                            ? formatSubagentStatus("tieredEpistemicFilter", "ranked the source mesh into core, supporting, and peripheral evidence.")
+                            : checkpointId === "summaries"
+                                ? formatSubagentStatus("deepComprehensionEngine", "completed extraction across fetched evidence, supplementary material, and linked repos.")
+                                : checkpointId === "draft"
+                                    ? formatSubagentStatus("dialecticalSynthesisEngine", "completed position mapping, thesis/antithesis debate, and synthesis mediation.")
+                                    : checkpointId === "tribunal"
+                                        ? formatSubagentStatus("internalConsistencyCritic", "completed verifier swarm scoring, critic review, and convergence checks.")
+                                    : checkpointId === "decision"
+                                        ? formatSubagentStatus("decisionIntelligenceLayer", "packaged the decision payload, risk profile, and reversibility guidance.")
+                                    : checkpointId === "final"
+                                        ? formatSubagentStatus("adaptiveDeliveryHub", "packaged the final report, exports, and postmortem artifacts.")
+                                        : current.statusText,
+                    showPlanning: current.showPlanning && checkpointId === "plan",
+                    queries: Array.isArray(payload.searchQueries) && payload.searchQueries.length ? payload.searchQueries : current.queries,
+                    sources: Array.isArray(payload.sources) && payload.sources.length
+                        ? payload.sources
+                        : current.sources,
+                    researchMeta: {
+                        ...(current.researchMeta || {}),
+                        ...(event.researchMeta || {}),
                     },
-                    {
-                        role: "user",
-                        content: `User query: ${searchQuery}${attachmentDigest ? `\n\nUploaded file evidence:\n${truncateText(attachmentDigest, 5000)}` : ""}\n\nSource index:\n${sourceIndex}\n\nWorker drafts:\n\n${workerDrafts.map((draft, index) => `### Worker ${index + 1}\n${draft}`).join("\n\n")}`,
-                    },
-                ],
-            }, signal);
-
-            const fullText = finalizeResearchAnswer(getChatText(finalPayload));
-            await delay(250);
-            const attributedSources = buildAttributedSourcesFromEvidence(fullText, rankedEvidenceEntries, FETCH_TARGET);
-            const researchMeta = {
-                attachments: attachments.length,
-                generatedAt: new Date().toISOString(),
-                searchCount: swarmQueries.length,
-                rankedSites: mergedSources.length,
-                fetchPlanned: fetchPlan.length,
-                fetchedSites: rankedEvidenceEntries.length,
-                fetchAttempts,
-                synthesisWorkers: evidenceChunks.length,
-                ragLexical: true,
-                subagents: buildResearchSubagents({
-                    hasQuery: true,
-                    attachmentCount: attachments.length,
-                    searchCount: swarmQueries.length,
-                    rankedSites: mergedSources.length,
-                    fetchedSites: rankedEvidenceEntries.length,
-                    synthesisWorkers: evidenceChunks.length,
-                    citedSources: attributedSources.length,
-                }),
+                }));
             };
-            await revealAnswer(sessionId, fullText, attributedSources, signal, {
-                researchMeta,
-            });
+
+            const runtimeResult = await invokeResearchRuntime({
+                action: "run",
+                query: searchQuery,
+                attachments,
+                stream: true,
+                responseType: "sse",
+                depthPreference,
+                forcedOutputMode: compiledPlan.outputMode.id,
+                refinementBudget: compiledPlan.refinementBudget,
+                maxQueries: SEARCH_SWARM_SIZE,
+            }, signal, streamResearchEvent);
+            runtimeRunId = runtimeResult?.runId || runtimeRunId;
+
+            const finalResult = runtimeResult?.final || {};
+            const fullText = finalizeResearchAnswer(
+                finalResult.markdown
+                || `# ${finalResult.heading || "Research Answer"}\n\n${finalResult.body || ""}`,
+            );
+            const tribunal = finalResult.tribunal || null;
+            const convergence = finalResult.convergence || null;
+            const researchMeta = {
+                generatedAt: new Date().toISOString(),
+                ragLexical: true,
+                tribunal: tribunal || undefined,
+                convergence: convergence || undefined,
+                ...researchMetaBase,
+                ...(runtimeResult?.researchMeta || {}),
+            };
+
+            await revealAnswer(
+                sessionId,
+                displayQuery,
+                fullText,
+                Array.isArray(finalResult.sources) ? finalResult.sources : [],
+                signal,
+                {
+                    researchMeta,
+                    statusText: formatSubagentStatus(
+                        "adaptiveDeliveryHub",
+                        `delivered ${(researchMeta.outputMode?.label || compiledPlan.outputMode.label).toLowerCase()}${tribunal?.refinement_cycles ? ` after ${tribunal.refinement_cycles} tribunal cycle${tribunal.refinement_cycles === 1 ? "" : "s"}` : ""}.`,
+                    ),
+                },
+            );
         } catch (error) {
             if (error.name === "AbortError") {
                 patchLastBot(sessionId, {
@@ -1710,6 +1990,19 @@ export default function SearchEngine() {
                     showSearching: false,
                     searchDone: true,
                 });
+                saveSession(buildSavedSessionRecord({
+                    id: sessionId,
+                    query: displayQuery,
+                    heading: "Stopped",
+                    body: "Generation stopped.",
+                    attachments,
+                    researchMeta: {
+                        generatedAt: new Date().toISOString(),
+                        status: "stopped",
+                        runId: runtimeRunId || undefined,
+                        ...researchMetaBase,
+                    },
+                }));
             } else {
                 patchLastBot(sessionId, {
                     heading: "Error",
@@ -1718,21 +2011,49 @@ export default function SearchEngine() {
                     showSearching: false,
                     searchDone: true,
                 });
+                saveSession(buildSavedSessionRecord({
+                    id: sessionId,
+                    query: displayQuery,
+                    heading: "Error",
+                    body: error.message || "Search failed. Try again.",
+                    attachments,
+                    researchMeta: {
+                        generatedAt: new Date().toISOString(),
+                        status: "error",
+                        runId: runtimeRunId || undefined,
+                        ...researchMetaBase,
+                    },
+                }));
             }
         } finally {
             setStreaming(false);
+            setSteeringBusy(false);
+            setActiveResearchRunId("");
             abortRef.current = null;
             setTimeout(() => inputRef.current?.focus(), 80);
         }
-    }, [patchLastBot, pendingUploads, revealAnswer, streaming]);
+    }, [patchLastBot, pendingUploads, revealAnswer, setTransientSteeringStatus, streaming]);
 
     const handleSubmit = (event) => {
         event?.preventDefault();
         if (input.trim() || pendingUploads.length) runSearch(input.trim(), pendingUploads);
     };
 
+    const latestBotMessage = active?.messages?.slice().reverse().find((message) => message.role === "bot") || null;
+    const latestResearchMeta = latestBotMessage?.researchMeta || {};
+    const activeOutputModeLabel = latestResearchMeta?.outputMode?.label || "State-of-the-Field";
+    const activeSourceCount = latestBotMessage?.sources?.length || 0;
+    const activeSubagentCount = countSubagentAssignments(latestResearchMeta?.subagents || {});
+    const activeStability = Number(latestResearchMeta?.convergence?.stability_score);
+    const activeStabilityLabel = Number.isFinite(activeStability) ? `${Math.round(activeStability * 100)}% stability` : "";
+    const activeDagSummary = typeof latestResearchMeta?.dagSummary === "string" ? latestResearchMeta.dagSummary : "";
+    const composerModeLabel = streaming ? "Live steering" : "Research composer";
+    const composerTitle = streaming
+        ? "Adjust depth, output mode, and source policy while the runtime is still working."
+        : "Continue the active thread or launch a new cited search from this session.";
+
     return (
-        <div className="se">
+        <div className="se se--studio">
             <style>{`
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=DM+Mono&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1940,9 +2261,16 @@ html,body,#root{height:100%;background:var(--bg)}
 .stop-btn{width:36px;height:36px;border-radius:10px;border:none;background:var(--red);color:#fff;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 auto;transition:opacity .2s}
 .stop-btn:hover{opacity:.85}
 .bot__bar{display:flex;align-items:center;padding:5px 9px;border-top:1px solid var(--bdr);gap:5px}
+.bot__steer{display:flex;align-items:center;gap:6px;padding:10px 12px;border-top:1px solid var(--bdr);flex-wrap:wrap;background:rgba(255,255,255,0.02)}
+.bot__steer-status{font-size:11px;color:var(--txd);margin-left:auto}
+.bot__steer-input{min-width:140px;flex:1;border:1px solid var(--bdr);background:var(--bg2);color:var(--tx);border-radius:8px;padding:7px 10px;font-family:var(--font);font-size:12px;outline:none}
+.bot__steer-input::placeholder{color:var(--txm)}
+.bot__steer-input:disabled{opacity:.5}
+.bot__steer-select{border:1px solid var(--bdr);background:var(--bg2);color:var(--txd);border-radius:8px;padding:7px 10px;font-family:var(--font);font-size:12px;outline:none}
 .bb{display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:7px;border:1px solid var(--bdr);background:transparent;color:var(--txd);font-family:var(--font);font-size:12px;cursor:pointer;transition:all .2s}
 .bb:hover{background:var(--sur);color:var(--tx)}
 .bb--on{background:var(--sur);color:var(--tx);border-color:rgba(255,255,255,.12)}
+.bb:disabled{opacity:.38;cursor:not-allowed}
 .bb__sp{flex:1}
 .ib{width:30px;height:30px;border-radius:7px;border:none;background:transparent;color:var(--txm);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s}
 .ib:hover{background:var(--sur);color:var(--txd)}
@@ -1971,53 +2299,350 @@ html,body,#root{height:100%;background:var(--bg)}
   .bot{padding:10px 12px}
 }
 `}</style>
+            <style>{`
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap');
+.se--studio{
+  --studio-bg:#081019;--studio-panel:rgba(13,20,29,0.82);--studio-panel-2:rgba(18,28,39,0.88);
+  --studio-card:rgba(17,25,35,0.84);--studio-border:rgba(255,255,255,0.08);--studio-border-strong:rgba(255,158,76,0.2);
+  --studio-text:#f6f0e4;--studio-muted:rgba(246,240,228,0.64);--studio-dim:rgba(246,240,228,0.44);
+  --studio-accent:#ff9e4c;--studio-accent-soft:rgba(255,158,76,0.14);--studio-cool:#46d6c6;
+  position:relative;background:
+    radial-gradient(circle at 6% 0%, rgba(255,158,76,0.18), transparent 24%),
+    radial-gradient(circle at 100% 12%, rgba(70,214,198,0.12), transparent 24%),
+    linear-gradient(180deg,#081019 0%,#0e1822 48%,#14202c 100%);
+}
+.se--studio::before{content:'';position:absolute;inset:0;pointer-events:none;background-image:
+  linear-gradient(rgba(255,255,255,0.025) 1px,transparent 1px),
+  linear-gradient(90deg,rgba(255,255,255,0.025) 1px,transparent 1px);
+  background-size:46px 46px;mask-image:radial-gradient(circle at center,rgba(0,0,0,.9),transparent 88%);opacity:.35}
+.se--studio .sb{display:none}
+.se--studio .mn{padding:20px 24px 22px;gap:0}
+.se--studio .tb,
+.se--studio .bot__wrap,
+.se--studio .scard,
+.se--studio .la-result{
+  border-radius:24px;
+  border:1px solid var(--studio-border);
+  background:linear-gradient(160deg,var(--studio-panel),var(--studio-panel-2));
+  box-shadow:0 20px 56px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.05);
+  backdrop-filter:blur(20px);
+}
+.se--studio .tb{height:auto;min-height:78px;padding:16px 20px;gap:14px;margin-bottom:18px}
+.se--studio .tb__meta{display:flex;flex-direction:column;gap:6px;min-width:0;flex:1}
+.se--studio .tb__eyebrow{display:inline-flex;align-items:center;gap:8px;width:max-content;padding:6px 10px;border-radius:999px;background:var(--studio-accent-soft);border:1px solid rgba(255,158,76,.2);color:#ffd5ad;font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+.se--studio .tb__q{font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:700;line-height:1.05;letter-spacing:-.04em;color:var(--studio-text);white-space:normal}
+.se--studio .tb__b{padding:10px 14px;border-radius:14px;color:var(--studio-text);border-color:var(--studio-border);background:rgba(255,255,255,.04);font-size:12px;font-weight:700}
+.se--studio .tb__b:hover{border-color:var(--studio-border-strong);background:var(--studio-accent-soft);color:#fff7ee}
+.se--studio .chat{padding:0 0 220px}
+.se--studio .chat__in{max-width:1100px;padding:0 8px;gap:28px}
+.se--studio .umsg__av{width:38px;height:38px;flex-basis:38px;border-radius:14px;background:linear-gradient(135deg,#ff9e4c,#46d6c6)}
+.se--studio .umsg__name{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--studio-dim)}
+.se--studio .umsg__text,.se--studio .bmsg__body{font-family:'Manrope',system-ui,sans-serif;font-size:15px;line-height:1.78;color:var(--studio-text)}
+.se--studio .scard{margin-left:50px;padding:18px 18px 16px;gap:14px}
+.se--studio .scard__title{font-family:'Space Grotesk',sans-serif;font-size:14px;color:var(--studio-text)}
+.se--studio .scard__sub,.se--studio .scard__searching,.se--studio .pstep__rest,.se--studio .qchip,.se--studio .sdot,.se--studio .land__sub,.se--studio .upload-status{color:var(--studio-muted)}
+.se--studio .qchip{padding:7px 11px;border-radius:999px;background:rgba(255,255,255,.05);border-color:var(--studio-border)}
+.se--studio .bmsg__ans{margin-left:50px;gap:14px}
+.se--studio .la-result{overflow:hidden}
+.se--studio .la-header{padding:18px 22px;background:rgba(255,255,255,.02)}
+.se--studio .la-logo{border-radius:8px;background:var(--studio-accent);box-shadow:0 0 24px rgba(255,158,76,.28)}
+.se--studio .la-brand,.se--studio .la-question,.se--studio .la-summary-title,.se--studio .la-card-title,.se--studio .la-source-name,.se--studio .la-criterion-label,.se--studio .subagent-owner__name{color:#fff8ee}
+.se--studio .la-badge,.se--studio .la-card-badge{background:rgba(255,255,255,.05);border-color:var(--studio-border);color:var(--studio-muted)}
+.se--studio .la-table thead th,.se--studio .la-query,.se--studio .la-summary-label,.se--studio .la-sources-title{color:var(--studio-dim)}
+.se--studio .la-table tbody td,.se--studio .la-summary-text,.se--studio .la-point p,.se--studio .la-source-ref,.se--studio .la-discipline-tag,.se--studio .la-note,.se--studio .subagent-owner__focus{color:var(--studio-muted)}
+.se--studio .la-source-url,.se--studio .la-card-icon,.se--studio .la-source:hover .la-source-title,.se--studio .cite,.se--studio .pill__n{color:var(--studio-accent)}
+.se--studio .la-divider,.se--studio .la-table thead th,.se--studio .la-card-header,.se--studio .la-note{border-color:var(--studio-border)}
+.se--studio .la-point,.se--studio .la-source:hover,.se--studio .pill:hover{background:rgba(255,255,255,.04)}
+.se--studio .land{padding:32px 8px 210px;justify-content:flex-start}
+.se--studio .land__logo{margin-top:18px;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--studio-dim)}
+.se--studio .land__star{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;background:linear-gradient(135deg,#ff9e4c,#46d6c6);color:#091018;filter:none}
+.se--studio .land__h1{max-width:760px;font-family:'Space Grotesk',sans-serif;font-size:clamp(42px,7vw,76px);line-height:.94;letter-spacing:-.06em}
+.se--studio .land__sub{max-width:560px;font-size:16px}
+.se--studio .land__form{max-width:840px;padding:8px 8px 8px 18px;border-radius:24px;background:linear-gradient(160deg,var(--studio-panel),rgba(20,31,43,.96));border:1px solid var(--studio-border);box-shadow:0 18px 44px rgba(0,0,0,.28)}
+.se--studio .land__attach,.se--studio .land__btn,.se--studio .send-btn,.se--studio .stop-btn{width:44px;height:44px;border-radius:14px}
+.se--studio .land__attach{border-color:var(--studio-border);color:var(--studio-text);background:rgba(255,255,255,.04)}
+.se--studio .land__in,.se--studio .bot__in{font-family:'Manrope',system-ui,sans-serif;font-size:15px;color:var(--studio-text)}
+.se--studio .land__in::placeholder,.se--studio .bot__in::placeholder,.se--studio .bot__steer-status{color:var(--studio-muted)}
+.se--studio .land__btn,.se--studio .send-btn{background:var(--studio-accent);color:#091018;box-shadow:0 12px 28px rgba(255,158,76,.32)}
+.se--studio .land__exs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;max-width:840px}
+.se--studio .land__ex{padding:13px 15px;border-radius:16px;background:rgba(255,255,255,.04);border:1px solid var(--studio-border);color:var(--studio-text)}
+.se--studio .land__ex:hover{background:var(--studio-accent-soft);border-color:var(--studio-border-strong);color:#fff8ee}
+.se--studio .att-list{gap:10px}
+.se--studio .att-chip{padding:10px 12px;border-radius:16px;background:rgba(255,255,255,.04);border-color:var(--studio-border)}
+.se--studio .bot{padding:0 28px 24px;background:linear-gradient(180deg,transparent,rgba(8,16,25,.66) 22%,rgba(8,16,25,.96))}
+.se--studio .bot__wrap{max-width:1080px}
+.se--studio .bot__uploads{padding:14px 14px 0}
+.se--studio .bot__row{padding:8px 8px 8px 18px;gap:10px}
+.se--studio .bot__bar{padding:10px 12px;border-top:1px solid var(--studio-border)}
+.se--studio .bot__steer{padding:12px 14px;border-top:1px solid var(--studio-border);background:rgba(255,255,255,.03)}
+.se--studio .bot__steer-input,.se--studio .bot__steer-select,.se--studio .bb,.se--studio .ib{border-radius:12px;border-color:var(--studio-border);background:rgba(255,255,255,.04);color:var(--studio-text)}
+.se--studio .bb--on,.se--studio .bb:hover,.se--studio .ib:hover{background:var(--studio-accent-soft);border-color:var(--studio-border-strong);color:#fff7ee}
+.se--studio .stop-btn{background:#d65d5d;color:#fff}
+@media(max-width:980px){
+  .se--studio .mn{padding:14px 14px 18px}
+  .se--studio .tb{padding:16px}
+  .se--studio .chat__in{padding:0}
+  .se--studio .bmsg__ans,.se--studio .scard{margin-left:0}
+  .se--studio .land__exs{grid-template-columns:1fr}
+}
+@media(max-width:720px){
+  .se--studio .tb{flex-direction:column;align-items:flex-start}
+  .se--studio .tb__q{font-size:16px}
+  .se--studio .land{padding:18px 0 220px}
+  .se--studio .land__h1{font-size:clamp(34px,11vw,56px)}
+  .se--studio .bot{padding:0 10px 12px}
+  .se--studio .bot__row{padding-left:12px}
+  .se--studio .bot__steer{padding:10px}
+}
+`}</style>
+            <style>{`
+.se--studio{height:100%;min-height:100%}
+.se--studio .sb{display:none}
+.se--studio .mn{min-height:0}
+.se--studio .tb{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto auto;
+  align-items:center;
+}
+.se--studio .tb__summary{display:flex;flex-direction:column;gap:10px;min-width:0}
+.se--studio .tb__meta,
+.se--studio .tb__stats{display:flex;flex-wrap:wrap;gap:8px}
+.se--studio .tb__side{display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+.se--studio .tb__hint{
+  max-width:320px;color:var(--studio-muted);font-size:11px;line-height:1.55;text-align:right
+}
+.se--studio .tb__pill{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-height:34px;padding:0 12px;border-radius:999px;
+  background:rgba(255,255,255,.045);border:1px solid var(--studio-border);
+  color:var(--studio-text);font-size:11px;font-weight:700;letter-spacing:.02em
+}
+.se--studio .tb__pill--accent{
+  background:rgba(255,158,76,.12);border-color:rgba(255,158,76,.24);color:#fff1dd
+}
+.se--studio .chat__in{gap:32px}
+.se--studio .umsg{align-items:stretch;max-width:820px;margin-left:auto}
+.se--studio .umsg__body{
+  border-radius:22px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.04);
+  padding:16px 18px 14px;box-shadow:0 18px 40px rgba(0,0,0,.18)
+}
+.se--studio .umsg__card{
+  background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.06);
+  border-radius:22px;
+  padding:16px 18px 14px;
+  box-shadow:0 18px 40px rgba(0,0,0,.18)
+}
+.se--studio .umsg__head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+.se--studio .umsg__meta{
+  color:var(--studio-dim);font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase
+}
+.se--studio .umsg__acts{padding-top:12px}
+.se--studio .scard{box-shadow:0 18px 44px rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.04)}
+.se--studio .la-header{
+  display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap
+}
+.se--studio .la-header-main{display:flex;align-items:center;gap:14px}
+.se--studio .la-header-copy{display:flex;flex-direction:column;gap:3px}
+.se--studio .la-kicker{
+  color:var(--studio-dim);font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase
+}
+.se--studio .la-header-badges{display:flex;flex-wrap:wrap;gap:8px}
+.se--studio .la-hero{
+  display:grid;grid-template-columns:minmax(0,1.7fr) minmax(260px,.9fr);gap:16px;margin-bottom:18px
+}
+.se--studio .la-hero-copy{
+  padding:18px;border-radius:20px;
+  background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.025));
+  border:1px solid rgba(255,255,255,.05)
+}
+.se--studio .la-question{font-size:26px;line-height:1.05;letter-spacing:-.05em}
+.se--studio .la-hero-stats{
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px
+}
+.se--studio .la-stat{
+  padding:16px 15px;border-radius:18px;background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.05);display:flex;flex-direction:column;gap:8px;
+  min-height:104px;justify-content:space-between
+}
+.se--studio .la-stat__label{
+  color:var(--studio-dim);font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase
+}
+.se--studio .la-stat strong{
+  color:#fff9f0;font-family:'Space Grotesk',sans-serif;font-size:16px;line-height:1.15
+}
+.se--studio .la-summary-title{
+  font-family:'Space Grotesk',sans-serif;font-size:32px;line-height:1.02;letter-spacing:-.05em
+}
+.se--studio .la-summary-text{font-size:15px;line-height:1.8;max-width:72ch}
+.se--studio .la-domain-strip{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 6px}
+.se--studio .la-domain-pill{
+  display:inline-flex;align-items:center;padding:6px 11px;border-radius:999px;
+  background:rgba(70,214,198,.08);border:1px solid rgba(70,214,198,.18);
+  color:#bdf7f0;font-size:11px;font-weight:700
+}
+.se--studio .la-points{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:20px}
+.se--studio .la-point{
+  min-height:100%;padding:16px 16px 15px;border-radius:18px;border:1px solid rgba(255,255,255,.05)
+}
+.se--studio .la-tables{display:grid;gap:16px;margin-top:22px}
+.se--studio .la-card{
+  border-radius:22px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);
+  overflow:hidden
+}
+.se--studio .la-footer{padding-top:14px}
+.se--studio .land{
+  max-width:1180px;margin:0 auto;align-items:flex-start;text-align:left
+}
+.se--studio .land__eyebrow{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-height:34px;padding:0 14px;border-radius:999px;
+  background:rgba(255,158,76,.12);border:1px solid rgba(255,158,76,.22);
+  color:#ffd8b5;font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase
+}
+.se--studio .land__logo{gap:12px}
+.se--studio .land__capabilities{display:flex;flex-wrap:wrap;gap:10px}
+.se--studio .land__cap{
+  display:inline-flex;align-items:center;padding:8px 12px;border-radius:999px;
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);
+  color:var(--studio-text);font-size:12px;font-weight:600
+}
+.se--studio .land__form{width:100%}
+.se--studio .land__panels{
+  width:100%;display:grid;grid-template-columns:minmax(0,1.45fr) minmax(280px,.9fr);gap:16px
+}
+.se--studio .land__panel{
+  padding:20px;border-radius:24px;background:linear-gradient(160deg,var(--studio-panel),rgba(18,28,39,.92));
+  border:1px solid rgba(255,255,255,.06);box-shadow:0 18px 40px rgba(0,0,0,.2)
+}
+.se--studio .land__panel-head{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+.se--studio .land__panel-eyebrow{
+  color:var(--studio-dim);font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase
+}
+.se--studio .land__panel-title{
+  color:#fff8ee;font-family:'Space Grotesk',sans-serif;font-size:24px;line-height:1.02;letter-spacing:-.04em
+}
+.se--studio .land__exs{max-width:none}
+.se--studio .land__ex{
+  min-height:132px;display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:10px;
+  text-align:left
+}
+.se--studio .land__ex-label{
+  color:#fff8ee;font-size:14px;font-weight:800;letter-spacing:-.02em
+}
+.se--studio .land__ex-detail{color:var(--studio-muted);font-size:12px;line-height:1.55}
+.se--studio .land__ex-query{
+  color:#ffd8b5;font-size:12px;line-height:1.55;font-family:var(--mono);word-break:break-word
+}
+.se--studio .land__flow{display:flex;flex-direction:column;gap:12px}
+.se--studio .land__flow-step{
+  display:flex;gap:12px;align-items:flex-start;padding:14px 0;border-top:1px solid rgba(255,255,255,.06)
+}
+.se--studio .land__flow-step:first-child{border-top:none;padding-top:0}
+.se--studio .land__flow-step span{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:32px;height:32px;border-radius:10px;background:rgba(255,158,76,.14);
+  color:#ffd8b5;font-size:11px;font-weight:800;flex:0 0 32px
+}
+.se--studio .land__flow-step strong{color:#fff8ee;font-size:14px;line-height:1.55}
+.se--studio .bot{padding:0 28px 22px}
+.se--studio .bot__wrap{overflow:visible}
+.se--studio .bot__titlebar{
+  display:flex;align-items:flex-start;justify-content:space-between;gap:16px;
+  padding:16px 18px 0
+}
+.se--studio .bot__titlecopy{display:flex;flex-direction:column;gap:6px}
+.se--studio .bot__eyebrow{
+  color:var(--studio-dim);font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase
+}
+.se--studio .bot__title{color:#fff8ee;font-size:14px;line-height:1.55}
+.se--studio .bot__runtime{
+  display:inline-flex;align-items:center;justify-content:center;min-height:34px;
+  padding:0 12px;border-radius:999px;background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.06);color:var(--studio-muted);font-size:11px;font-weight:700
+}
+.se--studio .bot__uploads{padding-top:12px}
+.se--studio .bot__row{padding-top:12px}
+.se--studio .bot__steer{
+  display:grid;grid-template-columns:repeat(3,max-content) minmax(220px,1fr) auto;gap:12px;align-items:end
+}
+.se--studio .bot__steer-group{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.se--studio .bot__steer-group--grow{min-width:0}
+.se--studio .bot__steer-label{
+  color:var(--studio-dim);font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase
+}
+.se--studio .bot__steer-status{
+  min-height:42px;display:flex;align-items:center;justify-content:flex-end;text-align:right
+}
+@media(max-width:1100px){
+  .se--studio .tb{grid-template-columns:minmax(0,1fr) auto;align-items:flex-start}
+  .se--studio .tb__summary{grid-column:1 / -1}
+  .se--studio .tb__side{grid-column:1 / -1;align-items:flex-start}
+  .se--studio .tb__hint{text-align:left;max-width:none}
+  .se--studio .la-hero{grid-template-columns:1fr}
+  .se--studio .land__panels{grid-template-columns:1fr}
+  .se--studio .bot__steer{grid-template-columns:1fr}
+  .se--studio .bot__steer-status{justify-content:flex-start;text-align:left}
+}
+@media(max-width:720px){
+  .se--studio .sb{display:none}
+  .se--studio .mn{padding:12px 12px 14px}
+  .se--studio .tb{grid-template-columns:1fr}
+  .se--studio .tb__summary,.se--studio .tb__side{grid-column:auto}
+  .se--studio .tb__b{width:100%}
+  .se--studio .la-points{grid-template-columns:1fr}
+  .se--studio .la-hero-stats{grid-template-columns:1fr 1fr}
+  .se--studio .land__h1{max-width:11ch}
+  .se--studio .bot__titlebar{flex-direction:column;align-items:flex-start}
+}
+@media(max-width:560px){
+  .se--studio .la-question,.se--studio .la-summary-title{font-size:24px}
+  .se--studio .la-hero-stats{grid-template-columns:1fr}
+  .se--studio .land__exs{grid-template-columns:1fr}
+}
+`}</style>
 
             <aside className="sb">
-                <div className="sb__logo" onClick={() => { setActiveId(null); setInput(""); }}>✳</div>
+                <div className="sb__logo" onClick={() => { resetComposer(); }}>✳</div>
                 <button
                     className="sb__new"
                     onClick={() => {
-                        setActiveId(null);
-                        setInput("");
-                        if (streaming) abortRef.current?.abort();
+                        resetComposer();
                     }}
                     title="New search"
                 >
                     ＋
                 </button>
+                <button
+                    className={`nb ${!isLibraryView ? "nb--on" : ""}`}
+                    onClick={() => {
+                        setShowLibrary(false);
+                        setTimeout(() => inputRef.current?.focus(), 40);
+                    }}
+                    title="Research workspace"
+                >
+                    ⌕
+                </button>
+                <button
+                    className={`nb ${isLibraryView ? "nb--on" : ""}`}
+                    onClick={() => setShowLibrary(true)}
+                    title="Saved sessions"
+                >
+                    ☰
+                </button>
                 <div className="sb__sp" />
+                <div className="sb__status">{streaming ? "LIVE" : "READY"}</div>
             </aside>
 
             <div className="mn">
                 {isLibraryView ? (
                     <Library
                         onBack={() => setShowLibrary(false)}
-                        onViewSession={(session) => {
-                            // Load session from library into active view
-                            const loadedSession = {
-                                id: session.id,
-                                query: session.query,
-                                messages: [
-                                    { id: createId(), role: "user", text: session.query, attachments: [] },
-                                    {
-                                        id: createId(),
-                                        role: "bot",
-                                        heading: session.heading,
-                                        body: session.body,
-                                        sources: session.sources || [],
-                                        showPlanning: false,
-                                        showSearching: false,
-                                        searchDone: true,
-                                        researchMeta: session.researchMeta,
-                                    },
-                                ],
-                            };
-                            setSessions(prev => [...prev, loadedSession]);
-                            setActiveId(loadedSession.id);
-                            setShowLibrary(false);
+                        onViewSession={(savedSession) => {
+                            activateStoredSession(savedSession);
                         }}
                         onNewSearch={() => {
-                            setShowLibrary(false);
+                            resetComposer();
                             inputRef.current?.focus();
                         }}
                     />
@@ -2025,15 +2650,33 @@ html,body,#root{height:100%;background:var(--bg)}
                     <>
                         {!isLanding && (
                             <div className="tb">
-                                <div className="tb__q">{active?.query || ""}</div>
-                                <button className="tb__b" onClick={() => {
-                                    const url = window.location.href;
-                                    navigator.clipboard?.writeText(url).then(() => {
-                                        alert("Link copied to clipboard!");
-                                    }).catch(() => {
-                                        prompt("Copy this link:", url);
-                                    });
-                                }}>⬆ Share</button>
+                                <div className="tb__summary">
+                                    <div className="tb__eyebrow">Research session</div>
+                                    <div className="tb__q">{active?.query || ""}</div>
+                                    <div className="tb__meta">
+                                        <span className="tb__pill">{activeOutputModeLabel}</span>
+                                        {latestResearchMeta?.pareto?.mode ? <span className="tb__pill">Pareto: {latestResearchMeta.pareto.mode}</span> : null}
+                                        {activeSubagentCount ? <span className="tb__pill">{activeSubagentCount} subagents</span> : null}
+                                        {activeSourceCount ? <span className="tb__pill">{activeSourceCount} cited source{activeSourceCount === 1 ? "" : "s"}</span> : null}
+                                        {activeStabilityLabel ? <span className="tb__pill tb__pill--accent">{activeStabilityLabel}</span> : null}
+                                    </div>
+                                </div>
+                                <div className="tb__side">
+                                    {activeDagSummary ? <div className="tb__hint">{activeDagSummary}</div> : null}
+                                    <button className="tb__b" onClick={() => {
+                                        const url = buildSessionShareUrl(active?.id) || window.location.href;
+                                        if (!navigator.clipboard?.writeText) {
+                                            promptToCopySessionUrl(url);
+                                            return;
+                                        }
+
+                                        navigator.clipboard.writeText(url).then(() => {
+                                            alert("Link copied to clipboard!");
+                                        }).catch(() => {
+                                            promptToCopySessionUrl(url);
+                                        });
+                                    }}>Share session</button>
+                                </div>
                             </div>
                         )}
 
@@ -2061,6 +2704,15 @@ html,body,#root{height:100%;background:var(--bg)}
                         {!isLanding && (
                             <div className="bot">
                                 <div className="bot__wrap">
+                                    <div className="bot__titlebar">
+                                        <div className="bot__titlecopy">
+                                            <div className="bot__eyebrow">{composerModeLabel}</div>
+                                            <div className="bot__title">{composerTitle}</div>
+                                        </div>
+                                        <div className="bot__runtime">
+                                            {latestResearchMeta?.frameworkVersion ? `Framework v${latestResearchMeta.frameworkVersion}` : "Research runtime"}
+                                        </div>
+                                    </div>
                                     {(pendingUploads.length || uploadStatus) && (
                                         <div className="bot__uploads">
                                             <AttachmentList attachments={pendingUploads} onRemove={removePendingUpload} compact />
@@ -2087,6 +2739,84 @@ html,body,#root{height:100%;background:var(--bg)}
                                             </button>
                                         )}
                                     </form>
+                                    {streaming && (
+                                        <div className="bot__steer">
+                                            <div className="bot__steer-group">
+                                                <span className="bot__steer-label">Pace</span>
+                                                <button
+                                                    type="button"
+                                                    className="bb"
+                                                    disabled={!activeResearchRunId || steeringBusy}
+                                                    onClick={() => queueSteeringCommand({ type: "prioritize_speed" })}
+                                                >
+                                                    ⚡ Speed
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="bb"
+                                                    disabled={!activeResearchRunId || steeringBusy}
+                                                    onClick={() => queueSteeringCommand({ type: "go_deeper" })}
+                                                >
+                                                    ⇣ Deep
+                                                </button>
+                                            </div>
+                                            <div className="bot__steer-group">
+                                                <span className="bot__steer-label">Evidence</span>
+                                                <button
+                                                    type="button"
+                                                    className={`bb ${excludedPreprints ? "bb--on" : ""}`}
+                                                    disabled={!activeResearchRunId || steeringBusy || excludedPreprints}
+                                                    onClick={() => queueSteeringCommand({ type: "exclude_source", sourceType: "preprint" })}
+                                                >
+                                                    ⛔ Preprints
+                                                </button>
+                                            </div>
+                                            <div className="bot__steer-group">
+                                                <span className="bot__steer-label">Output</span>
+                                                <select
+                                                    className="bot__steer-select"
+                                                    value={steeringMode}
+                                                    disabled={!activeResearchRunId || steeringBusy}
+                                                    onChange={(event) => setSteeringMode(event.target.value)}
+                                                >
+                                                    <option value="state_of_the_field">State</option>
+                                                    <option value="gap_analysis">Gap</option>
+                                                    <option value="controversy_map">Controversy</option>
+                                                    <option value="tutorial">Tutorial</option>
+                                                    <option value="decision_brief">Decision</option>
+                                                </select>
+                                                <button
+                                                    type="button"
+                                                    className="bb"
+                                                    disabled={!activeResearchRunId || steeringBusy}
+                                                    onClick={() => queueSteeringCommand({ type: "force_mode", mode: steeringMode })}
+                                                >
+                                                    ↺ Mode
+                                                </button>
+                                            </div>
+                                            <div className="bot__steer-group bot__steer-group--grow">
+                                                <span className="bot__steer-label">Focus</span>
+                                                <input
+                                                    className="bot__steer-input"
+                                                    value={steeringArea}
+                                                    onChange={(event) => setSteeringArea(event.target.value)}
+                                                    placeholder="Deepen an area or hypothesis..."
+                                                    disabled={!activeResearchRunId || steeringBusy}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    className="bb"
+                                                    disabled={!activeResearchRunId || steeringBusy || !steeringArea.trim()}
+                                                    onClick={() => queueSteeringCommand({ type: "increase_depth", area: steeringArea.trim() })}
+                                                >
+                                                    + Depth
+                                                </button>
+                                            </div>
+                                            <div className="bot__steer-status">
+                                                {steeringStatus || (activeResearchRunId ? `Run ${String(activeResearchRunId).slice(-8)}` : "Waiting for runtime...")}
+                                            </div>
+                                        </div>
+                                    )}
                                     <div className="bot__bar">
                                         <button className="bb bb--on" onClick={() => alert("Search mode: Active — web research with query expansion")}>🔍 Search</button>
                                         <div className="bb__sp" />

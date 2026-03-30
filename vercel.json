@@ -29,6 +29,10 @@
       "destination": "/api/content.js"
     },
     {
+      "source": "/api/research",
+      "destination": "/api/research.js"
+    },
+    {
       "source": "/api/utils",
       "destination": "/api/utils.js"
     },

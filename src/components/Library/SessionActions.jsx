@@ -2,6 +2,7 @@ import React from 'react';
 import { Trash2, Edit2, Share2, Download, Copy } from 'lucide-react';
 import { Button } from '../UI/Button.jsx';
 import { Modal } from '../UI/Modal.jsx';
+import { buildSessionShareUrl, promptToCopySessionUrl } from '../../lib/library.js';
 
 /**
  * SessionActions Component
@@ -25,34 +26,76 @@ export function SessionActions({
   onClose,
 }) {
   const [confirmDelete, setConfirmDelete] = React.useState(false);
+  const [isEditing, setIsEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState({
+    query: '',
+    heading: '',
+    body: '',
+  });
+  const sourceCount = session?.sources?.length || 0;
+  const attachmentCount = session?.attachments?.length || 0;
+  const summaryPreview = (session?.heading || session?.body || '')
+    .replace(/[#*`\[\]]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  React.useEffect(() => {
+    if (!isOpen || !session) return;
+    setConfirmDelete(false);
+    setIsEditing(false);
+    setDraft({
+      query: session.query || '',
+      heading: session.heading || '',
+      body: session.body || '',
+    });
+  }, [isOpen, session]);
+
+  const closeWithReset = () => {
+    setConfirmDelete(false);
+    setIsEditing(false);
+    onClose?.();
+  };
 
   const handleDelete = () => {
     onDelete?.(session.id);
-    onClose?.();
+    closeWithReset();
   };
 
   const handleShare = () => {
     onShare?.(session);
-    onClose?.();
+    closeWithReset();
   };
 
-  const handleEdit = () => {
-    onEdit?.(session);
-    onClose?.();
+  const handleEditSave = () => {
+    onEdit?.(session, {
+      query: draft.query.trim() || session.query || 'Untitled session',
+      heading: draft.heading.trim(),
+      body: draft.body.trim(),
+    });
+    closeWithReset();
   };
 
   const handleExport = (format) => {
     onExport?.(session, format);
-    onClose?.();
+    closeWithReset();
   };
 
   const handleCopyLink = async () => {
     try {
-      const shareUrl = `${window.location.origin}/session/${session.id}`;
-      await navigator.clipboard.writeText(shareUrl);
+      const shareUrl = buildSessionShareUrl(session.id);
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+      } else if (!promptToCopySessionUrl(shareUrl)) {
+        throw new Error('Clipboard unavailable');
+      }
       onShare?.(session, { copied: true });
-      onClose?.();
+      closeWithReset();
     } catch (err) {
+      const shareUrl = buildSessionShareUrl(session.id);
+      if (promptToCopySessionUrl(shareUrl)) {
+        closeWithReset();
+        return;
+      }
       console.error('Failed to copy:', err);
     }
   };
@@ -62,13 +105,13 @@ export function SessionActions({
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
-      title={confirmDelete ? 'Confirm Delete' : 'Session Actions'}
+      onClose={closeWithReset}
+      title={confirmDelete ? 'Confirm Delete' : isEditing ? 'Edit Session' : 'Session Actions'}
       size="sm"
     >
       {confirmDelete ? (
         <div className="session-actions__confirm">
-          <div className="session-actions__confirm-icon">⚠️</div>
+          <div className="session-actions__confirm-icon">Delete</div>
           <h3 className="session-actions__confirm-title">Delete this session?</h3>
           <p className="session-actions__confirm-text">
             "{session.query.slice(0, 50)}{session.query.length > 50 ? '...' : ''}"
@@ -84,9 +127,80 @@ export function SessionActions({
             </Button>
           </div>
         </div>
+      ) : isEditing ? (
+        <form
+          className="session-actions__form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleEditSave();
+          }}
+        >
+          <div className="session-actions__lead">
+            <div className="session-actions__eyebrow">Session editor</div>
+            <p className="session-actions__lead-copy">
+              Tighten the archive copy without changing the underlying transcript.
+            </p>
+          </div>
+          <label className="session-actions__field">
+            <span className="session-actions__label">Query</span>
+            <input
+              className="session-actions__input"
+              type="text"
+              value={draft.query}
+              onChange={(event) => setDraft((current) => ({ ...current, query: event.target.value }))}
+              placeholder="Search query"
+              autoFocus
+            />
+          </label>
+          <label className="session-actions__field">
+            <span className="session-actions__label">Heading</span>
+            <input
+              className="session-actions__input"
+              type="text"
+              value={draft.heading}
+              onChange={(event) => setDraft((current) => ({ ...current, heading: event.target.value }))}
+              placeholder="Answer heading"
+            />
+          </label>
+          <label className="session-actions__field">
+            <span className="session-actions__label">Body</span>
+            <textarea
+              className="session-actions__textarea"
+              value={draft.body}
+              onChange={(event) => setDraft((current) => ({ ...current, body: event.target.value }))}
+              placeholder="Saved answer text"
+              rows={8}
+            />
+          </label>
+          <div className="session-actions__form-buttons">
+            <Button type="button" variant="outline" onClick={() => setIsEditing(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary">
+              Save changes
+            </Button>
+          </div>
+        </form>
       ) : (
         <div className="session-actions__menu">
-          <button className="session-actions__item" onClick={handleEdit}>
+          <div className="session-actions__summary">
+            <div className="session-actions__eyebrow">Saved session</div>
+            <h3 className="session-actions__summary-title">{session.query}</h3>
+            <p className="session-actions__summary-copy">
+              Share it, export it, refine the archive copy, or remove it from the library.
+            </p>
+            {summaryPreview && (
+              <p className="session-actions__summary-preview">
+                {summaryPreview.slice(0, 180)}
+                {summaryPreview.length > 180 ? '…' : ''}
+              </p>
+            )}
+            <div className="session-actions__summary-meta">
+              <span>{sourceCount} source{sourceCount === 1 ? '' : 's'}</span>
+              <span>{attachmentCount} attachment{attachmentCount === 1 ? '' : 's'}</span>
+            </div>
+          </div>
+          <button className="session-actions__item" onClick={() => setIsEditing(true)}>
             <Edit2 size={18} />
             <span>Edit Session</span>
           </button>
@@ -138,7 +252,10 @@ export function BulkActions({
 
   return (
     <div className="bulk-actions">
-      <span className="bulk-actions__count">{selectedCount} selected</span>
+      <div className="bulk-actions__copy">
+        <span className="bulk-actions__count">{selectedCount} selected</span>
+        <small className="bulk-actions__note">Apply archive actions to the current selection.</small>
+      </div>
       <div className="bulk-actions__buttons">
         <Button variant="outline" size="sm" onClick={onClearSelection}>
           Clear

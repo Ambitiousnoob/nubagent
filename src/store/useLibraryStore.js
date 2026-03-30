@@ -5,8 +5,27 @@ import {
   saveSession,
   deleteSession,
   getSessionById,
-  searchSessions,
+  getSessionTimestamp,
 } from '../lib/library.js';
+
+const DEFAULT_FILTERS = {
+  dateRange: 'all',
+  hasAttachments: false,
+  sortBy: 'date',
+  sortOrder: 'desc',
+};
+
+const matchesSessionSearch = (session, searchQuery) => {
+  const term = searchQuery.trim().toLowerCase();
+  if (!term) return true;
+
+  return [
+    session?.query,
+    session?.heading,
+    session?.body,
+    ...(Array.isArray(session?.attachments) ? session.attachments.map((attachment) => attachment?.name) : []),
+  ].some((value) => typeof value === 'string' && value.toLowerCase().includes(term));
+};
 
 /**
  * Library store for managing session library state
@@ -20,12 +39,7 @@ export const useLibraryStore = create(
       isLoading: false,
       error: null,
       searchQuery: '',
-      filters: {
-        dateRange: 'all',
-        hasAttachments: false,
-        sortBy: 'date',
-        sortOrder: 'desc',
-      },
+      filters: DEFAULT_FILTERS,
       selectedSession: null,
       selectedSessions: [],
 
@@ -51,24 +65,30 @@ export const useLibraryStore = create(
           createdAt: session.createdAt || Date.now(),
           updatedAt: Date.now(),
         };
-        saveSession(newSession);
+        const savedSession = saveSession(newSession);
         set((state) => ({
-          sessions: [newSession, ...state.sessions],
+          sessions: [savedSession, ...state.sessions.filter((item) => item.id !== savedSession.id)],
         }));
-        return newSession;
+        return savedSession;
       },
 
       updateSession: (id, updates) => {
+        const existing = getSessionById(id);
+        if (!existing) return null;
+
         const updated = {
-          ...getSessionById(id),
+          ...existing,
           ...updates,
           updatedAt: Date.now(),
         };
-        saveSession(updated);
+        const savedSession = saveSession(updated);
         set((state) => ({
-          sessions: state.sessions.map((s) => (s.id === id ? updated : s)),
+          sessions: state.sessions.some((s) => s.id === id)
+            ? state.sessions.map((s) => (s.id === id ? savedSession : s))
+            : [savedSession, ...state.sessions],
+          selectedSession: state.selectedSession?.id === id ? savedSession : state.selectedSession,
         }));
-        return updated;
+        return savedSession;
       },
 
       deleteSession: async (id) => {
@@ -100,12 +120,7 @@ export const useLibraryStore = create(
       resetFilters: () =>
         set({
           searchQuery: '',
-          filters: {
-            dateRange: 'all',
-            hasAttachments: false,
-            sortBy: 'date',
-            sortOrder: 'desc',
-          },
+          filters: DEFAULT_FILTERS,
         }),
 
       selectSession: (session) => set({ selectedSession: session }),
@@ -139,7 +154,7 @@ export const useLibraryStore = create(
 
         // Apply search
         if (searchQuery.trim()) {
-          filtered = searchSessions(searchQuery);
+          filtered = filtered.filter((session) => matchesSessionSearch(session, searchQuery));
         }
 
         // Apply date filter
@@ -152,7 +167,10 @@ export const useLibraryStore = create(
             year: 365 * 24 * 60 * 60 * 1000,
           };
           const range = ranges[filters.dateRange] || 0;
-          filtered = filtered.filter((s) => now - s.createdAt <= range);
+          filtered = filtered.filter((s) => {
+            const createdAt = getSessionTimestamp(s.createdAt);
+            return createdAt > 0 && now - createdAt <= range;
+          });
         }
 
         // Apply attachment filter
@@ -164,7 +182,7 @@ export const useLibraryStore = create(
         filtered.sort((a, b) => {
           let comparison = 0;
           if (filters.sortBy === 'date') {
-            comparison = a.createdAt - b.createdAt;
+            comparison = getSessionTimestamp(a.createdAt) - getSessionTimestamp(b.createdAt);
           } else if (filters.sortBy === 'title') {
             comparison = a.query.localeCompare(b.query);
           } else if (filters.sortBy === 'sources') {
@@ -201,6 +219,7 @@ export const useLibraryStore = create(
     {
       name: 'nubagent-library-storage',
       partialize: (state) => ({
+        searchQuery: state.searchQuery,
         filters: state.filters,
       }),
     }

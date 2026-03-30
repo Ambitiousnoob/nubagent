@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Calendar, FileText, Trash2, Edit2, Share2, ExternalLink } from 'lucide-react';
+import { Calendar, FileText, Trash2, Edit2, Share2, ExternalLink, Paperclip } from 'lucide-react';
 
 /**
  * SessionCard Component
@@ -25,6 +25,7 @@ export function SessionCard({
   const [isDeleting, setIsDeleting] = useState(false);
   const [showActions, setShowActions] = useState(false);
   const isSelectionMode = typeof onSelect === 'function';
+  const cleanedPreview = (session.heading || session.body || '').replace(/[#*`\[\]]/g, '');
 
   const getDomain = (url) => {
     try {
@@ -77,6 +78,7 @@ export function SessionCard({
   const sourceCount = session.sources?.length || 0;
   const firstSource = session.sources?.[0];
   const hasAttachments = session.attachments?.length > 0;
+  const attachmentCount = session.attachments?.length || 0;
   const handleCardActivate = () => {
     if (isSelectionMode) {
       onSelect?.(session.id);
@@ -91,6 +93,8 @@ export function SessionCard({
       onClick={handleCardActivate}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
+      onFocus={() => setShowActions(true)}
+      onBlur={() => setShowActions(false)}
       role="button"
       tabIndex={0}
       aria-pressed={isSelectionMode ? isSelected : undefined}
@@ -115,6 +119,10 @@ export function SessionCard({
       )}
 
       <div className="session-card__header">
+        <div className="session-card__eyebrow-row">
+          <div className="session-card__eyebrow">Saved run</div>
+          <div className="session-card__state">{sourceCount > 0 ? 'Evidence attached' : 'Transcript only'}</div>
+        </div>
         <div className="session-card__meta">
           <span className="session-card__date">
             <Calendar size={12} />
@@ -128,7 +136,8 @@ export function SessionCard({
           )}
           {hasAttachments && (
             <span className="session-card__attachments">
-              📎 {session.attachments.length}
+              <Paperclip size={12} />
+              {session.attachments.length}
             </span>
           )}
         </div>
@@ -137,23 +146,44 @@ export function SessionCard({
       <h3 className="session-card__query">{session.query}</h3>
 
       <p className="session-card__preview">
-        {(session.heading || session.body || '').replace(/[#*`\[\]]/g, '').slice(0, 120)}
-        {(session.heading || session.body || '').length > 120 ? '...' : ''}
+        {cleanedPreview.slice(0, 150)}
+        {cleanedPreview.length > 150 ? '...' : ''}
       </p>
+
+      <div className="session-card__signal-row">
+        <span className="session-card__signal-chip">{sourceCount} source{sourceCount !== 1 ? 's' : ''}</span>
+        <span className="session-card__signal-chip">{hasAttachments ? `${attachmentCount} attachment${attachmentCount === 1 ? '' : 's'}` : 'No attachments'}</span>
+      </div>
 
       {firstSource?.url && (
         <div className="session-card__source">
-          {getFavicon(firstSource.url) && (
-            <img
-              src={getFavicon(firstSource.url)}
-              alt=""
-              className="session-card__favicon"
-              onError={(e) => { e.currentTarget.style.display = 'none'; }}
-            />
-          )}
-          <span className="session-card__domain">{getDomain(firstSource.url)}</span>
+          <div className="session-card__source-brand">
+            {getFavicon(firstSource.url) && (
+              <img
+                src={getFavicon(firstSource.url)}
+                alt=""
+                className="session-card__favicon"
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
+            )}
+            <span className="session-card__domain">{getDomain(firstSource.url)}</span>
+          </div>
+          <div className="session-card__source-tail">
+            {sourceCount > 1 && (
+              <span className="session-card__source-more">+{sourceCount - 1} more</span>
+            )}
+          </div>
         </div>
       )}
+
+      <div className="session-card__footer">
+        <span className="session-card__open">Open session</span>
+        {hasAttachments ? (
+          <span className="session-card__footer-note">{session.attachments.length} attachment{session.attachments.length === 1 ? '' : 's'} attached</span>
+        ) : (
+          <span className="session-card__footer-note">Research transcript and saved answer</span>
+        )}
+      </div>
 
       <div className={`session-card__actions ${showActions ? 'session-card__actions--visible' : ''}`}>
         <button

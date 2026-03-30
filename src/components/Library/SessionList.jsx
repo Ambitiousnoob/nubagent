@@ -27,6 +27,8 @@ export function SessionList({
   selectedSessions = [],
   onSelect,
 }) {
+  const sessionCountLabel = `${sessions.length} saved session${sessions.length === 1 ? '' : 's'}`;
+
   if (isLoading) {
     return (
       <div className="session-list session-list--loading">
@@ -41,13 +43,23 @@ export function SessionList({
     return (
       <div className="session-list session-list--empty">
         <div className="session-list__empty">
-          <div className="session-list__empty-icon">📚</div>
-          <h3 className="session-list__empty-title">No sessions found</h3>
+          <div className="session-list__empty-eyebrow">Archive empty</div>
+          <h3 className="session-list__empty-title">No sessions match this view</h3>
           <p className="session-list__empty-text">
             {selectable
-              ? 'No sessions match your filters.'
-              : 'Your library is empty. Start a new search to create your first session.'}
+              ? 'Widen the current slice or leave selection mode to browse the full archive again.'
+              : 'Your strongest saved research will surface here once a run is worth keeping.'}
           </p>
+          <div className="session-list__empty-grid">
+            <div className="session-list__empty-card">
+              <span>Recovery path</span>
+              <strong>{selectable ? 'Relax filters or leave bulk mode.' : 'Run a search and save the answers worth reusing.'}</strong>
+            </div>
+            <div className="session-list__empty-card">
+              <span>What lives here</span>
+              <strong>Stored sessions keep query intent, answer body, attachments, and first-source provenance together.</strong>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -55,11 +67,27 @@ export function SessionList({
 
   return (
     <div className="session-list">
-      {selectable && selectedSessions.length > 0 && (
-        <div className="session-list__selection-bar">
-          <span>{selectedSessions.length} selected</span>
+      <div className="session-list__summary">
+        <div className="session-list__summary-copy">
+          <div className="session-list__summary-eyebrow">
+            {selectable ? 'Selection mode' : 'Archive view'}
+          </div>
+          <h2 className="session-list__summary-title">{sessionCountLabel}</h2>
+          <p className="session-list__summary-body">
+            {selectable
+              ? 'Choose the runs you want to export, compare, or remove in one pass.'
+              : 'Open preserved answers quickly and keep the provenance around every saved result visible.'}
+          </p>
         </div>
-      )}
+
+        {selectable && selectedSessions.length > 0 && (
+          <div className="session-list__selection-bar">
+            <span>{selectedSessions.length} selected</span>
+            <small>Use bulk export or delete to manage this slice of the archive.</small>
+          </div>
+        )}
+      </div>
+
       <div className="session-list__grid">
         {sessions.map((session) => (
           <SessionCard

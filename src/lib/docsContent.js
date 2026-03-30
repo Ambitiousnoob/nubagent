@@ -231,6 +231,243 @@ switch (action) {
     return handleMetadata(res);
 }`;
 
+export const RESEARCH_FRAMEWORK_V3_GAPS = [
+  {
+    gap: 'Agents are stateless between handoffs',
+    consequence: 'Context loss mid-pipeline.',
+  },
+  {
+    gap: 'Synthesis is still one-pass even with debate',
+    consequence: 'Weak convergence on contested topics.',
+  },
+  {
+    gap: 'No code/data execution',
+    consequence: "Can't verify quantitative claims.",
+  },
+  {
+    gap: 'Memory store is passive (queried, not proactive)',
+    consequence: 'Missed cross-session insights.',
+  },
+  {
+    gap: "Critics score but do not intervene mid-synthesis",
+    consequence: 'Garbage-in, garbage-out at synthesis time.',
+  },
+  {
+    gap: 'Single narrative output mode',
+    consequence: 'Poor fit for diverse user goals.',
+  },
+];
+
+export const RESEARCH_FRAMEWORK_V3_PHASES = [
+  {
+    id: 'cognitive-command-layer',
+    phase: '0',
+    title: 'Cognitive Command Layer (CCL)',
+    summary: 'Meta-orchestrator that compiles a dynamic DAG and resolves ambiguity by domain, scope, and output format.',
+    capabilities: [
+      'Intent Confidence Decomposition across domain/scope/output axes.',
+      'Dynamic Pipeline Compiler with query-type specific graph pruning.',
+      'Cost-Quality Pareto Front for live speed-vs-depth steering.',
+      'Session Continuity Manager that injects prior run context into Phase 1.',
+    ],
+  },
+  {
+    id: 'adversarial-query-forge',
+    phase: '1',
+    title: 'Adversarial Query Forge',
+    summary: 'Query intelligence layer that builds disconfirming lanes and auditable query revisions.',
+    capabilities: [
+      'DevilsAdvocateDecomposer for counter-hypothesis generation.',
+      'DomainDetector for ontology-aware strategy swaps (MeSH, ACM CCS, JEL).',
+      'QueryVersionController with rollback-ready transformation logs.',
+      '4D strategy matrix: keywords x semantic embeddings x citation seeds x ontology vocabulary.',
+    ],
+  },
+  {
+    id: 'intelligent-crawler-mesh',
+    phase: '2',
+    title: 'Intelligent Crawler Mesh',
+    summary: 'Adaptive source mesh with proactive citation intelligence and trend scanning.',
+    capabilities: [
+      'Expanded source set: IEEE/ACM/JSTOR, Unpaywall, GitHub, Papers With Code, Retraction Watch.',
+      'ForwardCitationTracer with depth-aware citation expansion.',
+      'AuthorNetworkMapper for co-authorship and echo-chamber analysis.',
+      'TemporalTrendAnalyzer for emerging vs. saturated topic velocity.',
+    ],
+  },
+  {
+    id: 'tiered-epistemic-filter',
+    phase: '3',
+    title: 'Tiered Epistemic Filter',
+    summary: 'Four-tier evidence gate with explicit auditability and confidence shaping.',
+    capabilities: [
+      'Tier verdicts: Core, Supporting, Peripheral, Discard.',
+      'TemporalRelevanceDecay tuned per domain half-life.',
+      'RetractedPaperGuard quarantine with retraction rationale logging.',
+      'SampleSizeFilter for confidence weighting instead of blind discard.',
+    ],
+  },
+  {
+    id: 'deep-comprehension-engine',
+    phase: '4',
+    title: 'Deep Comprehension Engine',
+    summary: 'Multi-modal extraction swarm with statistical and code-linked verification hooks.',
+    capabilities: [
+      'StatisticalClaimExtractor into structured claim schema.',
+      'CodeRepoAnalyzer for reproducibility scorecards.',
+      'SupplementaryMaterialParser for appendix-level method recovery.',
+      'ConceptEntityLinker + StatisticalVerifier for semantic and quantitative checks.',
+    ],
+  },
+  {
+    id: 'dialectical-synthesis-engine',
+    phase: '5',
+    title: 'Dialectical Synthesis Engine',
+    summary: 'Three-stage synthesis that argues with itself before producing narrative output.',
+    capabilities: [
+      'Stage A: Position Mapping over key debate axes.',
+      'Stage B: ThesisAgent vs AntithesisAgent with SynthesisMediator reconciliation.',
+      'Stage C: NarrativeArchitect mode selection (tutorial, controversy map, gap analysis, etc).',
+      'QuantitativeSynthesizer, EvidencePyramidBuilder, and EvolvingNarrativeTracker integration.',
+    ],
+  },
+  {
+    id: 'recursive-self-improvement-loop',
+    phase: '6',
+    title: 'Recursive Self-Improvement Loop',
+    summary: 'Quality tribunal plus verifier swarm with targeted refinement cycles and persistent postmortem learning.',
+    capabilities: [
+      'InternalConsistencyCritic, CoverageAuditor, and UserGoalAlignmentCritic.',
+      'ClaimVerifier, CitationVerifier, ContradictionVerifier, and UncertaintyVerifier as the anti-hallucination gate.',
+      'Refinement budget with dimension-targeted reruns (default: 3 cycles).',
+      'RunPostmortem storage in ResearchMemoryStore for future pre-patching.',
+      'Phase-level score deltas for measurable quality gains across sessions.',
+    ],
+  },
+  {
+    id: 'adaptive-delivery-hub',
+    phase: '7',
+    title: 'Adaptive Delivery Hub',
+    summary: 'Delivery layer that streams checkpoints and supports downstream research workflows.',
+    capabilities: [
+      'Streaming checkpoints by phase (hypotheses, inventory, summaries, drafts, final).',
+      'Output modes: Obsidian/Notion markdown, slide deck outline, dataset export, research API.',
+      'Live user steering at checkpoints with graph recompilation.',
+      'Flexible output mode mapping to explicit user goals.',
+    ],
+  },
+  {
+    id: 'active-safety-and-ethics',
+    phase: 'X',
+    title: 'Active Safety & Ethics (Cross-Cutting)',
+    summary: 'Always-on safety module across all phases, not a single checkpoint.',
+    capabilities: [
+      'Dual-use flagging for biosecurity/surveillance/weapons content.',
+      'FundingConflictDetector for contested-topic confidence adjustment.',
+      'PredatoryJournalFilter with quarantine behavior.',
+      'StatisticalManipulationDetector for p-hacking/HARKing risk signals.',
+    ],
+  },
+];
+
+export const RESEARCH_FRAMEWORK_V31_STRESS_POINTS = [
+  {
+    id: 'execution-semantics',
+    title: 'DAG compilation without execution semantics',
+    impact: 'Stalls, race conditions, and inconsistent intermediate state.',
+  },
+  {
+    id: 'convergence-guarantees',
+    title: 'Dialectical engine lacks convergence guarantees',
+    impact: 'Debate quality can increase while answers fail to stabilize.',
+  },
+  {
+    id: 'flat-memory',
+    title: 'Memory remains structurally flat',
+    impact: 'Retrieval precision degrades as run volume grows.',
+  },
+  {
+    id: 'quant-verification',
+    title: 'Statistical verification is underpowered',
+    impact: 'Isolated checks pass while cross-paper quantitative truth drifts.',
+  },
+  {
+    id: 'post-hoc-critics',
+    title: 'Critics still run mostly post-hoc',
+    impact: 'Weak reasoning propagates before corrections land.',
+  },
+  {
+    id: 'uncertainty-schema',
+    title: 'No formal uncertainty representation',
+    impact: 'Uncertainty is narrative instead of computable.',
+  },
+  {
+    id: 'decision-mode',
+    title: 'Output modes are not decision modes',
+    impact: 'Strong reports, weak decision support.',
+  },
+];
+
+export const RESEARCH_FRAMEWORK_V31_STABILIZATION = [
+  {
+    id: 'ddr-runtime',
+    title: 'Deterministic DAG Runtime (DDR)',
+    summary: 'DependencyResolver + AsyncScheduler + CheckpointManager + FailureRecovery with typed failure classes.',
+  },
+  {
+    id: 'convergence-engine',
+    title: 'Convergence Engine',
+    summary: 'ASS, ECD, and URR metrics with formal stop conditions and residual uncertainty output.',
+  },
+  {
+    id: 'hierarchical-memory',
+    title: 'Hierarchical Knowledge Graph (HKG)',
+    summary: 'Episode, concept, and abstraction layers for cross-run generalization.',
+  },
+  {
+    id: 'cross-paper-quant',
+    title: 'Cross-Paper Statistical Engine',
+    summary: 'EffectSizeNormalizer, HeterogeneityAnalyzer, and AssumptionValidator for field-level recomputation.',
+  },
+  {
+    id: 'inline-constraints',
+    title: 'Inline Constraint System (ICS)',
+    summary: 'Critics emit enforceable constraints during synthesis, not after it.',
+  },
+  {
+    id: 'probabilistic-epistemic',
+    title: 'Probabilistic Epistemic Layer (PEL)',
+    summary: 'Structured uncertainty schema with propagation rules and contradiction penalties.',
+  },
+  {
+    id: 'decision-intelligence',
+    title: 'Decision Intelligence Layer (DIL)',
+    summary: 'Decision briefs, policy recommendations, and engineering action plans with risk profiles.',
+  },
+  {
+    id: 'human-loop-hooks',
+    title: 'Human-in-the-Loop Control Hooks',
+    summary: 'Formal runtime controls for depth changes, source exclusions, and mode forcing.',
+  },
+  {
+    id: 'causal-risk-analyzer',
+    title: 'Causal Risk Analyzer',
+    summary: 'Technique-to-misuse causal chains with risk propagation scoring.',
+  },
+];
+
+export const RESEARCH_FRAMEWORK_V3_CAPABILITY_SUMMARY = [
+  { dimension: 'Pipeline structure', v2: 'Fixed linear + one loop', v3: 'Compiled DAG, fully dynamic' },
+  { dimension: 'Synthesis paradigm', v2: 'Additive summarization', v3: 'Dialectical with uncertainty quantification' },
+  { dimension: 'Evidence handling', v2: 'Qualitative', v3: 'Qualitative + lightweight meta-analysis' },
+  { dimension: 'Self-improvement', v2: 'Post-run prompt meta-learning', v3: 'Per-cycle targeted refinement + postmortem store' },
+  { dimension: 'Output modes', v2: '5 formats', v3: '8 formats + streaming + REST API' },
+  { dimension: 'Safety handling', v2: 'Phase 3 bias guardrail', v3: 'Cross-cutting safety and ethics layer' },
+  { dimension: 'Code verification', v2: 'Passive reproducibility scoring', v3: 'Active repo and statistical verification' },
+  { dimension: 'Query resilience', v2: 'Scope expansion on zero results', v3: 'Adversarial decomposition + counter-hypothesis tracking' },
+  { dimension: 'User interaction', v2: 'Optional checkpoints', v3: 'Live steering at every phase boundary' },
+];
+
 export const SUBAGENT_GROUPS = [
   {
     id: 'orchestration',
@@ -241,7 +478,6 @@ export const SUBAGENT_GROUPS = [
       { name: 'nub_product_guardian', scope: 'Keeps changes aligned with the product goal of being a trustworthy information finder.' },
       { name: 'nub_program_manager', scope: 'Sequences multi-owner work and keeps dependencies crisp.' },
       { name: 'nub_system_architect', scope: 'Confirms placement and boundaries when a change crosses surfaces.' },
-      { name: 'nub_answer_verification_orchestrator', scope: 'Enforces fetched-evidence or docs verification before any user-facing answer is finalized.' },
       { name: 'nub_release_ops', scope: 'Owns deploy readiness, environment assumptions, and rollout risk.' },
     ],
   },
@@ -253,9 +489,21 @@ export const SUBAGENT_GROUPS = [
       { name: 'nub_competitive_analyst', scope: 'Compares external options such as models, providers, libraries, or products.' },
       { name: 'nub_data_researcher', scope: 'Handles quantitative evidence, metrics, datasets, and evidence-backed measurement questions.' },
       { name: 'nub_docs_researcher', scope: 'Verifies external API or framework behavior from primary documentation.' },
-      { name: 'nub_fetched_info_verifier', scope: 'Checks whether fetched pages, excerpts, and citation targets actually support the facts being claimed.' },
       { name: 'nub_research_analyst', scope: 'Owns broader technical investigations when no narrower decision-support agent fits.' },
       { name: 'nub_search_specialist', scope: 'Finds the highest-signal files or external references before deeper analysis starts.' },
+    ],
+  },
+  {
+    id: 'verifiers',
+    title: 'The Verifiers',
+    summary: 'These agents form a multi-pass hallucination gate so externally grounded answers are checked for support, citation integrity, contradiction, and calibration before finalization.',
+    agents: [
+      { name: 'nub_answer_verification_orchestrator', scope: 'Coordinates the verifier swarm and blocks answer finalization until the required verification lanes are complete.' },
+      { name: 'nub_fetched_info_verifier', scope: 'Checks whether fetched pages, excerpts, and evidence blocks actually support the facts being claimed.' },
+      { name: 'nub_claim_verifier', scope: 'Verifies that each material factual claim in a draft has explicit evidentiary support.' },
+      { name: 'nub_citation_verifier', scope: 'Checks citation integrity, excerpt-to-claim alignment, and weak-source leakage into high-confidence narrative.' },
+      { name: 'nub_contradiction_verifier', scope: 'Surfaces omitted counterevidence, disagreement, and false-consensus language before final answer release.' },
+      { name: 'nub_uncertainty_verifier', scope: 'Calibrates confidence, caveats, and residual uncertainty so the final answer does not overclaim.' },
     ],
   },
   {
