@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { QueryClientProvider } from '@tanstack/react-query';
-import { queryClient } from './lib/queryClient.js';
 import { ThemeProvider } from './components/UI/ThemeProvider.jsx';
 import { ToastProvider } from './components/UI/ToastProvider.jsx';
 import { ErrorBoundary } from './components/UI/ErrorBoundary.jsx';
@@ -9,7 +7,9 @@ import { useUIStore } from './store/useUIStore.js';
 import { useLibraryStore } from './store/useLibraryStore.js';
 import SearchEngine from './SearchEngine.jsx';
 import Library from './Library.jsx';
+import Docs from './Docs.jsx';
 import {
+  BookOpen,
   Menu,
   MessageSquare,
   Library as LibraryIcon,
@@ -120,106 +120,106 @@ export default function App() {
   const navItems = [
     { id: 'chat', label: 'Chat', icon: <MessageSquare size={20} /> },
     { id: 'library', label: 'Library', icon: <LibraryIcon size={20} /> },
+    { id: 'docs', label: 'Docs', icon: <BookOpen size={20} /> },
   ];
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <ErrorBoundary>
-          <div className="app">
-            {/* Sidebar */}
-            <aside
-              ref={sidebarRef}
-              className={`sidebar ${isMobile && sidebar.isOpen ? 'sidebar--open' : ''} ${sidebar.isCollapsed ? 'sidebar--collapsed' : ''}`}
-            >
-              <div className="sidebar__header">
-                <div className="sidebar__logo">
-                  <span className="sidebar__logo-icon">🤖</span>
-                  <span className="sidebar__logo-text">nubagent</span>
-                </div>
-                <button
-                  className="sidebar__collapse"
-                  onClick={() => setSidebarCollapsed(!sidebar.isCollapsed)}
-                  aria-label={sidebar.isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                >
-                  {sidebar.isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-                </button>
+    <ThemeProvider>
+      <ErrorBoundary>
+        <div className="app">
+          {/* Sidebar */}
+          <aside
+            ref={sidebarRef}
+            className={`sidebar ${isMobile && sidebar.isOpen ? 'sidebar--open' : ''} ${sidebar.isCollapsed ? 'sidebar--collapsed' : ''}`}
+          >
+            <div className="sidebar__header">
+              <div className="sidebar__logo">
+                <span className="sidebar__logo-icon">🤖</span>
+                <span className="sidebar__logo-text">nubagent</span>
               </div>
+              <button
+                className="sidebar__collapse"
+                onClick={() => setSidebarCollapsed(!sidebar.isCollapsed)}
+                aria-label={sidebar.isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              >
+                {sidebar.isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+              </button>
+            </div>
 
-              <nav className="sidebar__nav">
-                {navItems.map((item) => (
-                  <button
-                    key={item.id}
-                    className={`sidebar__nav-item ${currentView === item.id ? 'sidebar__nav-item--active' : ''}`}
-                    onClick={() => handleNavigate(item.id)}
-                  >
-                    {item.icon}
-                    {!sidebar.isCollapsed && <span>{item.label}</span>}
-                  </button>
-                ))}
-              </nav>
-
-              <div className="sidebar__actions">
+            <nav className="sidebar__nav">
+              {navItems.map((item) => (
                 <button
-                  className="sidebar__new-chat"
-                  onClick={handleNewChat}
+                  key={item.id}
+                  className={`sidebar__nav-item ${currentView === item.id ? 'sidebar__nav-item--active' : ''}`}
+                  onClick={() => handleNavigate(item.id)}
                 >
-                  <Plus size={18} />
-                  {!sidebar.isCollapsed && <span>New Chat</span>}
+                  {item.icon}
+                  {!sidebar.isCollapsed && <span>{item.label}</span>}
                 </button>
-              </div>
+              ))}
+            </nav>
 
-              <div className="sidebar__footer">
-                <button
-                  className="sidebar__footer-item"
-                  onClick={() => openModal('settings')}
-                >
-                  <Settings size={18} />
-                  {!sidebar.isCollapsed && <span>Settings</span>}
-                </button>
-              </div>
-            </aside>
+            <div className="sidebar__actions">
+              <button
+                className="sidebar__new-chat"
+                onClick={handleNewChat}
+              >
+                <Plus size={18} />
+                {!sidebar.isCollapsed && <span>New Chat</span>}
+              </button>
+            </div>
 
-            {/* Mobile Header */}
-            {isMobile && (
-              <header className="app__mobile-header">
-                <button
-                  className="app__menu-btn"
-                  onClick={toggleSidebar}
-                  aria-label={sidebar.isOpen ? 'Close menu' : 'Open menu'}
-                >
-                  <Menu size={24} />
-                </button>
-                <span className="app__title">nubagent</span>
-                <div className="app__mobile-spacer" />
-              </header>
+            <div className="sidebar__footer">
+              <button
+                className="sidebar__footer-item"
+                onClick={() => openModal('settings')}
+              >
+                <Settings size={18} />
+                {!sidebar.isCollapsed && <span>Settings</span>}
+              </button>
+            </div>
+          </aside>
+
+          {/* Mobile Header */}
+          {isMobile && (
+            <header className="app__mobile-header">
+              <button
+                className="app__menu-btn"
+                onClick={toggleSidebar}
+                aria-label={sidebar.isOpen ? 'Close menu' : 'Open menu'}
+              >
+                <Menu size={24} />
+              </button>
+              <span className="app__title">nubagent</span>
+              <div className="app__mobile-spacer" />
+            </header>
+          )}
+
+          {/* Main Content */}
+          <main className="app__main">
+            {currentView === 'chat' && (
+              <SearchEngine
+                session={selectedSession}
+                onSessionLoaded={() => setSelectedSession(null)}
+              />
             )}
+            {currentView === 'library' && (
+              <Library
+                onViewSession={handleViewSession}
+                onBack={() => handleNavigate('chat')}
+                onNewSearch={handleNewChat}
+              />
+            )}
+            {currentView === 'docs' && <Docs />}
+          </main>
 
-            {/* Main Content */}
-            <main className="app__main">
-              {currentView === 'chat' && (
-                <SearchEngine
-                  session={selectedSession}
-                  onSessionLoaded={() => setSelectedSession(null)}
-                />
-              )}
-              {currentView === 'library' && (
-                <Library
-                  onViewSession={handleViewSession}
-                  onBack={() => handleNavigate('chat')}
-                  onNewSearch={handleNewChat}
-                />
-              )}
-            </main>
+          {/* Settings Modal */}
+          <SettingsModal />
 
-            {/* Settings Modal */}
-            <SettingsModal />
-
-            {/* Toast Container */}
-            <ToastProvider />
-          </div>
-        </ErrorBoundary>
-      </ThemeProvider>
-    </QueryClientProvider>
+          {/* Toast Container */}
+          <ToastProvider />
+        </div>
+      </ErrorBoundary>
+    </ThemeProvider>
   );
 }

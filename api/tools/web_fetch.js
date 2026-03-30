@@ -9,6 +9,7 @@ const {
     extractLinks: extractPageLinks,
     stripHtml,
 } = require("../../lib/web");
+const { getApiKeysFromEnv, getRotatingApiKey } = require("../../lib/api-key-rotation.cjs");
 
 const DEFAULT_MAX_CHARS = 20000;
 const HARD_MAX_CHARS = 80000;
@@ -18,30 +19,8 @@ const MAX_REDIRECTS = 5;
 const MAX_ERROR_DETAIL_CHARS = 240;
 
 const JINA_READER_URL = "https://r.jina.ai/";
-const FIRECRAWL_URL = "https://api.firecrawl.dev/v1/scrape";
 
-const getFirecrawlApiKey = () => {
-    const raw = process.env.FIRECRAWL_API_KEY || process.env.FIRECRAWL_API_KEYS;
-    const keys = String(raw || "").split(",").map((k) => k.trim()).filter(Boolean);
-    return keys[0] || null;
-};
-
-let jinaApiKeyIndex = 0;
-
-const getJinaApiKeys = () => (
-    String(process.env.JINA_API_KEYS || process.env.JINA_API_KEY || "")
-        .split(",")
-        .map((key) => key.trim())
-        .filter(Boolean)
-);
-
-const getJinaApiKey = () => {
-    const keys = getJinaApiKeys();
-    if (!keys.length) return null;
-    const nextKey = keys[jinaApiKeyIndex % keys.length];
-    jinaApiKeyIndex = (jinaApiKeyIndex + 1) % keys.length;
-    return nextKey;
-};
+const getJinaApiKey = () => getRotatingApiKey("jina", "JINA_API_KEYS", "JINA_API_KEY");
 
 const normalizeText = (value) => String(value ?? "").replace(/\u0000/g, "").trim();
 
@@ -243,51 +222,6 @@ const fetchWithJina = async (url, format, maxChars, signal) => {
     };
 };
 
-const fetchWithFirecrawl = async (url, format, maxChars, signal) => {
-    const apiKey = getFirecrawlApiKey();
-    if (!apiKey) throw new Error("Firecrawl API key not configured");
-
-    const response = await fetch(FIRECRAWL_URL, {
-        method: "POST",
-        signal,
-        headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-            url,
-            formats: ["markdown"],
-            onlyMainContent: true,
-            waitFor: 0,
-            timeout: TIMEOUT_MS,
-        }),
-    });
-
-    if (!response.ok) {
-        const detail = await readErrorDetail(response);
-        throw new Error(`Firecrawl returned HTTP ${response.status}${detail ? `: ${detail}` : ""}`);
-    }
-
-    const data = await response.json();
-    if (!data.success || !data.markdown) {
-        const detail = normalizeText(data?.error || data?.message || "Firecrawl returned no content");
-        throw new Error(detail);
-    }
-
-    const content = String(data.markdown || "").slice(0, maxChars);
-
-    return {
-        title: extractMarkdownTitle(data.markdown) || data.metadata?.title || "",
-        url: data.metadata?.sourceURL || url,
-        content,
-        fullLength: String(data.markdown || "").length,
-        description: data.metadata?.description || "",
-        publishedTime: data.metadata?.date || "",
-        via: "firecrawl",
-        outboundLinks: extractLinksFromMarkdown(content, data.metadata?.sourceURL || url),
-    };
-};
-
 const fetchDirectly = async (url, format, maxChars, signal, redirectCount = 0) => {
     const normalized = await assertPublicHttpUrl(url);
     const response = await fetch(normalized, {
@@ -355,13 +289,6 @@ const fetchWithFallback = async (url, format, maxChars) => {
             name: "Jina",
             run: (signal) => fetchWithJina(url, format, maxChars, signal),
         });
-
-        if (getFirecrawlApiKey()) {
-            steps.push({
-                name: "Firecrawl",
-                run: (signal) => fetchWithFirecrawl(url, format, maxChars, signal),
-            });
-        }
     }
 
     steps.push({

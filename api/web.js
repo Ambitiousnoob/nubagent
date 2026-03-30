@@ -203,7 +203,7 @@ const handleMetadata = (res) => {
         description: "Combined web research endpoint with search, fetch, and RAG ranking",
         features: [
             "Multi-backend search (DuckDuckGo, Tavily, Serper, Jina, Brave)",
-            "Content extraction with Jina/Firecrawl fallbacks",
+            "Content extraction with Jina and direct-fetch fallbacks",
             "RAG re-ranking for query-focused results",
             "Evidence block generation for synthesis",
         ],

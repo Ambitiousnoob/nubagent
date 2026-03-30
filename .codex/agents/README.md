@@ -14,6 +14,8 @@ Working rule:
 - use `nub_competitive_analyst` when the first task is choosing between external options rather than editing code
 - use `nub_data_researcher` when the first task is gathering quantitative evidence or dataset-backed decision support
 - use `nub_docs_researcher` when the first task is verifying external API or framework behavior from primary docs rather than editing repo docs
+- use `nub_fetched_info_verifier` when the immediate task is checking whether fetched pages, excerpts, and evidence blocks actually support the facts NubAgent wants to say
+- use `nub_answer_verification_orchestrator` when the immediate task is enforcing that fetched-evidence verification happens before any user-facing answer is finalized
 - use `nub_research_analyst` for broader technical investigations that are not primarily option comparison, quantitative evidence work, or direct docs verification
 - use `nub_search_specialist` for fast discovery and triage when the immediate need is finding the highest-signal files or external references before deeper work starts
 - escalate to the management layer for broad or cross-cutting work

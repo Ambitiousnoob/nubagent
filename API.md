@@ -126,7 +126,7 @@ Web research endpoint metadata.
   "description": "Combined web research endpoint with search, fetch, and RAG ranking",
   "features": [
     "Multi-backend search (DuckDuckGo, Tavily, Serper, Jina, Brave)",
-    "Content extraction with Jina/Firecrawl fallbacks",
+    "Content extraction with Jina and direct-fetch fallbacks",
     "RAG re-ranking for query-focused results",
     "Evidence block generation for synthesis"
   ]
@@ -649,8 +649,7 @@ Fetches and extracts content from URLs with intelligent fallbacks.
 
 **Fetch Strategy (in order):**
 1. **Jina AI Reader** - Most reliable, handles anti-bot
-2. **Firecrawl** - If `FIRECRAWL_API_KEY` configured
-3. **Direct fetch** - Fallback with lib/web.js
+2. **Direct fetch** - Fallback with lib/web.js
 
 **Features:**
 - HTML to markdown conversion
@@ -780,7 +779,7 @@ If the primary model fails, requests fall back to:
 
 | Variable | Description |
 |----------|-------------|
-| `GEMINI_API_KEY` or `GEMINI_API_KEYS` | Google Gemini API key(s) |
+| `GEMINI_API_KEY` or `GEMINI_API_KEYS` | Google Gemini API key(s); comma-separated values in either variable rotate in-process |
 | `DATABASE_URL` | MySQL/TiDB connection string |
 
 ### Optional
@@ -789,11 +788,10 @@ If the primary model fails, requests fall back to:
 
 | Variable | Description |
 |----------|-------------|
-| `TAVILY_API_KEY` / `TAVILY_API_KEYS` | Tavily AI search backend |
-| `SERPER_API_KEY` / `SERPER_API_KEYS` | Google Search via Serper (dork operators) |
-| `JINA_API_KEY` / `JINA_API_KEYS` | Jina AI reader & search enrichment |
-| `BRAVE_API_KEY` / `BRAVE_API_KEYS` | Brave Search API |
-| `FIRECRAWL_API_KEY` | Firecrawl web scraper (enhanced fetch) |
+| `TAVILY_API_KEY` / `TAVILY_API_KEYS` | Tavily AI search backend; comma-separated keys rotate in-process |
+| `SERPER_API_KEY` / `SERPER_API_KEYS` | Google Search via Serper (dork operators); comma-separated keys rotate in-process |
+| `JINA_API_KEY` / `JINA_API_KEYS` | Jina AI reader & search enrichment; comma-separated keys rotate in-process |
+| `BRAVE_API_KEY` / `BRAVE_API_KEYS` | Brave Search API; comma-separated keys rotate in-process |
 
 #### AI & Memory
 

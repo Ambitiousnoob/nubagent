@@ -21,8 +21,8 @@ It intentionally omits secrets and raw API keys.
 - Current HEAD when this file was written: `19d4ac0`
 - Active frontend entrypoint:
   - `src/main.jsx` -> `src/App.jsx` -> `src/SearchEngine.jsx`
-- Legacy UI still exists but is not the active entrypoint:
-  - `src/ai.jsx`
+- Secondary active screen:
+  - `src/Library.jsx`
 
 ## Subagent Policy Snapshot
 
@@ -222,19 +222,16 @@ Optional:
 
 ## Known Technical Debt
 
-- React is still `17`
+- React is `18.3.1`
 - Vite is still `4`
 - `src/SearchEngine.jsx` is doing a lot in one file: UI, orchestration, upload handling, answer rendering, and styling
-- `src/ai.jsx` still exists and contains a lot of older logic that is no longer the active entrypoint
-- `vercel.json` still uses `builds`, which causes the Vercel warning
-- Tavily fallback secret handling should be cleaned up
+- alias-heavy endpoint routing in `vercel.json` makes the API surface harder to trace
 
 ## Practical Next Steps
 
 If resuming work later, the highest-value cleanup items are:
 
 1. Split `src/SearchEngine.jsx` into smaller components
-2. Remove hardcoded Tavily fallback usage
-3. Decide whether `src/ai.jsx` should be kept or retired
-4. Replace legacy `vercel.json` `builds` usage with the current Vercel config style
-5. Redeploy production after UI-only GitHub pushes
+2. Keep contributor docs aligned with the live route aliases in `vercel.json`
+3. Add a small focused test slice for server utility helpers and API aliases
+4. Redeploy production after runtime changes

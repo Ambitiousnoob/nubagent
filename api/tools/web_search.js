@@ -1,4 +1,5 @@
 const { normalizeUrl, stripHtml } = require("../../lib/web");
+const { getApiKeysFromEnv, getRotatingApiKey } = require("../../lib/api-key-rotation.cjs");
 const {
     canonicalizeSourceUrl,
     extractQueryTerms,
@@ -19,10 +20,6 @@ const RESULT_LINK_RE = /<a\b[^>]*class=(?:"[^"]*\b(?:result__a|result-link)\b[^"
 const RESULT_SNIPPET_RE = /<(?:a|div|span)\b[^>]*class=(?:"[^"]*\b(?:result__snippet|result-snippet)\b[^"]*"|'[^']*\b(?:result__snippet|result-snippet)\b[^']*')[^>]*>([\s\S]*?)<\/(?:a|div|span)>/i;
 const GOOGLE_ONLY_OPERATORS_RE = /\b(intitle:|inurl:|intext:|before:|after:|filetype:(?!pdf))/i;
 const ANY_OPERATOR_RE = /\b(site:|filetype:|intitle:|inurl:|intext:|before:|after:)/i;
-let tavilyApiKeyIndex = 0;
-let serperApiKeyIndex = 0;
-let jinaApiKeyIndex = 0;
-let braveApiKeyIndex = 0;
 
 const normalizeText = (value) => (
     String(value || "")
@@ -227,59 +224,13 @@ const hasDorkOperators = (query) => ANY_OPERATOR_RE.test(String(query || ""));
 
 const needsGoogle = (query) => GOOGLE_ONLY_OPERATORS_RE.test(String(query || ""));
 
-const getTavilyApiKey = () => {
-    const raw = process.env.TAVILY_API_KEYS || process.env.TAVILY_API_KEY;
-    const keys = String(raw || "").split(",").map((key) => key.trim()).filter(Boolean);
-    if (!keys.length) return null;
-    const nextKey = keys[tavilyApiKeyIndex % keys.length];
-    tavilyApiKeyIndex = (tavilyApiKeyIndex + 1) % keys.length;
-    return nextKey;
-};
-
-const getSerperApiKeys = () => (
-    String(process.env.SERPER_API_KEYS || process.env.SERPER_API_KEY || "")
-        .split(",")
-        .map((key) => key.trim())
-        .filter(Boolean)
-);
-
-const getSerperApiKey = () => {
-    const keys = getSerperApiKeys();
-    if (!keys.length) return null;
-    const nextKey = keys[serperApiKeyIndex % keys.length];
-    serperApiKeyIndex = (serperApiKeyIndex + 1) % keys.length;
-    return nextKey;
-};
-
-const getJinaApiKeys = () => (
-    String(process.env.JINA_API_KEYS || process.env.JINA_API_KEY || "")
-        .split(",")
-        .map((key) => key.trim())
-        .filter(Boolean)
-);
-
-const getJinaApiKey = () => {
-    const keys = getJinaApiKeys();
-    if (!keys.length) return null;
-    const nextKey = keys[jinaApiKeyIndex % keys.length];
-    jinaApiKeyIndex = (jinaApiKeyIndex + 1) % keys.length;
-    return nextKey;
-};
-
-const getBraveApiKeys = () => (
-    String(process.env.BRAVE_API_KEYS || process.env.BRAVE_API_KEY || "")
-        .split(",")
-        .map((key) => key.trim())
-        .filter(Boolean)
-);
-
-const getBraveApiKey = () => {
-    const keys = getBraveApiKeys();
-    if (!keys.length) return null;
-    const nextKey = keys[braveApiKeyIndex % keys.length];
-    braveApiKeyIndex = (braveApiKeyIndex + 1) % keys.length;
-    return nextKey;
-};
+const getTavilyApiKey = () => getRotatingApiKey("tavily", "TAVILY_API_KEYS", "TAVILY_API_KEY");
+const getSerperApiKeys = () => getApiKeysFromEnv("SERPER_API_KEYS", "SERPER_API_KEY");
+const getSerperApiKey = () => getRotatingApiKey("serper", "SERPER_API_KEYS", "SERPER_API_KEY");
+const getJinaApiKeys = () => getApiKeysFromEnv("JINA_API_KEYS", "JINA_API_KEY");
+const getJinaApiKey = () => getRotatingApiKey("jina", "JINA_API_KEYS", "JINA_API_KEY");
+const getBraveApiKeys = () => getApiKeysFromEnv("BRAVE_API_KEYS", "BRAVE_API_KEY");
+const getBraveApiKey = () => getRotatingApiKey("brave", "BRAVE_API_KEYS", "BRAVE_API_KEY");
 
 const parseDuckDuckGoResults = (html, limit = MAX_RESULTS) => {
     const results = [];

@@ -53,20 +53,20 @@ Thank you for your interest in contributing to NubAgent! This document provides 
 
 ```
 nubagent/
-├── api/                    # Backend API endpoints
-│   ├── middleware/         # Express middleware
-│   └── tools/              # API tool implementations
+├── api/                    # Vercel API endpoints
+│   ├── __tests__/          # API-focused test files
+│   └── tools/              # Search/fetch/image tool implementations
+├── lib/                    # Shared server utilities and middleware
 ├── public/                 # Static assets
 ├── src/
 │   ├── components/         # React components
-│   │   ├── Chat/          # Chat-related components
-│   │   ├── Search/        # Search components
-│   │   ├── Library/       # Library components
-│   │   ├── Settings/      # Settings components
+│   │   ├── Search/        # Search and library filter components
+│   │   ├── Library/       # Saved-session components
+│   │   ├── Settings/      # Settings modal/components
 │   │   └── UI/            # Reusable UI components
-│   ├── hooks/             # Custom React hooks
 │   ├── lib/               # Utility functions
 │   ├── store/             # Zustand stores
+│   ├── __tests__/         # Frontend unit tests
 │   └── index.css          # Global styles
 ├── index.html             # HTML template
 └── package.json           # Dependencies
@@ -99,7 +99,7 @@ export function Button({ variant = 'primary', onClick, children }) {
 
 ### Naming Conventions
 
-- **Components**: PascalCase (`ChatMessage`, `SearchResults`)
+- **Components**: PascalCase (`SessionCard`, `SettingsModal`)
 - **Files**: Match component name or descriptive (PascalCase for components, camelCase for utilities)
 - **Variables/Functions**: camelCase (`isLoading`, `handleClick`)
 - **Constants**: UPPER_SNAKE_CASE (`MAX_FILE_SIZE`, `API_BASE`)
@@ -122,17 +122,9 @@ export function Button({ variant = 'primary', onClick, children }) {
 
 ### State Management
 
-- Use Zustand for global state
-- Use React Query for server state
-- Keep local state in components when appropriate
-
-```javascript
-// Global state (Zustand)
-import { useChatStore } from '../store/useChatStore';
-
-// Server state (React Query)
-import { useQuery } from '@tanstack/react-query';
-```
+- Use Zustand for persisted UI/library/settings state
+- Keep request-specific state local to the owning component unless it is reused across screens
+- Avoid reintroducing a second server-state layer unless a concrete caching problem justifies it
 
 ## Pull Request Process
 
@@ -187,11 +179,8 @@ Brief description of changes
 # Run all tests
 npm test
 
-# Run with coverage
-npm run test:coverage
-
 # Run specific test file
-npm test -- ChatMessage.test.jsx
+npm test -- --run src/__tests__/stores.test.js
 ```
 
 ### Writing Tests

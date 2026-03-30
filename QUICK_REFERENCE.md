@@ -1,5 +1,7 @@
 # NubAgent Development Plan - Quick Reference
 
+> Historical planning document. Treat the current runtime architecture in `src/`, `api/`, and `lib/` as the source of truth.
+
 ## 📊 Project Overview
 
 | Aspect | Current | Target |
@@ -52,7 +54,7 @@ src/
 
 ```bash
 # State Management
-npm install zustand @tanstack/react-query
+npm install zustand
 
 # UI & Styling
 npm install react-markdown rehype-highlight remark-gfm
@@ -170,22 +172,17 @@ npm install -D typescript @types/react
 ## 📊 State Management
 
 ### Before
-- All state in `SearchEngine.jsx` (1881 lines)
-- All state in `ai.jsx` (4588 lines)
+- Most live state in `SearchEngine.jsx`
+- Shared settings/library state in Zustand stores
 - No caching
-- No server state management
+- No separate server-state client cache layer
 
 ### After
 ```javascript
-// Zustand for UI state
-useChatStore  → conversations, currentConversation, isTyping
+// Zustand for shared UI state
 useSettingsStore → theme, apiKeys, preferences
-useUiStore → toasts, modals, sidebar
-
-// React Query for server state
-useQuery(['conversations']) → cached conversation list
-useMutation(['sendMessage']) → chat API with retry
-useQuery(['search', query]) → cached search results
+useUIStore → toasts, modals, sidebar
+useLibraryStore → saved sessions, filters, selection
 ```
 
 ---
@@ -279,7 +276,7 @@ const handleSend = async (message) => {
 ### Day 1-2: Setup
 ```bash
 # Install dependencies
-npm install zustand @tanstack/react-query
+npm install zustand
 npm install @sentry/react posthog-js
 npm install @upstash/ratelimit @upstash/redis
 

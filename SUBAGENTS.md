@@ -25,6 +25,7 @@ Use these agents to define scope and sequencing before implementation:
 - `.codex/agents/nub_product_guardian.toml`
 - `.codex/agents/nub_program_manager.toml`
 - `.codex/agents/nub_system_architect.toml`
+- `.codex/agents/nub_answer_verification_orchestrator.toml`
 - `.codex/agents/nub_release_ops.toml`
 
 ## Decision Support Ownership
@@ -35,6 +36,8 @@ Use these agents to define scope and sequencing before implementation:
   Scope: dataset, metric, pipeline, and quantitative evidence research used to support product, architecture, and operational decisions.
 - `.codex/agents/nub_docs_researcher.toml`
   Scope: documentation-backed verification of external APIs, framework behavior, version differences, defaults, and migration caveats.
+- `.codex/agents/nub_fetched_info_verifier.toml`
+  Scope: verification that fetched pages, excerpts, evidence blocks, and citation targets actually support the facts NubAgent plans to synthesize or present.
 - `.codex/agents/nub_research_analyst.toml`
   Scope: broader technical investigations, design questions, and implementation-approach research when no narrower decision-support owner is a better fit.
 - `.codex/agents/nub_search_specialist.toml`
@@ -87,6 +90,10 @@ Use these as the default owners for the live search-first product surface:
 
 ## Quality, Docs, And Release Ownership
 
+- `.codex/agents/nub_answer_verification_orchestrator.toml`
+  Scope: enforcing that fetched-evidence or docs verification happens before any user-facing answer is finalized.
+- `.codex/agents/nub_fetched_info_verifier.toml`
+  Scope: fetched-evidence validation, claim-to-source support checks, contradiction surfacing, and weak-evidence filtering before synthesis or user-facing answer claims.
 - `.codex/agents/nub_test_engineer.toml`
   Scope: tests, verification commands, regression coverage.
 - `.codex/agents/nub_code_reviewer.toml`
@@ -113,6 +120,10 @@ For `src/SearchEngine.jsx`, default to these micro-owners:
 
 Even when a request changes only a tiny piece of `src/SearchEngine.jsx`, route it to the matching micro-owner instead of a generic frontend agent.
 
+When the touched path includes fetched excerpts, evidence blocks, or citation support that need factual validation before answer text is trusted, add `nub_fetched_info_verifier` as the verification owner after the fetch or pipeline owner finishes.
+
+When the task includes producing or approving a user-facing answer from fetched information, add `nub_answer_verification_orchestrator` to enforce that the verification pass happens before answer finalization.
+
 ## Micro-Scope Assignment Protocol
 
 Before implementation, record a handoff note with:
@@ -131,5 +142,6 @@ Do not allow overlapping edits unless the orchestrator explicitly coordinates th
 2. Architecture and placement: the system architect confirms boundaries when the change crosses surfaces.
 3. Micro-assignment: each touched part gets a dedicated owner from `.codex/agents/`.
 4. Implementation: owners edit only within their bounded scope.
-5. Verification: test and review agents validate the merged result.
-6. Docs and release: update docs and deploy notes when behavior changes.
+5. Answer verification gate: `nub_answer_verification_orchestrator` ensures fetched-evidence or docs verification runs before user-facing answer finalization.
+6. Verification: test and review agents validate the merged result.
+7. Docs and release: update docs and deploy notes when behavior changes.

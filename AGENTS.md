@@ -11,7 +11,7 @@
 - `npm install` – Install dependencies (Node 18+ recommended).
 - `npm run dev` – Start Vite dev server.
 - `npm run build` – Production build to `dist/`.
-- Tests are not yet configured; add Vitest/Jest before introducing new suites.
+- Run focused Vitest suites with `npm test -- --run <path>` and keep frontend tests under `src/__tests__/`.
 
 ## Coding Style & Naming
 - JavaScript/TypeScript with ES modules; prefer functional React components.
@@ -36,8 +36,8 @@
 
 ## Agent-Specific Notes
 - Project-scoped Codex agents live in `.codex/agents/`; route work to the smallest matching owner and use `SUBAGENTS.md` as the ownership map.
-- Treat `src/SearchEngine.jsx` as the active product surface and `src/ai.jsx` as legacy unless a task is explicitly about migration or retirement.
-- Default model: `gemini-1.5-flash` via Google, branded as “gemini-3-flash”.
+- Treat `src/SearchEngine.jsx` and `src/Library.jsx` as the active product surfaces; do not reintroduce the removed legacy chat shell.
+- Default runtime model: `gemini-2.5-flash-lite` via Google, branded publicly as `nub-agent`.
 - Rate limiting uses a mutex queue; dedicated ownership does not imply unbounded parallel API calls.
 - Emit detailed logs for tool calls and model invocations; call tools only when necessary to answer the request.
 - Assign a dedicated subagent owner to every meaningful work slice, including small independent parts (single helper updates, isolated validations, narrow doc edits).
