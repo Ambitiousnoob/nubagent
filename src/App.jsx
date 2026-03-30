@@ -27,12 +27,11 @@ import {
  * Root component with navigation and routing
  */
 export default function App() {
-  const { sidebar, setActiveTab, toggleSidebar, setSidebarCollapsed, openModal, isMobile, closeSidebar, setIsMobile: setIsMobileState } = useUIStore();
+  const { sidebar, setActiveTab, toggleSidebar, setSidebarCollapsed, openModal, isMobile, closeSidebar, setIsMobile } = useUIStore();
   const { loadSessions, selectSession, clearSelectedSession } = useLibraryStore();
   const [currentView, setCurrentView] = useState('chat');
   const [selectedSession, setSelectedSession] = useState(null);
   const sidebarRef = useRef(null);
-  const [localIsMobile, setLocalIsMobile] = useState(false);
 
   // Load sessions on mount
   useEffect(() => {
@@ -44,29 +43,26 @@ export default function App() {
     const checkMobile = () => {
       const mobile = window.innerWidth < 768;
       window.__nubagent_is_mobile = mobile;
-      // Update store
-      setIsMobileState(mobile);
-      // Also update local state for immediate re-render
-      setLocalIsMobile(mobile);
+      setIsMobile(mobile);
     };
 
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
-  }, [setIsMobileState]);
+  }, [setIsMobile]);
 
   // Handle body class for sidebar state
   useEffect(() => {
-    if (localIsMobile && sidebar.isOpen) {
+    if (isMobile && sidebar.isOpen) {
       document.body.classList.add('sidebar-open');
     } else {
       document.body.classList.remove('sidebar-open');
     }
-  }, [sidebar.isOpen, localIsMobile]);
+  }, [sidebar.isOpen, isMobile]);
 
   // Close sidebar when clicking outside on mobile
   useEffect(() => {
-    if (!localIsMobile || !sidebar.isOpen) return;
+    if (!isMobile || !sidebar.isOpen) return;
 
     const handleClickOutside = (event) => {
       if (sidebarRef.current && !sidebarRef.current.contains(event.target)) {
@@ -76,7 +72,7 @@ export default function App() {
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [localIsMobile, sidebar.isOpen, closeSidebar]);
+  }, [isMobile, sidebar.isOpen, closeSidebar]);
 
   const handleNewChat = () => {
     setCurrentView('chat');
@@ -121,26 +117,22 @@ export default function App() {
               <div className="sidebar__header">
                 <div className="sidebar__logo">
                   <span className="sidebar__logo-icon">🤖</span>
-                  {!sidebar.isCollapsed && <span className="sidebar__logo-text">nubagent</span>}
+                  <span className="sidebar__logo-text">nubagent</span>
                 </div>
-                {!localIsMobile && (
-                  <button
-                    className="sidebar__collapse"
-                    onClick={() => setSidebarCollapsed(!sidebar.isCollapsed)}
-                    aria-label={sidebar.isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                  >
-                    {sidebar.isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-                  </button>
-                )}
-                {localIsMobile && (
-                  <button
-                    className="sidebar__close-mobile"
-                    onClick={closeSidebar}
-                    aria-label="Close sidebar"
-                  >
-                    <X size={20} />
-                  </button>
-                )}
+                <button
+                  className="sidebar__collapse"
+                  onClick={() => setSidebarCollapsed(!sidebar.isCollapsed)}
+                  aria-label={sidebar.isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                >
+                  {sidebar.isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+                </button>
+                <button
+                  className="sidebar__close-mobile"
+                  onClick={closeSidebar}
+                  aria-label="Close sidebar"
+                >
+                  <X size={20} />
+                </button>
               </div>
 
               <nav className="sidebar__nav">
@@ -178,7 +170,7 @@ export default function App() {
             </aside>
 
             {/* Mobile Header */}
-            {localIsMobile && (
+            {isMobile && (
               <header className="app__mobile-header">
                 <button
                   className="app__menu-btn"
