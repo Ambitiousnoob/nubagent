@@ -410,6 +410,77 @@ const getSourceLetterMark = (source) => {
     return letters || "S";
 };
 
+const getSourceCategory = (source) => {
+    const domain = getDomain(source?.url || "");
+    if (!domain) return "Web";
+    if (/(\.gov|\.mil)\b/i.test(domain) || /(nist|nih|cisa|fda|who|un\.org|europa)/i.test(domain)) return "Government";
+    if (/(\.edu)\b/i.test(domain) || /(arxiv|nature|science|springer|ieee|acm|pubmed|doi\.org|nejm|jamanetwork|cell|mit\.edu)/i.test(domain)) return "Research";
+    if (/(reuters|apnews|bbc|euronews|nytimes|washingtonpost|theguardian|wired|technologyreview|cyberscoop|techcrunch|theverge)/i.test(domain)) return "News";
+    if (/(google|cloudflare|microsoft|openai|anthropic|aws|ibm|meta|github|docs\.)/i.test(domain)) return "Vendor";
+    return "Web";
+};
+
+const formatGeneratedAt = (value) => {
+    const date = value ? new Date(value) : null;
+    if (!date || Number.isNaN(date.getTime())) return "Just now";
+    return date
+        .toISOString()
+        .replace("T", " ")
+        .replace(/\.\d{3}Z$/, " UTC");
+};
+
+const buildCoverageRows = (query, researchMeta = {}, sources = []) => {
+    const normalizedQuery = String(query || "").trim();
+    const operatorMode = /\b(site:|filetype:|intitle:|inurl:|after:|before:)\b/i.test(normalizedQuery);
+    const attachmentCount = Number(researchMeta?.attachments || 0);
+    const queryCount = Number(researchMeta?.searchCount || 0);
+    const rankedSites = Number(researchMeta?.rankedSites || 0);
+    const fetchedSites = Number(researchMeta?.fetchedSites || 0);
+    const synthesisWorkers = Number(researchMeta?.synthesisWorkers || 0);
+    const rows = [
+        {
+            label: "Search mode",
+            spec: normalizedQuery
+                ? (operatorMode ? "Operator-guided web research with targeted query expansion" : "Natural-language web research with query expansion")
+                : "Attachment-only analysis",
+        },
+        {
+            label: "Query workers",
+            spec: `${Math.max(queryCount, normalizedQuery ? 1 : 0)} search path${Math.max(queryCount, normalizedQuery ? 1 : 0) === 1 ? "" : "s"} executed`,
+        },
+        {
+            label: "Sites ranked",
+            spec: `${Math.max(rankedSites, sources.length)} unique site${Math.max(rankedSites, sources.length) === 1 ? "" : "s"} kept after dedupe`,
+        },
+        {
+            label: "Pages fetched",
+            spec: `${fetchedSites} page${fetchedSites === 1 ? "" : "s"} read for evidence extraction`,
+        },
+        {
+            label: "Cited sources",
+            spec: `${sources.length} source${sources.length === 1 ? "" : "s"} carried into the final answer`,
+        },
+        {
+            label: "Synthesis",
+            spec: `${Math.max(synthesisWorkers, 1)} summarization worker${Math.max(synthesisWorkers, 1) === 1 ? "" : "s"} merged into one final response`,
+        },
+    ];
+
+    if (attachmentCount) {
+        rows.push({
+            label: "Attachments",
+            spec: `${attachmentCount} uploaded file${attachmentCount === 1 ? "" : "s"} used as extra evidence`,
+        });
+    }
+
+    rows.push({
+        label: "Generated",
+        spec: formatGeneratedAt(researchMeta?.generatedAt),
+    });
+
+    return rows;
+};
+
 function Markdown({ text, sources = [] }) {
     const lines = String(text || "").split("\n");
     const elements = [];
@@ -570,7 +641,90 @@ function SourcePills({ sources }) {
     );
 }
 
-function LibertyResultCard({ query, heading, body, sources = [], searchCount = 0 }) {
+function LibertyTableCard({ icon, title, badge, children, note }) {
+    return (
+        <div className="la-card">
+            <div className="la-card-header">
+                <div className="la-card-icon">{icon}</div>
+                <span className="la-card-title">{title}</span>
+                {badge ? <span className="la-card-badge">{badge}</span> : null}
+            </div>
+            <div className="la-table-wrap">{children}</div>
+            {note ? <div className="la-note">{note}</div> : null}
+        </div>
+    );
+}
+
+function LibertySourceTable({ sources = [] }) {
+    const rows = sources.slice(0, 7);
+    if (!rows.length) return null;
+
+    return (
+        <LibertyTableCard icon="⌘" title="Key Sources & Findings" badge={`${rows.length} entr${rows.length === 1 ? "y" : "ies"}`}>
+            <table className="la-table">
+                <thead>
+                    <tr>
+                        <th className="col-num">#</th>
+                        <th className="col-source">Source</th>
+                        <th className="col-discipline">Type</th>
+                        <th className="col-findings">Main Findings</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.map((source, index) => (
+                        <tr key={source.url || `${index}`}>
+                            <td className="col-num">{index + 1}</td>
+                            <td className="col-source">
+                                <div className="la-source-name">{source.title || getDomain(source.url)}</div>
+                                <div className="la-source-ref">{getDomain(source.url)}</div>
+                                <a href={source.url} target="_blank" rel="noopener noreferrer" className="la-source-url">
+                                    ↗ {source.url}
+                                </a>
+                            </td>
+                            <td className="col-discipline">
+                                <span className="la-discipline-tag">{getSourceCategory(source)}</span>
+                            </td>
+                            <td className="col-findings">{source.description || "Used as cited evidence in the final answer."}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </LibertyTableCard>
+    );
+}
+
+function LibertyCoverageTable({ query, researchMeta = {}, sources = [] }) {
+    const rows = buildCoverageRows(query, researchMeta, sources);
+    if (!rows.length) return null;
+
+    return (
+        <LibertyTableCard
+            icon="◌"
+            title="Scope & Coverage"
+            badge={`${rows.length} criteria`}
+            note="Coverage is derived from the actual search and fetch pipeline for this answer."
+        >
+            <table className="la-table">
+                <thead>
+                    <tr>
+                        <th className="col-criterion">Criterion</th>
+                        <th className="col-spec">Specification</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.map((row) => (
+                        <tr key={row.label}>
+                            <td className="col-criterion"><span className="la-criterion-label">{row.label}</span></td>
+                            <td className="col-spec">{row.spec}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </LibertyTableCard>
+    );
+}
+
+function LibertyResultCard({ query, heading, body, sources = [], searchCount = 0, researchMeta = {} }) {
     const visibleSources = sources.slice(0, 20);
     const summary = buildResultSummary(body);
     const points = extractHighlightPoints(body, 4);
@@ -607,33 +761,11 @@ function LibertyResultCard({ query, heading, body, sources = [], searchCount = 0
                     </div>
                 ) : null}
 
-                {visibleSources.length ? (
-                    <>
-                        <div className="la-sources-header">
-                            <span className="la-sources-title">All Sources</span>
-                            <span className="la-sources-count">from {Math.max(searchCount, 1)} search{Math.max(searchCount, 1) === 1 ? "" : "es"}</span>
-                        </div>
-                        <div className="la-sources">
-                            {visibleSources.map((source, index) => {
-                                const badge = getSourceBadge(source, index);
-                                const colorClass = SOURCE_COLOR_CLASSES[index % SOURCE_COLOR_CLASSES.length];
-                                return (
-                                    <a key={source.url || `${index}`} href={source.url} target="_blank" rel="noopener noreferrer" className="la-source">
-                                        <div className={`la-source-favicon ${colorClass}`}>{getSourceLetterMark(source)}</div>
-                                        <div className="la-source-content">
-                                            <div className="la-source-meta">
-                                                <span className="la-source-domain">{getDomain(source.url)}</span>
-                                                {badge ? <span className={`la-source-tag ${badge.className}`}>{badge.label}</span> : null}
-                                            </div>
-                                            <div className="la-source-title">{source.title || getDomain(source.url)}</div>
-                                            {source.description ? <div className="la-source-desc">{source.description}</div> : null}
-                                        </div>
-                                        <div className="la-source-arrow">↗</div>
-                                    </a>
-                                );
-                            })}
-                        </div>
-                    </>
+                {(visibleSources.length || Object.keys(researchMeta || {}).length) ? (
+                    <div className="la-tables">
+                        <LibertySourceTable sources={visibleSources} />
+                        <LibertyCoverageTable query={query} researchMeta={{ ...researchMeta, searchCount }} sources={visibleSources} />
+                    </div>
                 ) : null}
             </div>
 
@@ -704,6 +836,7 @@ function BotMsg({ msg, isLast, streaming, sessionQuery = "" }) {
         activityTitle,
         activityDoneTitle,
         activityIcon,
+        researchMeta,
     } = msg;
     const active = isLast && streaming;
 
@@ -728,6 +861,7 @@ function BotMsg({ msg, isLast, streaming, sessionQuery = "" }) {
                         body={body || ""}
                         sources={sources}
                         searchCount={queries.length}
+                        researchMeta={researchMeta}
                     />
                     {active && !body && <div className="bmsg__body"><span className="caret">▍</span></div>}
                 </div>
@@ -848,7 +982,7 @@ export default function SearchEngine() {
         }));
     }, []);
 
-    const revealAnswer = useCallback(async (sessionId, finalText, sources, signal) => {
+    const revealAnswer = useCallback(async (sessionId, finalText, sources, signal, extraPatch = {}) => {
         const { heading, body } = extractAnswerParts(finalText);
         patchLastBot(sessionId, {
             heading,
@@ -857,6 +991,7 @@ export default function SearchEngine() {
             showPlanning: false,
             showSearching: false,
             searchDone: true,
+            ...extraPatch,
         });
 
         const chunks = body ? body.match(/.{1,34}(\s|$)/g) || [body] : [];
@@ -871,6 +1006,7 @@ export default function SearchEngine() {
                 showPlanning: false,
                 showSearching: false,
                 searchDone: true,
+                ...extraPatch,
             });
             await new Promise((resolve) => setTimeout(resolve, 18));
         }
@@ -882,6 +1018,7 @@ export default function SearchEngine() {
             showPlanning: false,
             showSearching: false,
             searchDone: true,
+            ...extraPatch,
         });
     }, [patchLastBot]);
 
@@ -1081,7 +1218,16 @@ export default function SearchEngine() {
                 if (!attachmentDigest) {
                     throw new Error("No readable attachment content was found.");
                 }
-                await revealAnswer(sessionId, attachmentDigest, [], signal);
+                await revealAnswer(sessionId, attachmentDigest, [], signal, {
+                    researchMeta: {
+                        attachments: attachments.length,
+                        generatedAt: new Date().toISOString(),
+                        searchCount: 0,
+                        rankedSites: 0,
+                        fetchedSites: 0,
+                        synthesisWorkers: 1,
+                    },
+                });
                 return;
             }
 
@@ -1223,7 +1369,16 @@ export default function SearchEngine() {
             const fullText = getChatText(finalPayload);
             await delay(250);
             const attributedSources = buildAttributedSources(fullText, fetchedEvidenceEntries);
-            await revealAnswer(sessionId, fullText, attributedSources, signal);
+            await revealAnswer(sessionId, fullText, attributedSources, signal, {
+                researchMeta: {
+                    attachments: attachments.length,
+                    generatedAt: new Date().toISOString(),
+                    searchCount: swarmQueries.length,
+                    rankedSites: mergedSources.length,
+                    fetchedSites: fetchedEvidenceEntries.length,
+                    synthesisWorkers: evidenceChunks.length,
+                },
+            });
         } catch (error) {
             if (error.name === "AbortError") {
                 patchLastBot(sessionId, {
@@ -1380,6 +1535,32 @@ html,body,#root{height:100%;background:var(--bg)}
 .la-point-icon.green{background:rgba(34,197,94,0.12);color:#4ade80}
 .la-point-icon.blue{background:rgba(59,130,246,0.12);color:#60a5fa}
 .la-point p{font-size:12px;color:var(--la-text);line-height:1.5}
+.la-tables{display:flex;flex-direction:column;gap:20px;margin-top:20px}
+.la-card{background:var(--la-bg);border:1px solid var(--la-border);border-radius:14px;overflow:hidden}
+.la-card-header{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid var(--la-border)}
+.la-card-icon{width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;background:var(--la-accent-bg);border:1px solid var(--la-accent-border);color:var(--la-accent);font-size:10px;font-weight:700}
+.la-card-title{font-size:13px;font-weight:600;color:var(--la-text-heading);letter-spacing:-.01em}
+.la-card-badge{font-size:10px;font-weight:600;color:var(--la-text-dim);background:var(--la-card);border:1px solid var(--la-border);padding:2px 8px;border-radius:20px;margin-left:auto}
+.la-table-wrap{overflow-x:auto}
+.la-table{width:100%;border-collapse:collapse;font-size:12.5px}
+.la-table thead th{text-align:left;padding:10px 16px;font-size:10px;font-weight:600;color:var(--la-text-dim);text-transform:uppercase;letter-spacing:.08em;background:rgba(255,255,255,0.02);border-bottom:1px solid var(--la-border);white-space:nowrap}
+.la-table tbody td{padding:12px 16px;border-bottom:1px solid var(--la-border);vertical-align:top;color:var(--la-text);line-height:1.55}
+.la-table tbody tr:last-child td{border-bottom:none}
+.la-table tbody tr{transition:background 120ms}
+.la-table tbody tr:hover{background:var(--la-card)}
+.la-table .col-num{width:36px;text-align:center;color:var(--la-text-dim);font-size:11px;font-weight:500;font-variant-numeric:tabular-nums}
+.la-table .col-source{min-width:200px}
+.la-table .col-discipline{min-width:130px;white-space:nowrap}
+.la-table .col-findings{min-width:280px}
+.la-table .col-criterion{min-width:140px;white-space:nowrap}
+.la-table .col-spec{min-width:300px}
+.la-source-name{color:var(--la-text-bright);font-weight:500}
+.la-source-ref{font-size:11px;color:var(--la-text-dim);margin-top:2px}
+.la-source-url{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--la-accent);margin-top:4px;opacity:.85;text-decoration:none}
+.la-source-url:hover{opacity:1}
+.la-discipline-tag{display:inline-block;font-size:10px;font-weight:500;padding:2px 8px;border-radius:6px;white-space:nowrap;background:rgba(255,255,255,0.04);border:1px solid var(--la-border);color:var(--la-text)}
+.la-criterion-label{color:var(--la-text-bright);font-weight:500;font-size:12px}
+.la-note{padding:10px 18px;border-top:1px solid var(--la-border);font-size:11px;color:var(--la-text-dim);font-style:italic}
 .la-sources-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
 .la-sources-title{font-size:11px;font-weight:600;color:var(--la-text-dim);text-transform:uppercase;letter-spacing:.08em}
 .la-sources-count{font-size:11px;color:var(--la-text-dim)}
