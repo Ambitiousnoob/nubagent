@@ -1467,9 +1467,6 @@ export default function SearchEngine() {
     const NAV = [
         { id: "search", icon: "⊙", label: "Search", onClick: () => setShowLibrary(false) },
         { id: "library", icon: "⊟", label: "Library", onClick: () => setShowLibrary(true) },
-        { id: "discover", icon: "◫", label: "Discover", onClick: () => alert("Discover: Coming soon — explore trending topics") },
-        { id: "watcher", icon: "⊞", label: "Watcher", onClick: () => alert("Watcher: Coming soon — set up research alerts") },
-        { id: "finance", icon: "⊠", label: "Finance", onClick: () => alert("Finance: Coming soon — financial research tools") },
     ];
 
     const NAV_BOTTOM = [];
@@ -1787,7 +1784,6 @@ html,body,#root{height:100%;background:var(--bg)}
                         {!isLanding && (
                             <div className="tb">
                                 <div className="tb__q">{active?.query || ""}</div>
-                                <button className="tb__b" onClick={() => alert("Menu: Coming soon — session options and more")}>···</button>
                                 <button className="tb__b" onClick={() => {
                                     const url = window.location.href;
                                     navigator.clipboard?.writeText(url).then(() => {
@@ -1851,14 +1847,10 @@ html,body,#root{height:100%;background:var(--bg)}
                                     </form>
                                     <div className="bot__bar">
                                         <button className="bb bb--on" onClick={() => alert("Search mode: Active — web research with query expansion")}>🔍 Search</button>
-                                        <button className="bb" onClick={() => alert("Tools: Coming soon — advanced research tools and operators")}>🔧</button>
-                                        <button className="bb" onClick={() => alert("Notifications: Coming soon — research alerts and updates")}>🔔</button>
                                         <div className="bb__sp" />
                                         <button className="ib" title="Attach" onClick={openFilePicker} disabled={streaming}>📎</button>
-                                        {streaming ? (
+                                        {streaming && (
                                             <button className="ib" style={{ color: "var(--red)" }} onClick={() => abortRef.current?.abort()}>■</button>
-                                        ) : (
-                                            <button className="ib" title="Voice" onClick={() => alert("Voice input: Coming soon — speak your queries")}>🎙</button>
                                         )}
                                     </div>
                                 </div>
