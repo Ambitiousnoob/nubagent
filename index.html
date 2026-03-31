@@ -271,75 +271,36 @@ npm run dev</code></pre>
 
         <!-- Endpoints -->
         <section>
-          <h2>🔌 API Endpoints</h2>
+          <h2>🔌 Messenger Webhook</h2>
 
-          <div class="grid">
-            <div class="endpoint-card">
-              <h3>Chat API</h3>
-              <div class="method method-post">POST</div>
-              <div class="method method-get">GET</div>
-              <p><code>/api/chat</code></p>
-              <p style="margin-top: 10px">
-                Direct chat completions endpoint. OpenAI-compatible format. Call
-                from your app, frontend, or scripts.
-              </p>
-              <pre><code>curl -X POST https://nubagent.vercel.app/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "messages": [
-      {"role": "user", "content": "Hello"}
-    ]
-  }'</code></pre>
-            </div>
+          <div class="endpoint-card">
+            <h3>POST /api/webhook</h3>
+            <div class="method method-post">POST</div>
+            <div class="method method-get">GET</div>
+            <p style="margin-top: 10px">
+              Facebook Messenger integration. Users message your Facebook page, and the bot replies automatically with AI responses using Gemini.
+            </p>
+            
+            <h3 style="margin-top: 20px; font-size: 1.1em">Setup Steps</h3>
+            <ol style="margin-left: 20px; line-height: 2;">
+              <li>Create a Facebook App &amp; Page</li>
+              <li>Add webhook URL: <code>https://your-deployment.vercel.app/api/webhook</code></li>
+              <li>Set <code>VERIFY_TOKEN</code> to any random string</li>
+              <li>Set <code>PAGE_ACCESS_TOKEN</code> from your Facebook page</li>
+              <li>Subscribe to <code>messages</code> and <code>messaging_postbacks</code></li>
+            </ol>
 
-            <div class="endpoint-card">
-              <h3>Messenger Webhook</h3>
-              <div class="method method-post">POST</div>
-              <div class="method method-get">GET</div>
-              <p><code>/api/webhook</code></p>
-              <p style="margin-top: 10px">
-                Facebook Messenger integration. Users message your page, bot
-                replies automatically with AI responses.
-              </p>
-              <pre><code>Webhook URL:
-https://nubagent.vercel.app/api/webhook
+            <h3 style="margin-top: 20px; font-size: 1.1em">Required Environment Variables</h3>
+            <pre><code>GEMINI_API_KEY=your_api_key
+PAGE_ACCESS_TOKEN=your_page_token
+VERIFY_TOKEN=your_verify_token</code></pre>
 
-Verify Token:
-(set in VERIFY_TOKEN env var)</code></pre>
-            </div>
+            <h3 style="margin-top: 20px; font-size: 1.1em">How It Works</h3>
+            <pre><code>1. User messages your Facebook page
+2. Webhook receives the message event
+3. Calls Gemini directly (no intermediate API)
+4. Sends AI response back to user</code></pre>
           </div>
-
-          <h3>Chat API Request Format</h3>
-          <pre><code>{
-  "messages": [
-    { "role": "user", "content": "What is Node.js?" },
-    { "role": "assistant", "content": "Node.js is..." },
-    { "role": "user", "content": "Tell me more" }
-  ],
-  "system": "You are a helpful assistant.",
-  "temperature": 0.7,
-  "maxOutputTokens": 512,
-  "thinkingLevel": "low"
-}</code></pre>
-
-          <h3>Chat API Response</h3>
-          <pre><code>{
-  "ok": true,
-  "output_text": "Node.js is a JavaScript runtime built on...",
-  "choices": [
-    {
-      "message": {
-        "role": "assistant",
-        "content": "Node.js is a JavaScript runtime built on..."
-      }
-    }
-  ],
-  "usage": {
-    "prompt_tokens": 15,
-    "completion_tokens": 45,
-    "total_tokens": 60
-  }
-}</code></pre>
         </section>
 
         <!-- Features -->

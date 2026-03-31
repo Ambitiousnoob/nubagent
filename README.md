@@ -6,9 +6,8 @@ A single unified API for offline AI access: no proxies, no middlemen. Use the `/
 
 ## Features
 
-- **Gemini Chat API** (`/api/chat`) — OpenAI-compatible chat completions endpoint
 - **Facebook Messenger Integration** (`/api/webhook`) — Direct message handling with automatic AI responses
-- **Direct Function Calls** — No HTTP hops; Messenger webhook calls Gemini directly
+- **Direct Gemini Calls** — No HTTP hops; Messenger webhook calls Gemini directly
 - **Production Ready** — Deployed to Vercel, load-balanced, auto-scaling
 
 ## Quick Start
@@ -37,65 +36,35 @@ curl -X POST http://localhost:5173/api/chat \
 ### Required Environment Variables
 
 ```bash
+# Gemini API (from Google AI Studio)
 GEMINI_API_KEY=your_gemini_api_key_here
-```
 
-Get your key from [Google AI Studio](https://aistudio.google.com/app/apikey).
-
-### Optional: Facebook Messenger
-
-```bash
-PAGE_ACCESS_TOKEN=your_facebook_page_token
+# Facebook Messenger (from Facebook Developer Dashboard)
+PAGE_ACCESS_TOKEN=your_facebook_page_access_token
 VERIFY_TOKEN=your_webhook_verification_token
 ```
 
+Get your keys:
+- **Gemini API Key:** [Google AI Studio](https://aistudio.google.com/app/apikey)
+- **Facebook Tokens:** [Facebook Developer Dashboard](https://developers.facebook.com/)
+
 See [docs-complete.html](./docs-complete.html) for complete setup guide.
 
-## API Endpoints
+## API Endpoint
 
-### POST /api/chat
-Chat completions endpoint. Compatible with OpenAI API format.
-
-**Request:**
-```json
-{
-  "messages": [
-    { "role": "user", "content": "What is Node.js?" }
-  ],
-  "system": "You are a helpful assistant.",
-  "temperature": 0.7,
-  "maxOutputTokens": 512,
-  "thinkingLevel": "low"
-}
-```
-
-**Response:**
-```json
-{
-  "ok": true,
-  "output_text": "Node.js is a JavaScript runtime...",
-  "choices": [
-    {
-      "message": {
-        "role": "assistant",
-        "content": "Node.js is a JavaScript runtime..."
-      }
-    }
-  ],
-  "usage": {
-    "prompt_tokens": 15,
-    "completion_tokens": 45,
-    "total_tokens": 60
-  }
-}
-```
-
-### GET/POST /api/webhook
+### POST /api/webhook
 Facebook Messenger webhook. 
 - **GET:** Webhook verification for Facebook
 - **POST:** Receive and process messages
 
-Users message your Facebook page → Webhook receives message → Calls Gemini directly → Sends response back to user.
+**Flow:** User messages your Facebook page → Webhook receives message → Calls Gemini directly → Sends response back to user.
+
+**Setup:**
+1. Create Facebook App & Page
+2. Add webhook URL: `https://your-deployment.vercel.app/api/webhook`
+3. Set `VERIFY_TOKEN` to any random string (same one used in verification)
+4. Set `PAGE_ACCESS_TOKEN` from your Facebook page
+5. Subscribe to `messages` and `messaging_postbacks` events
 
 ## Deployment
 
@@ -128,11 +97,14 @@ Then add environment variables in Vercel dashboard → Settings → Environment 
 ## Architecture
 
 ```
-Facebook User → /api/webhook (direct call) → Gemini
-External App  → /api/chat (REST) → Gemini
+Facebook User → /api/webhook → Gemini → Response back to Facebook
 ```
 
-Both endpoints call Gemini directly. No intermediate proxies or API layers.
+Single endpoint that:
+1. Verifies webhook with Facebook
+2. Receives incoming messages
+3. Calls Gemini directly (no intermediate hop)
+4. Sends AI response back to user
 
 ## Documentation
 
