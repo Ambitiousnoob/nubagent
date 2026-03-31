@@ -1,7 +1,7 @@
 {
   "name": "nubagent",
   "version": "1.0.0",
-  "description": "Docs-only frontend with a simple Gemini chat API",
+  "description": "Direct AI Access API - Deploy your own Gemini chat endpoint with Facebook Messenger integration",
   "type": "module",
   "scripts": {
     "dev": "vite",
