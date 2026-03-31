@@ -1,73 +1,100 @@
 # NubAgent
 
-Access Google Gemini through Facebook Messenger—enabling AI access when direct internet connectivity is unavailable.
+NubAgent is a working Facebook Messenger to Gemini bridge for Vercel. It exposes a real `/api/webhook` endpoint, verifies the Messenger webhook handshake, forwards inbound text to Gemini, and sends the model reply back through the Messenger Send API.
 
-## Problem Statement
+## What is included
 
-Organizations and individuals need reliable access to advanced AI models, but face significant constraints:
+- A Vercel serverless function at `api/webhook.js`
+- Direct Gemini REST integration through the official `generateContent` endpoint
+- Messenger reply helpers for `typing_on`, `typing_off`, `mark_seen`, and text replies
+- A small Vite frontend so the project builds cleanly and documents the deployment flow
+- Postgres-backed conversation history keyed by sender PSID
 
-- **Device limitations**: Low-end devices cannot run local models
-- **Connectivity requirements**: Existing AI apps require direct internet access
-- **Cost and privacy concerns**: Third-party API wrappers introduce latency, cost, and data handling risks
-- **Dependency complexity**: Middleman services create maintenance overhead and reduce control
+## Architecture
 
-## Solution
+```text
+Messenger user
+  -> Facebook webhook event
+  -> Vercel function (/api/webhook)
+  -> Gemini API
+  -> Messenger Send API
+  -> reply back to the same user
+```
 
-NubAgent enables direct access to Google Gemini through Facebook Messenger as a gateway. By deploying a Vercel serverless function that directly integrates with Gemini's API, users can leverage Messenger (universally available on mobile devices) as their access point to advanced AI capabilities—regardless of direct internet connectivity.
+## Prerequisites
 
-**Architecture**: User → Facebook Messenger → Vercel Function → Gemini API (direct, no intermediaries)
+You need:
 
-## Key Features
+1. A Gemini API key from Google AI Studio
+   You can provide one key or a comma-separated key pool for round-robin use.
+2. An ordered Gemini model list in `GEMINI_CHAT_MODEL`
+   Put the primary model first, followed by fallbacks.
+3. A Facebook Page access token with Messenger permissions
+4. A webhook verification token you choose yourself
+5. A Postgres database reachable from Vercel
 
-- **Direct Gemini Integration** — Vercel serverless function calls Google Gemini API directly (no third-party wrappers)
-- **Facebook Messenger Gateway** — Interact with Gemini through ubiquitous messaging platform
-- **Offline-Capable** — Access advanced AI via Messenger when direct internet is unavailable; backend maintains connection
-- **Data Privacy** — Direct Vercel → Gemini pipeline ensures no data passes through intermediary services
-- **Self-Hosted** — Deploy and control your own instance; your configuration, your data
+Optional but recommended:
 
-## Getting Started
+1. `PAGE_ID` so replies use the current `/{page-id}/messages` path directly
+2. `FACEBOOK_APP_SECRET` so the webhook can verify `X-Hub-Signature-256`
 
-### Prerequisites
+## Environment variables
 
-Obtain the following API credentials:
+Required:
 
-#### 1. Google Gemini API Key
+| Variable | Description |
+|----------|-------------|
+| `GEMINI_API_KEY` | One Gemini API key or a comma-separated key pool |
+| `GEMINI_CHAT_MODEL` | Required ordered model list, for example `model1,model2,model3` |
+| `PAGE_ACCESS_TOKEN` | Facebook Page access token |
+| `VERIFY_TOKEN` | Token used only for Facebook webhook verification |
+| `POSTGRES_URL` | Postgres connection string for durable message history |
 
-Visit [Google AI Studio](https://aistudio.google.com/app/apikey) and create a new API key.
+Optional:
 
-#### 2. Facebook Page Access Token
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PAGE_ID` | empty | Recommended. Page ID for the Send API path |
+| `FACEBOOK_APP_SECRET` | empty | Enables request signature validation |
+| `GRAPH_API_VERSION` | `v23.0` | Graph API version used for Messenger requests |
+| `GEMINI_CHAT_THINKING_LEVEL` | `low` | `minimal`, `low`, `medium`, `high`, or `none` |
+| `SYSTEM_PROMPT` | bundled default | System instruction passed to Gemini |
 
-First, you need a Facebook page. If you don't have one, [create a Facebook page](https://m.facebook.com/help/104002523024878/?helpref=uf_share).
+## Local development
 
-The initial token is valid for only 1 hour. You must extend it to get a permanent token. Follow these steps:
+Install dependencies:
 
-1. Go to [Facebook Graph API Explorer](https://developers.facebook.com/tools/explorer/)
-2. In the dropdown labeled "User or Page", select your Facebook page
-3. Generate a token if you don't have one (click "Generate Access Token")
-4. Copy the token and visit [Facebook Access Token Debugger](https://developers.facebook.com/tools/debug/accesstoken/)
-5. Paste the token into the debugger and click "Debug"
-6. Scroll to the bottom and click "Extend Access Token"
-7. This generates a permanent token; copy this extended token for your configuration
+```bash
+npm install
+```
 
-**Note**: The extended token is permanent and won't expire. Always use the extended token, not the original 1-hour token.
+Run the frontend locally:
 
-#### 3. Webhook Verification Token
+```bash
+npm run dev
+```
 
-Create a secure random string (e.g., using `openssl rand -hex 32` or any password generator). This token is used only for Facebook's webhook verification during setup.
+Run checks:
 
-### Deployment
+```bash
+npm run lint
+npm test
+npm run build
+```
 
-#### Option 1: One-Click Deploy to Vercel
+If you want to test the webhook locally against Facebook, run the project through Vercel's local runtime:
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAmbitiousnoob%2Fnubagent&env=GEMINI_API_KEY,PAGE_ACCESS_TOKEN,VERIFY_TOKEN&project-name=nubagent&repo-name=nubagent)
+```bash
+vercel dev
+```
 
-1. Click the deploy button above
-2. Authenticate with GitHub
-3. Enter required environment variables
-4. Click "Deploy"
-5. Note your Vercel deployment URL
+## Deploy to Vercel
 
-#### Option 2: CLI Deployment
+### Option 1: One-click deploy
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAmbitiousnoob%2Fnubagent&env=GEMINI_API_KEY,PAGE_ACCESS_TOKEN,VERIFY_TOKEN,POSTGRES_URL,PAGE_ID,FACEBOOK_APP_SECRET,GRAPH_API_VERSION,GEMINI_CHAT_MODEL,GEMINI_CHAT_THINKING_LEVEL,SYSTEM_PROMPT&project-name=nubagent&repo-name=nubagent)
+
+### Option 2: CLI deploy
 
 ```bash
 git clone https://github.com/Ambitiousnoob/nubagent.git
@@ -76,96 +103,43 @@ npm install
 vercel --prod
 ```
 
-Then configure environment variables in the Vercel dashboard.
+## Configure the Facebook webhook
 
-### Environment Variables
+1. Deploy the project.
+2. In Vercel, make sure login protection is not blocking `/api/webhook`.
+3. In the Facebook developer dashboard, set the callback URL to:
 
-All variables are required:
-
-| Variable | Description |
-|----------|-------------|
-| `GEMINI_API_KEY` | Google Gemini API authentication key (see Prerequisites above) |
-| `PAGE_ACCESS_TOKEN` | **Permanent** Facebook page token for messaging (see Prerequisites above—use the extended token, not the original) |
-| `VERIFY_TOKEN` | Webhook verification token (see Prerequisites above) |
-
-⚠️ **Important**: Use the **permanent (extended) token** from the Access Token Debugger, not the original token. This prevents authentication failures in production.
-
-### Configure Facebook Webhook
-
-After deployment, complete the following steps in the Facebook Developer Dashboard:
-
-1. Navigate to **Messenger** → **Settings**
-2. **Critical**: Disable Vercel login protection to allow Facebook webhook verification:
-   - Go to Vercel Project Settings → **Security**
-   - Uncheck **"Login Protection"** for `/api/webhook`
-   - This permits Facebook to verify your webhook endpoint
-3. Configure webhook details:
-   - **Callback URL**: `https://your-vercel-deployment.vercel.app/api/webhook`
-   - **Verify Token**: The token you created in environment variables
-4. Subscribe to event types:
-   - `messages`
-   - `messaging_postbacks`
-5. Configuration complete—your bot is now ready to receive messages
-
-## Architecture
-
-```
-User Message (Facebook Messenger)
-         ↓
-Facebook Platform
-         ↓
-Vercel Serverless Function (/api/webhook)
-         ↓
-Google Gemini API (Direct)
-         ↓
-Response Generation
-         ↓
-Vercel Function
-         ↓
-Facebook Messenger
-         ↓
-User Response
+```text
+https://your-deployment.vercel.app/api/webhook
 ```
 
-**Key principle**: Direct integration between Vercel and Gemini eliminates intermediary services, reducing latency, cost, and data exposure.
+4. Use the same `VERIFY_TOKEN` value you set in Vercel.
+5. Subscribe the app to `messages` and `messaging_postbacks`.
 
-## Documentation & Resources
+## Runtime behavior
 
-- **Repository**: [github.com/Ambitiousnoob/nubagent](https://github.com/Ambitiousnoob/nubagent)
-- **Issue Tracker**: [GitHub Issues](https://github.com/Ambitiousnoob/nubagent/issues)
-- **Google Gemini API**: [ai.google.dev](https://ai.google.dev)
-- **Facebook Messenger Platform**: [developers.facebook.com](https://developers.facebook.com/)
-- **Vercel Deployment**: [vercel.com/docs](https://vercel.com/docs)
+- `GET /api/webhook` handles the Messenger verification challenge.
+- `POST /api/webhook` accepts webhook events for `object: "page"`.
+- Text messages are sent to Gemini and the reply is returned to Messenger.
+- Postbacks are converted into a text prompt using the payload.
+- Attachment-only messages currently receive a plain text fallback.
+- Conversation history is stored in Postgres and only the most recent turns are sent to Gemini.
+- Duplicate inbound events with the same Messenger event ID are acknowledged without generating a second reply.
+- Gemini API keys are selected in round-robin order from the comma-separated `GEMINI_API_KEY` env value on each running server instance.
+- `GEMINI_CHAT_MODEL` is treated as an ordered priority list, so the first model is preferred and later models are used as fallbacks when Gemini returns a load or availability-style backend error.
 
-## Implementation Guide
+## Project structure
 
-This repository is documentation-focused. To implement NubAgent, you will need:
-
-**Core Requirements**:
-- Vercel serverless function (Node.js, Python, or other supported runtime)
-- [Google Generative AI SDK](https://ai.google.dev) integration
-- [Facebook Messenger API](https://developers.facebook.com/docs/messenger-platform) webhook handler
-
-**Typical Implementation Flow**:
-
+```text
+api/
+  webhook.js
+lib/
+  config.js
+  gemini.js
+  history.js
+  messenger.js
+src/
+  App.jsx
+  main.jsx
+  styles.css
 ```
-1. POST /api/webhook receives Facebook message event
-2. Extract message content and sender ID
-3. Initialize Gemini client with API key
-4. Call Gemini with user message
-5. Retrieve and parse response
-6. Send response to Facebook Messenger API
-7. Return 200 success response to Facebook
-```
-
-**Supported Runtimes**:
-- [Node.js on Vercel](https://vercel.com/docs/functions/serverless-functions)
-- [Python on Vercel](https://vercel.com/docs/functions/serverless-functions/python)
-- [Other Vercel-supported runtimes](https://vercel.com/docs/functions)
-
-## Support
-
-- **Questions?** [Open a GitHub Issue](https://github.com/Ambitiousnoob/nubagent/issues)
-- **Gemini API Documentation**: [ai.google.dev](https://ai.google.dev)
-- **Vercel Support**: [vercel.com/docs](https://vercel.com/docs)
-- **Facebook Developer Docs**: [developers.facebook.com](https://developers.facebook.com/docs)

@@ -30,4 +30,15 @@ export default [
     },
     rules: sharedRules,
   },
+  {
+    files: ["api/**/*.js", "lib/**/*.js", "test/**/*.js"],
+    languageOptions: {
+      ...sharedLanguageOptions,
+      globals: {
+        ...globals.node,
+        ...globals.es2024,
+      },
+    },
+    rules: sharedRules,
+  },
 ];
