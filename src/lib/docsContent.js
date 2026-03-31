@@ -27,158 +27,16 @@ export const API_REFERENCE_SECTIONS = [
 }`,
     implementationFiles: ["api/chat.js", "lib/litehost-chat.js"],
   },
-  {
-    id: "web-api",
-    title: "Combined Web Research",
-    paths: ["/api/web"],
-    methods: ["GET", "POST"],
-    summary:
-      "One-shot web research endpoint that combines search, fetch, ranking, and evidence shaping.",
-    keyPoints: [
-      "Use this when you want ranked sources plus optional fetched content in one request.",
-      "Supports query-only, URL-only, and mixed modes.",
-      "Good fit for background research workflows and non-chat integrations.",
-    ],
-    requestShape: `{
-  "query": "best practices for verifying fetched claims in RAG systems",
-  "maxResults": 12,
-  "fetchContent": true,
-  "rag": true
-}`,
-    responseShape: `{
-  "ok": true,
-  "query": "...",
-  "sources": [{ "title": "...", "url": "...", "citationIndex": 1 }],
-  "fetched": [{ "source": { "title": "..." }, "content": "# ..." }],
-  "evidence": ["[1] ..."]
-}`,
-    implementationFiles: ["api/web.js", "api/search.js", "api/content.js"],
-  },
-  {
-    id: "search-api",
-    title: "Search Backend",
-    paths: ["/api/search"],
-    methods: ["GET", "POST"],
-    summary:
-      "Provider-routing search endpoint for query fan-out, ranking inputs, and source discovery.",
-    keyPoints: [
-      "Routes across DuckDuckGo, Tavily, Serper, Jina, and Brave depending on query shape and key availability.",
-      "Returns normalized source records used by the live research pipeline.",
-      "Useful if you want search-only behavior without fetch or synthesis.",
-    ],
-    requestShape: `{
-  "query": "OpenAI responses API streaming docs",
-  "maxResults": 10
-}`,
-    responseShape: `{
-  "ok": true,
-  "endpoint": "/api/search",
-  "results": [{ "title": "...", "url": "...", "description": "...", "source": "serper" }]
-}`,
-    implementationFiles: ["api/search.js", "lib/tools/web_search.js"],
-  },
-  {
-    id: "content-aliases",
-    title: "Content Retrieval Aliases",
-    paths: ["/api/content", "/api/fetch", "/api/read", "/api/crawl"],
-    methods: ["GET", "POST"],
-    summary:
-      "Shared content endpoint plus aliases for raw fetch, smart read, and crawl-style extraction.",
-    keyPoints: [
-      "Use /api/fetch for direct page retrieval, /api/read for smart extraction, and /api/crawl for multi-page crawling.",
-      "All three aliases route into the same backend boundary.",
-      "This is the right place to add new retrieval modes or shared fetch controls.",
-    ],
-    requestShape: `{
-  "url": "https://developers.openai.com",
-  "mode": "smart",
-  "maxChars": 12000
-}`,
-    responseShape: `{
-  "ok": true,
-  "content": "# ...",
-  "url": "https://developers.openai.com",
-  "title": "..."
-}`,
-    implementationFiles: [
-      "api/content.js",
-      "lib/tools/web_fetch.js",
-      "vercel.json",
-    ],
-  },
-  {
-    id: "memory-api",
-    title: "Memory Retrieval And Persistence",
-    paths: ["/api/memory", "/api/state"],
-    methods: ["GET", "POST"],
-    summary:
-      "State and memory endpoints for scoped persistence, retrieval, and API-key-based memory search.",
-    keyPoints: [
-      "Use /api/memory for memory operations and /api/state for browser or anonymous state scopes.",
-      "Designed to preserve context without leaking data across scopes.",
-      "Affects answer continuity, memory search, and persistence correctness.",
-    ],
-    requestShape: `{
-  "query": "what stack did I mention before?",
-  "limit": 5
-}`,
-    responseShape: `{
-  "ok": true,
-  "results": [{ "role": "user", "content": "..." }],
-  "scope": "api_key"
-}`,
-    implementationFiles: [
-      "api/memory.js",
-      "api/state.js",
-      "lib/api-key-memory.js",
-      "lib/state-scope.js",
-    ],
-  },
-  {
-    id: "utility-aliases",
-    title: "Utility Aliases",
-    paths: [
-      "/api/health",
-      "/api/analytics",
-      "/api/export",
-      "/api/messenger",
-      "/api/utils",
-    ],
-    methods: ["GET", "POST"],
-    summary:
-      "Shared utility boundary for operational status, analytics, export, and Messenger webhook behavior.",
-    keyPoints: [
-      "The public aliases route into one shared utility handler.",
-      "Useful when you need health checks, export flows, or Messenger webhook support.",
-      "When adding a new alias here, update both the resolver logic and Vercel rewrites.",
-    ],
-    requestShape: `GET /api/health
-GET /api/messenger?hub.mode=subscribe&hub.verify_token=...&hub.challenge=...
-POST /api/export`,
-    responseShape: `{
-  "status": "healthy"
-}
-
-or
-
-EVENT_RECEIVED`,
-    implementationFiles: [
-      "api/utils.js",
-      "api/utils-handler.cjs",
-      "lib/utils-routing.cjs",
-      "vercel.json",
-    ],
-  },
 ];
 
 export const API_CREATION_STEPS = [
   {
     title: "Pick the boundary first",
-    body: "Decide whether the feature deserves its own top-level endpoint or should be an alias inside a shared boundary.",
+    body: "Treat `api/chat.js` as the single public API contract and keep new behavior behind that boundary unless you intentionally want to re-expand the surface.",
     bullets: [
-      "Use a dedicated file like `api/chat.js` or `api/search.js` when the contract is its own product surface.",
-      "Use `api/content.js` for fetch/read/crawl-style retrieval modes that share parsing behavior.",
-      "Use `api/utils-handler.cjs` plus `api/utils.js` when the feature belongs with utility aliases such as health, export, analytics, or Messenger.",
+      "Prefer extending `api/chat.js` over adding a new top-level endpoint.",
+      "Keep internal tool wiring in `lib/` so the public contract stays narrow.",
+      "If you later add another endpoint, update both the docs and `vercel.json` in the same change.",
     ],
   },
   {
@@ -192,11 +50,11 @@ export const API_CREATION_STEPS = [
   },
   {
     title: "Wire the route in Vercel",
-    body: "Keep the runtime file and the public path aligned in `vercel.json`.",
+    body: "Keep the single public route aligned in `vercel.json`.",
     bullets: [
-      "Add or update rewrites for every public alias.",
-      "If the implementation is a wrapper plus a shared handler, make sure only the public wrapper owns the public path.",
-      "Do not create filename collisions that Vercel treats as the same route.",
+      "Only `/api/chat` should rewrite into the serverless backend.",
+      "Do not leave dead rewrites behind when an endpoint is removed.",
+      "Keep the SPA fallback last so the docs site still serves correctly.",
     ],
   },
   {
@@ -211,10 +69,10 @@ export const API_CREATION_STEPS = [
 ];
 
 export const API_CREATION_CHECKLIST = [
-  "Choose the public path and the owning backend file.",
+  "Confirm the change belongs inside `/api/chat`.",
   "Add GET metadata for discoverability.",
   "Add POST validation and stable JSON or text responses.",
-  "Register rewrites in `vercel.json`.",
+  "Keep `/api/chat` as the only serverless rewrite in `vercel.json`.",
   "Update `API.md` and any web-facing docs.",
   "Add targeted verification commands before shipping.",
 ];
@@ -244,18 +102,18 @@ module.exports = async (req, res) => {
 
 export const ALIAS_ENDPOINT_EXAMPLE = `// vercel.json
 {
-  "source": "/api/export",
-  "destination": "/api/utils.js"
+  "source": "/api/chat",
+  "destination": "/api/chat.js"
 }
 
-// api/utils-handler.cjs
-const action = resolveUtilsAction(req);
-switch (action) {
-  case "export":
-    return handleExport(req, res);
-  default:
-    return handleMetadata(res);
-}`;
+// Keep helper logic in lib/, but preserve one public route.
+module.exports = async (req, res) => {
+  if (req.method === "GET") {
+    return writeJson(res, 200, { ok: true, endpoint: "/api/chat" });
+  }
+
+  return runChatRuntime(req, res);
+};`;
 
 export const RESEARCH_FRAMEWORK_V3_GAPS = [
   {
@@ -725,12 +583,13 @@ export const SUBAGENT_GROUPS = [
       },
       {
         name: "nub_search_backend_owner",
-        scope: "Owns `/api/search` and search-provider routing behavior.",
+        scope:
+          "Owns search-provider routing and source discovery logic used internally by the chat runtime.",
       },
       {
         name: "nub_content_backend_owner",
         scope:
-          "Owns `/api/content` and the `/api/fetch`, `/api/read`, and `/api/crawl` aliases.",
+          "Owns fetch, read, and crawl behavior used internally by the chat runtime.",
       },
       {
         name: "nub_search_tool_owner",
@@ -749,7 +608,7 @@ export const SUBAGENT_GROUPS = [
       {
         name: "nub_memory_owner",
         scope:
-          "Owns memory APIs, retrieval, namespace isolation, and persistence.",
+          "Owns memory retrieval, namespace isolation, and persistence behind the chat boundary.",
       },
       {
         name: "nub_api_boundary_owner",

@@ -155,17 +155,6 @@ npm install -D typescript @types/react
 | Endpoint | Purpose | Enhancement Needed |
 |----------|---------|-------------------|
 | `POST /api/chat` | AI chat | Rate limiting, validation |
-| `POST /api/web` | Web research | Caching, RAG improvements |
-| `POST /api/search` | Search | Caching, better errors |
-| `POST /api/memory` | Memory | Encryption, better search |
-| `POST /api/state` | State | Compression, validation |
-
-### New (Add)
-| Endpoint | Purpose | Priority |
-|----------|---------|----------|
-| `GET /api/health` | Health check | P0 |
-| `POST /api/analytics` | Usage tracking | P1 |
-| `DELETE /api/cache` | Cache invalidation | P2 |
 
 ---
 

@@ -508,20 +508,6 @@ CREATE TABLE agent_analytics (
 |----------|--------|-------------|------|------------|
 | `/api/chat` | POST | AI chat with tools | Optional | 100/hr |
 | `/api/chat` | GET | Endpoint metadata | None | 1000/hr |
-| `/api/web` | POST | Combined web research | None | 60/hr |
-| `/api/web` | GET | Endpoint metadata | None | 1000/hr |
-| `/api/search` | POST | Web search | None | 60/hr |
-| `/api/search` | GET | Endpoint metadata | None | 1000/hr |
-| `/api/fetch` | POST | URL content extraction | None | 60/hr |
-| `/api/read` | POST | Single URL reader | None | 60/hr |
-| `/api/crawl` | POST | Site crawler | None | 20/hr |
-| `/api/memory` | POST | Scoped memory CRUD | Required | 100/hr |
-| `/api/memory` | GET | Endpoint metadata | None | 1000/hr |
-| `/api/state` | POST | App state persistence | Optional | 100/hr |
-| `/api/state` | GET | Load app state | Optional | 100/hr |
-| `/api/health` | GET | Health check | None | Unlimited |
-| `/api/analytics` | POST | Usage tracking | None | 1000/hr |
-| `/api/cache` | DELETE | Invalidate cache | Admin | 10/hr |
 
 ---
 

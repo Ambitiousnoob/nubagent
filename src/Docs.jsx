@@ -275,17 +275,15 @@ export default function Docs() {
               Where new API work usually lands
             </h3>
             <div className="docs-card__paths">
-              <code>api/&lt;name&gt;.js</code>
-              <code>api/content.js</code>
-              <code>api/utils-handler.cjs</code>
+              <code>api/chat.js</code>
               <code>lib/tools/&lt;tool&gt;.js</code>
               <code>vercel.json</code>
               <code>API.md</code>
             </div>
             <p className="docs-card__body">
-              Use dedicated files for real product surfaces, `api/content.js`
-              for retrieval aliases, and `api/utils-handler.cjs` for utility
-              aliases that share one backend implementation.
+              The public API surface is intentionally narrow. Extend
+              `api/chat.js` for externally visible behavior and keep supporting
+              provider or tool logic behind that boundary in `lib/`.
             </p>
           </article>
         </div>
@@ -297,7 +295,7 @@ export default function Docs() {
           </article>
 
           <article className="docs-card">
-            <h3 className="docs-card__title">Alias pattern</h3>
+            <h3 className="docs-card__title">Single-route wiring</h3>
             <CodeBlock>{ALIAS_ENDPOINT_EXAMPLE}</CodeBlock>
           </article>
         </div>

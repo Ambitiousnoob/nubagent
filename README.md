@@ -157,11 +157,7 @@ src/
 
 api/
 ├── middleware/        # Express middleware
-├── chat.js           # Chat endpoint
-├── search.js         # Search endpoint
-├── health.js         # Health check
-├── analytics.js      # Event tracking
-└── export.js         # Export functionality
+└── chat.js           # Only public API endpoint
 ```
 
 ## API Endpoints
@@ -176,48 +172,6 @@ Content-Type: application/json
   "model": "nub-agent",
   "messages": [{"role": "user", "content": "Hello!"}],
   "stream": false
-}
-```
-
-### Search
-
-```http
-POST /api/search
-Content-Type: application/json
-
-{
-  "query": "latest AI developments",
-  "limit": 10
-}
-```
-
-### Health
-
-```http
-GET /api/health
-```
-
-### Analytics
-
-```http
-POST /api/analytics
-Content-Type: application/json
-
-{
-  "event": "chat_message_sent",
-  "properties": {"length": 50}
-}
-```
-
-### Export
-
-```http
-POST /api/export
-Content-Type: application/json
-
-{
-  "format": "markdown",
-  "sessionIds": ["session-1", "session-2"]
 }
 ```
 

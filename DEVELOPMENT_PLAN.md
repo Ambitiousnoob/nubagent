@@ -80,14 +80,6 @@
 │  ┌─────────────────────────────────────────────────────────┐    │
 │  │  API Routes (vercel.json rewrites)                       │    │
 │  │  ├── /api/chat → chat.js (Gemini AI orchestration)       │    │
-│  │  ├── /api/search → search.js (Web search)                │    │
-│  │  ├── /api/fetch → fetch.js (URL content extraction)      │    │
-│  │  ├── /api/web → web.js (Combined research w/ RAG)        │    │
-│  │  ├── /api/read → read.js (Single URL reader)             │    │
-│  │  ├── /api/crawl → crawl.js (Site crawler)                │    │
-│  │  ├── /api/memory → memory.js (Scoped memory CRUD)        │    │
-│  │  ├── /api/state → state.js (App state persistence)       │    │
-│  │  └── /api/messenger → messenger.js (Facebook webhook)    │    │
 │  └─────────────────────────────────────────────────────────┘    │
 │                              │                                   │
 │  ┌───────────────────────────┴──────────────────────────────┐    │
@@ -396,53 +388,18 @@ export function useChat() {
 
 ## 5. API Contract Documentation
 
-### 5.1 New Endpoints to Add
+### 5.1 Public Endpoint
 
-#### `GET /api/health`
-Health check endpoint for monitoring.
+The current public backend surface is intentionally narrow:
 
-**Response:**
-```json
-{
-  "status": "healthy",
-  "timestamp": "2024-03-30T12:00:00Z",
-  "version": "1.0.0",
-  "checks": {
-    "database": "ok",
-    "gemini_api": "ok",
-    "search_backend": "ok"
-  },
-  "uptime": 86400
-}
-```
+- `GET /api/chat`
+- `POST /api/chat`
 
-#### `POST /api/analytics`
-Anonymous usage analytics (opt-in).
+Search, fetch, memory, state, research, and utility behavior now live behind the chat runtime instead of being exposed as separate public routes.
 
-**Request:**
-```json
-{
-  "event": "search_completed",
-  "properties": {
-    "query_length": 45,
-    "results_count": 12,
-    "duration_ms": 1234
-  },
-  "sessionId": "anon-session-id"
-}
-```
+### 5.2 Chat Endpoint Enhancements
 
-#### `DELETE /api/cache`
-Invalidate response cache (admin only).
-
-**Headers:**
-```
-Authorization: Bearer <admin-token>
-```
-
-### 5.2 Existing Endpoint Enhancements
-
-All existing endpoints need:
+The chat endpoint needs:
 - **Rate limiting headers:**
   ```
   X-RateLimit-Limit: 100
@@ -495,10 +452,9 @@ All existing endpoints need:
 - Global error boundary with retry UI
 - Toast system for success/error messages
 - Skeleton loaders for all async views
-- `/api/health` endpoint with uptime monitoring
-- Input validation on all endpoints
-- Response cache for search queries (5 min TTL)
-- Anonymous usage analytics
+- Input validation on `/api/chat`
+- Stable chat metadata and completion responses
+- Internal tool orchestration behind the chat boundary
 
 ---
 
@@ -1122,11 +1078,11 @@ describe('formatDuration', () => {
 ### Integration Tests
 
 ```javascript
-// tests/integration/api/health.test.js
+// tests/integration/api/chat.test.js
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { startServer, stopServer } from '../../utils/server';
 
-describe('GET /api/health', () => {
+describe('GET /api/chat', () => {
   let server;
   
   beforeAll(async () => {
@@ -1137,14 +1093,13 @@ describe('GET /api/health', () => {
     await stopServer(server);
   });
   
-  it('returns healthy status', async () => {
-    const response = await fetch(`${server.url}/api/health`);
+  it('returns endpoint metadata', async () => {
+    const response = await fetch(`${server.url}/api/chat`);
     const data = await response.json();
     
     expect(response.status).toBe(200);
-    expect(data.status).toBe('healthy');
-    expect(data).toHaveProperty('timestamp');
-    expect(data).toHaveProperty('checks');
+    expect(data).toHaveProperty('model');
+    expect(data).toHaveProperty('tools');
   });
 });
 ```
