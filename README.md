@@ -4,41 +4,23 @@
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
 [![React](https://img.shields.io/badge/React-18.3-blue.svg)](https://reactjs.org/)
 
-**NubAgent** is a modern, AI-powered research assistant and chat interface. It combines advanced language models with web search capabilities to provide accurate, cited responses to your questions.
+**NubAgent** exposes a minimal Gemini-powered chat API. The public backend surface is intentionally small: one `POST /api/chat` endpoint backed by Gemini Flash.
 
 ![NubAgent Screenshot](./docs/screenshot.png)
 
 ## Features
 
-### 🤖 AI-Powered Chat
-- Natural language conversations with advanced AI models
-- Support for multiple AI providers (Gemini, OpenAI, Anthropic)
-- Context-aware responses with conversation memory
-- File upload support for images and documents
+### 🤖 Simple Chat API
+- One public endpoint: `GET /api/chat` and `POST /api/chat`
+- Gemini Flash-backed completions
+- OpenAI-style message array support
+- Small JSON response contract
 
-### 🔍 Web Research
-- Real-time web search integration
-- Multi-source fact verification
-- Automatic citation generation
-- Source credibility indicators
-
-### 📚 Session Library
-- Save and organize research sessions
-- Search and filter through history
-- Export sessions (JSON, Markdown, Text)
-- Bulk operations support
-
-### 🎨 Modern UI/UX
-- Dark/Light theme support
-- Responsive design for all devices
-- PWA support for offline access
-- Smooth animations and transitions
-
-### 🔒 Privacy & Security
-- Local storage for sensitive data
-- Rate limiting protection
-- Input sanitization
-- CORS configuration
+### 🔒 Safer Request Handling
+- JSON-only request parsing
+- Body-size cap on `/api/chat`
+- Explicit non-streaming behavior
+- CORS headers for browser clients
 
 ## Quick Start
 
@@ -86,9 +68,8 @@
 | `NODE_ENV` | Environment mode | `development` |
 | `PORT` | Server port | `3000` |
 | `GEMINI_API_KEY` | Google Gemini API key | - |
-| `OPENAI_API_KEY` | OpenAI API key | - |
-| `ANTHROPIC_API_KEY` | Anthropic API key | - |
-| `DATABASE_URL` | Database connection string | - |
+| `GEMINI_CHAT_MODEL` | Optional Gemini model override | `gemini-3-flash-preview` |
+| `GEMINI_CHAT_THINKING_LEVEL` | Optional thinking level override | `low` |
 | `SENTRY_DSN` | Sentry error tracking | - |
 | `POSTHOG_API_KEY` | PostHog analytics | - |
 
@@ -98,31 +79,20 @@ See `.env.example` for all available options.
 
 Get API keys from:
 - **Google Gemini**: [makersuite.google.com](https://makersuite.google.com/app/apikey)
-- **OpenAI**: [platform.openai.com](https://platform.openai.com/api-keys)
-- **Anthropic**: [console.anthropic.com](https://console.anthropic.com/settings/keys)
-
 ## Usage
 
-### Basic Chat
+Send a JSON body to `/api/chat`:
 
-1. Type your question in the chat input
-2. Press Enter or click Send
-3. Wait for the AI response
-4. Click citations to view sources
+```http
+POST /api/chat
+Content-Type: application/json
 
-### Web Research
-
-1. Enter a research query
-2. NubAgent searches the web automatically
-3. Review sources and citations
-4. Save session to library
-
-### Session Management
-
-- **Save**: Sessions are auto-saved
-- **Library**: Access via sidebar or `/library`
-- **Search**: Filter sessions by query
-- **Export**: Download as JSON, Markdown, or Text
+{
+  "messages": [
+    { "role": "user", "content": "Hello!" }
+  ]
+}
+```
 
 ## Architecture
 
@@ -136,28 +106,19 @@ Get API keys from:
 
 ### Backend
 
-- **Node.js** - Runtime
-- **Express** - Web framework (via Vercel)
-- **Google GenAI** - AI integration
-- **MySQL** - Database (optional)
+- **Node.js** - Serverless runtime
+- **Gemini API** - Text generation backend
+- **Vercel** - Serverless routing
 
 ### Key Components
 
 ```
-src/
-├── components/
-│   ├── Chat/          # Chat interface
-│   ├── Search/        # Search results
-│   ├── Library/       # Session library
-│   ├── Settings/      # User settings
-│   └── UI/            # Reusable components
-├── store/             # Zustand stores
-├── hooks/             # Custom hooks
-└── lib/               # Utilities
-
 api/
-├── middleware/        # Express middleware
-└── chat.js           # Only public API endpoint
+└── chat.js           # Public chat endpoint
+
+lib/
+├── gemini-chat.js    # Gemini request/response adapter
+└── web.js            # Shared request parsing helpers
 ```
 
 ## API Endpoints
@@ -169,9 +130,7 @@ POST /api/chat
 Content-Type: application/json
 
 {
-  "model": "nub-agent",
-  "messages": [{"role": "user", "content": "Hello!"}],
-  "stream": false
+  "messages": [{"role": "user", "content": "Hello!"}]
 }
 ```
 

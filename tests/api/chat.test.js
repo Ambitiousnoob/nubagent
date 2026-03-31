@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadCommonJsModule } from "../../src/__tests__/loadCommonJsModule.js";
 
 const createRes = () => {
@@ -25,96 +25,21 @@ const createRes = () => {
   return res;
 };
 
-const buildHandler = ({
-  body = {},
-  scopedMemory = null,
-  shouldUseMemory = false,
-  runLiteHostChat = vi.fn(async () => ({
-    body: { id: "chatcmpl-test" },
-    reply: { content: "Delegated answer" },
-  })),
-} = {}) => {
-  const mocks = {
-    "../lib/web": {
-      readBody: vi.fn(async () => body),
-    },
-    "../lib/litehost-chat": {
-      metadataPayload: vi.fn(() => ({ ok: true })),
-      wantsStream: vi.fn(() => false),
-      runLiteHostChat,
-      createChatResponsePayload: vi.fn((payload, reply) => ({
-        id: payload?.id || "chatcmpl-test",
-        choices: [{ message: { content: reply?.content || "" } }],
-      })),
-      normalizeChatBody: vi.fn((value) => value),
-    },
-    "../lib/chat-memory": {
-      loadScopedChatMemory: vi.fn(async () => scopedMemory),
-      saveScopedChatMemory: vi.fn(async () => scopedMemory),
-      mergeChatMemory: vi.fn((memory) => memory || {}),
-      shouldUseScopedChatMemory: vi.fn(() => shouldUseMemory),
-      buildMessagesWithScopedMemory: vi.fn((messages) => messages),
-    },
-    "../lib/api-key-memory": {
-      saveApiKeyMemoryEntries: vi.fn(async () => {}),
-      searchApiKeyMemoryDetailed: vi.fn(async () => ({
-        results: [],
-        meta: null,
-      })),
-      formatApiKeyMemoryContext: vi.fn(() => ""),
-    },
-  };
+const CHAT_HANDLER_PATH = "/root/.bot/.downloads/nubagent/api/chat.js";
 
-  const handler = loadCommonJsModule(
-    "/root/.bot/.downloads/nubagent/api/chat.js",
-    mocks,
-  );
-
-  return {
-    handler,
-    mocks,
-    runLiteHostChat,
-  };
-};
+afterEach(() => {
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.GEMINI_CHAT_MODEL;
+  delete process.env.GEMINI_CHAT_THINKING_LEVEL;
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe("/api/chat", () => {
-  it("forwards scoped delegation context and research overrides to the main chat runtime", async () => {
-    const runLiteHostChat = vi.fn(async () => ({
-      body: { id: "chatcmpl-main" },
-      reply: { content: "Main lane response" },
-    }));
-    const { handler } = buildHandler({
-      body: {
-        messages: [
-          {
-            role: "user",
-            content: "Research this and delegate if needed.",
-          },
-        ],
-        searchProviderKeys: {
-          tavily: "tvly-test-key-1234567890",
-        },
-        researchProvider: "openrouter",
-        researchModel: "nvidia/nemotron-3-super-120b-a12b:free",
-        researchModelChain: [
-          "nvidia/nemotron-3-super-120b-a12b:free",
-          "meta-llama/llama-3.3-70b-instruct:free",
-        ],
-        researchRoundRobin: true,
-        researchProviderKeys: {
-          openrouter: "sk-or-v1-1234567890abcdefghijklmnop",
-        },
-      },
-      scopedMemory: {
-        stateKey: "scope:test-chat",
-        scope: "state_key",
-        dbKey: "db:test-chat",
-        memory: {},
-      },
-      runLiteHostChat,
-    });
+  it("returns chat metadata on GET", async () => {
+    const handler = loadCommonJsModule(CHAT_HANDLER_PATH);
     const req = {
-      method: "POST",
+      method: "GET",
       headers: {},
       url: "/api/chat",
     };
@@ -122,37 +47,132 @@ describe("/api/chat", () => {
 
     await handler(req, res);
 
-    expect(runLiteHostChat).toHaveBeenCalledWith(
-      expect.objectContaining({
-        messages: [
-          {
-            role: "user",
-            content: "Research this and delegate if needed.",
-          },
-        ],
-        delegationContext: {
-          scopeKey: "scope:test-chat",
-          scope: "state_key",
-        },
-        searchProviderKeys: {
-          tavily: "tvly-test-key-1234567890",
-        },
-        researchProvider: "openrouter",
-        researchModel: "nvidia/nemotron-3-super-120b-a12b:free",
-        researchModelChain: [
-          "nvidia/nemotron-3-super-120b-a12b:free",
-          "meta-llama/llama-3.3-70b-instruct:free",
-        ],
-        researchRoundRobin: true,
-        researchProviderKeys: {
-          openrouter: "sk-or-v1-1234567890abcdefghijklmnop",
-        },
-      }),
-    );
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body)).toMatchObject({
-      id: "chatcmpl-main",
-      choices: [{ message: { content: "Main lane response" } }],
+      ok: true,
+      endpoint: "/api/chat",
+      provider: "google-gemini",
+      mode: "simple-chatbot",
+      streaming: false,
+      agentic: false,
+    });
+  });
+
+  it("maps plain chat messages to Gemini and returns a simple completion payload", async () => {
+    process.env.GEMINI_API_KEY = "gemini-test-key";
+    const fetchMock = vi.fn(async (_url, options = {}) => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        candidates: [
+          {
+            content: {
+              parts: [{ text: "Simple Gemini reply" }],
+            },
+            finishReason: "STOP",
+          },
+        ],
+        usageMetadata: {
+          promptTokenCount: 11,
+          candidatesTokenCount: 7,
+          totalTokenCount: 18,
+        },
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const handler = loadCommonJsModule(CHAT_HANDLER_PATH);
+    const req = {
+      method: "POST",
+      headers: {},
+      url: "/api/chat",
+      body: {
+        system: "Be concise.",
+        messages: [
+          { role: "user", content: "Say hello." },
+          { role: "assistant", content: "Previous answer." },
+          { role: "user", content: [{ type: "text", text: "Try again." }] },
+        ],
+      },
+    };
+    const res = createRes();
+
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "Content-Type": "application/json",
+          "x-goog-api-key": "gemini-test-key",
+        }),
+      }),
+    );
+
+    const geminiPayload = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(geminiPayload).toEqual({
+      contents: [
+        { role: "user", parts: [{ text: "Say hello." }] },
+        { role: "model", parts: [{ text: "Previous answer." }] },
+        { role: "user", parts: [{ text: "Try again." }] },
+      ],
+      systemInstruction: {
+        parts: [{ text: "Be concise." }],
+      },
+      generationConfig: {
+        thinkingConfig: {
+          thinkingLevel: "low",
+        },
+      },
+    });
+
+    expect(JSON.parse(res.body)).toMatchObject({
+      ok: true,
+      model: "gemini-3-flash-preview",
+      provider: "google-gemini",
+      output_text: "Simple Gemini reply",
+      choices: [
+        {
+          message: {
+            role: "assistant",
+            content: "Simple Gemini reply",
+          },
+          finish_reason: "stop",
+        },
+      ],
+      usage: {
+        prompt_tokens: 11,
+        completion_tokens: 7,
+        total_tokens: 18,
+      },
+    });
+  });
+
+  it("rejects unsupported streaming requests", async () => {
+    process.env.GEMINI_API_KEY = "gemini-test-key";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const handler = loadCommonJsModule(CHAT_HANDLER_PATH);
+    const req = {
+      method: "POST",
+      headers: {},
+      url: "/api/chat",
+      body: {
+        messages: [{ role: "user", content: "Hello" }],
+        stream: true,
+      },
+    };
+    const res = createRes();
+
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(JSON.parse(res.body)).toEqual({
+      error: "Streaming is not supported by this simple chat endpoint.",
     });
   });
 });

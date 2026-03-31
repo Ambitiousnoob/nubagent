@@ -5,27 +5,23 @@ export const API_REFERENCE_SECTIONS = [
     paths: ["/api/chat"],
     methods: ["GET", "POST"],
     summary:
-      "Primary answer-generation endpoint. Runs model orchestration, tool use, streaming, and scoped memory retrieval.",
+      "Primary answer-generation endpoint. Accepts plain chat messages and forwards them to Gemini Flash.",
     keyPoints: [
       "Use GET for capability metadata and POST for completions.",
-      "Supports tool execution, research mode, streamed or non-streamed output, and scoped memory.",
-      "This is the endpoint to hit when you want NubAgent to think, search, fetch, and answer in one loop.",
+      "This route is intentionally non-streaming and non-agentic.",
+      "Use it when you want a narrow JSON chat contract backed by Gemini.",
     ],
     requestShape: `{
-  "messages": [{ "role": "user", "content": "What changed in the latest Vercel build cache docs?" }],
-  "model": "nub-agent",
-  "stream": false,
-  "research_mode": true,
-  "use_tools": true
+  "system": "Be concise.",
+  "messages": [{ "role": "user", "content": "Say hello." }]
 }`,
     responseShape: `{
   "ok": true,
-  "model": "nub-agent",
+  "model": "gemini-3-flash-preview",
   "output_text": "...",
-  "tools_used": ["web_search", "web_fetch"],
   "usage": { "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0 }
 }`,
-    implementationFiles: ["api/chat.js", "lib/litehost-chat.js"],
+    implementationFiles: ["api/chat.js", "lib/gemini-chat.js"],
   },
 ];
 
@@ -35,7 +31,7 @@ export const API_CREATION_STEPS = [
     body: "Treat `api/chat.js` as the single public API contract and keep new behavior behind that boundary unless you intentionally want to re-expand the surface.",
     bullets: [
       "Prefer extending `api/chat.js` over adding a new top-level endpoint.",
-      "Keep internal tool wiring in `lib/` so the public contract stays narrow.",
+      "Keep provider-specific Gemini wiring in `lib/` so the public contract stays narrow.",
       "If you later add another endpoint, update both the docs and `vercel.json` in the same change.",
     ],
   },
