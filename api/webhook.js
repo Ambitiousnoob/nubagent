@@ -8,9 +8,18 @@ import {
 import { getConversationStore } from "../lib/history.js";
 import { generateGeminiReply } from "../lib/gemini.js";
 import { sendSenderAction, sendTextMessage } from "../lib/messenger.js";
+import {
+  IMAGE_READY_REPLY,
+  buildImageContextPrompt,
+  buildPromptWithImageContext,
+  buildStoredInboundText,
+  buildVisionPrompt,
+  extractImageAttachments,
+  loadInlineImageParts,
+} from "../lib/vision.js";
 
 const ATTACHMENT_FALLBACK =
-  "I can reply to text messages right now. Send text and I will forward it to Gemini.";
+  "I can reply to text and supported image messages right now. Send text or a PNG, JPEG, WEBP, HEIC, or HEIF image.";
 const UPSTREAM_FAILURE_REPLY =
   "I hit an upstream error while talking to Gemini. Please try again in a moment.";
 
@@ -146,7 +155,9 @@ export function createWebhookHandler({
       return;
     }
 
-    const prompt = extractInboundPrompt(event);
+    const imageAttachments = extractImageAttachments(event);
+    const rawPrompt = extractInboundPrompt(event);
+    const prompt = buildVisionPrompt(rawPrompt, imageAttachments.length);
     const sourceEventId = extractSourceEventId(event);
 
     await sendAction(senderId, "mark_seen", config).catch(() => {});
@@ -168,7 +179,7 @@ export function createWebhookHandler({
       const inboundResult = await store
         .saveInboundTurn({
           senderId,
-          text: prompt,
+          text: buildStoredInboundText(rawPrompt, imageAttachments.length),
           sourceEventId,
         })
         .catch((error) => {
@@ -186,6 +197,61 @@ export function createWebhookHandler({
       await sendAction(senderId, "typing_on", config).catch(() => {});
       typingEnabled = true;
 
+      const inlineParts = await loadInlineImageParts(imageAttachments).catch(
+        (error) => {
+          throw withStage(error, "attachments:load_inline_images");
+        },
+      );
+
+      if (
+        imageAttachments.length > 0 &&
+        inlineParts.length === 0 &&
+        !rawPrompt
+      ) {
+        await sendTextMessageImpl(senderId, ATTACHMENT_FALLBACK, config).catch(
+          () => {},
+        );
+        await store
+          .saveModelTurn({ senderId, text: ATTACHMENT_FALLBACK })
+          .catch(() => {});
+        return;
+      }
+
+      if (imageAttachments.length > 0 && !rawPrompt) {
+        const imageSummary = await geminiReply({
+          prompt: buildImageContextPrompt(inlineParts.length),
+          history: [],
+          config,
+          inlineParts,
+        }).catch((error) => {
+          throw withStage(error, "gemini:image_context");
+        });
+
+        await store
+          .saveLatestImageContext({
+            senderId,
+            summary: imageSummary,
+            sourceEventId,
+          })
+          .catch((error) => {
+            throw withStage(error, "db:save_image_context");
+          });
+
+        await sendTextMessageImpl(senderId, IMAGE_READY_REPLY, config).catch(
+          (error) => {
+            throw withStage(error, "messenger:send_text");
+          },
+        );
+
+        await store
+          .saveModelTurn({ senderId, text: IMAGE_READY_REPLY })
+          .catch((error) => {
+            throw withStage(error, "db:save_model");
+          });
+
+        return;
+      }
+
       const history = await store
         .getConversationHistory(senderId, {
           excludeMessageId: inboundResult.messageId,
@@ -194,10 +260,20 @@ export function createWebhookHandler({
           throw withStage(error, "db:load_history");
         });
 
+      const imageContext =
+        imageAttachments.length === 0
+          ? await store.getLatestImageContext(senderId).catch((error) => {
+              throw withStage(error, "db:load_image_context");
+            })
+          : null;
+
       const reply = await geminiReply({
-        prompt,
+        prompt: imageContext
+          ? buildPromptWithImageContext(prompt, imageContext)
+          : prompt,
         history,
         config,
+        inlineParts,
       }).catch((error) => {
         throw withStage(error, "gemini");
       });

@@ -4,12 +4,17 @@ NubAgent is a Facebook Messenger to Gemini bridge designed for Vercel. It expose
 
 This README is written as an operator guide. It is intentionally step by step, and it only documents behavior that matches the current code in this repository.
 
-<a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAmbitiousnoob%2Fnubagent&env=GEMINI_API_KEY,PAGE_ACCESS_TOKEN,VERIFY_TOKEN,POSTGRES_URL,PAGE_ID,FACEBOOK_APP_SECRET,GRAPH_API_VERSION,GEMINI_CHAT_MODEL,GEMINI_CHAT_THINKING_LEVEL,SYSTEM_PROMPT&project-name=nubagent&repo-name=nubagent"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
+<a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAmbitiousnoob%2Fnubagent&env=GEMINI_API_KEY,PAGE_ACCESS_TOKEN,VERIFY_TOKEN,POSTGRES_URL,PAGE_ID,FACEBOOK_APP_SECRET,GRAPH_API_VERSION,GEMINI_ENABLE_GOOGLE_SEARCH,GEMINI_ENABLE_CODE_EXECUTION,GEMINI_ENABLE_URL_CONTEXT,GEMINI_CHAT_MODEL,GEMINI_CHAT_THINKING_LEVEL,OPTIONAL_INSTRUCTION,SYSTEM_PROMPT&project-name=nubagent&repo-name=nubagent"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
 
 ## What This Repo Actually Does
 
 - Serves a Messenger webhook from `api/webhook.js`
 - Calls Gemini through the REST `generateContent` endpoint
+- Can optionally enable web grounding with Gemini Google Search or DuckDuckGo
+- Can optionally enable Gemini URL Context for supported URLs in prompts
+- Can optionally enable Gemini code execution for Python-backed reasoning
+- Can pass supported Messenger image attachments through to Gemini as visual input
+- For image-only messages, first inspects the image and then waits for the user's next instruction
 - Sends `mark_seen`, `typing_on`, and `typing_off` sender actions in Messenger
 - Stores conversation history in Postgres by sender PSID
 - Uses round-robin Gemini API key selection when you provide multiple keys
@@ -17,7 +22,7 @@ This README is written as an operator guide. It is intentionally step by step, a
 
 ## What This Repo Does Not Do
 
-- It does not process images, audio, or other attachments as model input
+- It does not process audio, video, file, or other non-image attachments as model input
 - It does not provide an admin dashboard
 - It does not ship database migrations; it creates its single table automatically on first use
 - It does not persist any state outside Postgres
@@ -38,6 +43,10 @@ Messenger user
 - [Google AI Studio](https://aistudio.google.com/)
 - [Gemini API key guide](https://ai.google.dev/gemini-api/docs/api-key)
 - [Gemini model list](https://ai.google.dev/models/gemini)
+- [Gemini Grounding with Google Search](https://ai.google.dev/gemini-api/docs/google-search)
+- [Gemini Code Execution](https://ai.google.dev/gemini-api/docs/code-execution)
+- [Gemini URL Context](https://ai.google.dev/gemini-api/docs/url-context)
+- [Gemini Image Understanding](https://ai.google.dev/gemini-api/docs/image-understanding)
 - [Meta app dashboard](https://developers.facebook.com/apps/)
 - [Meta Messenger app setup guide](https://developers.facebook.com/docs/messenger-platform/getting-started/app-setup)
 - [Meta webhook setup guide](https://developers.facebook.com/docs/messenger-platform/getting-started/webhook-setup/)
@@ -64,6 +73,9 @@ Recommended extras:
 
 1. `PAGE_ID`, so Messenger requests use `/{page-id}/messages` directly
 2. `FACEBOOK_APP_SECRET`, so the webhook can verify `X-Hub-Signature-256`
+3. `GEMINI_ENABLE_GOOGLE_SEARCH=true`, so Gemini can use web grounding
+4. `GEMINI_ENABLE_CODE_EXECUTION=true`, so Gemini can run Python for calculation-heavy prompts
+5. `GEMINI_ENABLE_URL_CONTEXT=true`, so Gemini can read supported URLs in prompts
 
 ## Step 1. Clone The Repo And Install Dependencies
 
@@ -108,6 +120,7 @@ How the repo uses that value:
 
 - One key: NubAgent always uses that one key
 - Multiple keys: NubAgent rotates keys in round-robin order per running server instance
+- If you enable web grounding, Gemini still uses the same key rotation
 
 ## Step 3. Choose Gemini Model(s)
 
@@ -121,7 +134,7 @@ Use the official [Gemini model catalog](https://ai.google.dev/models/gemini).
 Example:
 
 ```env
-GEMINI_CHAT_MODEL=gemini-3-flash-preview,gemini-3.1-pro-preview
+GEMINI_CHAT_MODEL=gemini-2.5-flash,gemini-2.5-pro
 ```
 
 Notes:
@@ -130,6 +143,7 @@ Notes:
 - If you paste model names with a `models/` prefix, the repo strips that prefix automatically
 - The first model is the priority model
 - Later models are only tried when Gemini returns a retryable load or availability style backend failure
+- If you enable grounding, supported non-preview models use Gemini's Google Search tool and preview models use a DuckDuckGo search pass
 
 ## Step 4. Prepare Your Facebook Page And Meta App
 
@@ -201,7 +215,7 @@ Minimum working example:
 
 ```env
 GEMINI_API_KEY=key1,key2
-GEMINI_CHAT_MODEL=gemini-3-flash-preview,gemini-3.1-pro-preview
+GEMINI_CHAT_MODEL=gemini-2.5-flash,gemini-2.5-pro
 PAGE_ACCESS_TOKEN=your_page_access_token
 VERIFY_TOKEN=your_webhook_verify_token
 POSTGRES_URL=postgresql://user:password@host:5432/database
@@ -211,14 +225,18 @@ Recommended full example:
 
 ```env
 GEMINI_API_KEY=key1,key2
-GEMINI_CHAT_MODEL=gemini-3-flash-preview,gemini-3.1-pro-preview
+GEMINI_CHAT_MODEL=gemini-2.5-flash,gemini-2.5-pro
 PAGE_ACCESS_TOKEN=your_page_access_token
 VERIFY_TOKEN=your_webhook_verify_token
 POSTGRES_URL=postgresql://user:password@host:5432/database
 PAGE_ID=your_page_id
 FACEBOOK_APP_SECRET=your_app_secret
 GRAPH_API_VERSION=v23.0
+GEMINI_ENABLE_GOOGLE_SEARCH=true
+GEMINI_ENABLE_CODE_EXECUTION=true
+GEMINI_ENABLE_URL_CONTEXT=true
 GEMINI_CHAT_THINKING_LEVEL=low
+OPTIONAL_INSTRUCTION=Prefer concise replies and include one concrete next step when useful.
 SYSTEM_PROMPT=You are NubAgent, a concise and helpful assistant replying inside Facebook Messenger.
 ```
 
@@ -241,13 +259,27 @@ SYSTEM_PROMPT=You are NubAgent, a concise and helpful assistant replying inside 
 | `PAGE_ID` | empty | Recommended. If empty, Messenger requests use `me` |
 | `FACEBOOK_APP_SECRET` | empty | Enables `X-Hub-Signature-256` verification for POST webhooks |
 | `GRAPH_API_VERSION` | `v23.0` | Graph API version used for Messenger requests |
+| `GEMINI_ENABLE_GOOGLE_SEARCH` | `false` | Enables web grounding for Gemini requests |
+| `GEMINI_ENABLE_CODE_EXECUTION` | `false` | Enables Gemini's Python code execution tool |
+| `GEMINI_ENABLE_URL_CONTEXT` | `false` | Enables Gemini URL Context on supported models |
 | `GEMINI_CHAT_THINKING_LEVEL` | `low` | Accepts `none`, `off`, `minimal`, `low`, `medium`, or `high` |
+| `OPTIONAL_INSTRUCTION` | empty | Lower-priority guidance injected below `SYSTEM_PROMPT` |
 | `SYSTEM_PROMPT` | bundled default | System instruction passed to Gemini |
 
 Important details:
 
+- `GEMINI_ENABLE_GOOGLE_SEARCH=true` enables web grounding for Gemini requests
+- Preview models use a DuckDuckGo search pass; supported non-preview models use Gemini grounding tools
+- Gemini 1.5 grounding uses the legacy retrieval tool shape automatically; newer supported non-preview models use `google_search`
+- `GEMINI_ENABLE_CODE_EXECUTION=true` adds Gemini's built-in Python code execution tool
+- `GEMINI_ENABLE_URL_CONTEXT=true` adds Gemini's URL Context tool on supported models
+- URL Context only helps when the user's prompt includes one or more URLs
+- Supported Messenger image attachments are forwarded to Gemini automatically as long as they fit within the Gemini inline request size budget; non-image attachments are not
+- `OPTIONAL_INSTRUCTION` is injected as a lower-priority user-context turn, so it does not outrank `SYSTEM_PROMPT`
+- The latest real user message is still sent after `OPTIONAL_INSTRUCTION`
+- Current repo history is stored as plain text only, so code execution is most reliable for single-turn reasoning in this bridge
 - `GEMINI_CHAT_THINKING_LEVEL=none` and `GEMINI_CHAT_THINKING_LEVEL=off` both disable the field
-- The repo only includes `thinkingConfig` for model names that pass its current built-in compatibility check
+- In the current code, `GEMINI_CHAT_THINKING_LEVEL` is only sent for Gemini 3+ model names
 - If `FACEBOOK_APP_SECRET` is set, every incoming POST must include a valid signature or the webhook returns `403`
 - If any required messaging env is missing, `POST /api/webhook` returns `500`
 - If `VERIFY_TOKEN` is missing, `GET /api/webhook` returns `500`
@@ -304,7 +336,7 @@ If that call fails:
 
 ### Option 1. One-Click Deploy
 
-<a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAmbitiousnoob%2Fnubagent&env=GEMINI_API_KEY,PAGE_ACCESS_TOKEN,VERIFY_TOKEN,POSTGRES_URL,PAGE_ID,FACEBOOK_APP_SECRET,GRAPH_API_VERSION,GEMINI_CHAT_MODEL,GEMINI_CHAT_THINKING_LEVEL,SYSTEM_PROMPT&project-name=nubagent&repo-name=nubagent"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
+<a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAmbitiousnoob%2Fnubagent&env=GEMINI_API_KEY,PAGE_ACCESS_TOKEN,VERIFY_TOKEN,POSTGRES_URL,PAGE_ID,FACEBOOK_APP_SECRET,GRAPH_API_VERSION,GEMINI_ENABLE_GOOGLE_SEARCH,GEMINI_ENABLE_CODE_EXECUTION,GEMINI_ENABLE_URL_CONTEXT,GEMINI_CHAT_MODEL,GEMINI_CHAT_THINKING_LEVEL,OPTIONAL_INSTRUCTION,SYSTEM_PROMPT&project-name=nubagent&repo-name=nubagent"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
 
 ### Option 2. CLI Deploy
 
@@ -376,10 +408,11 @@ Expected behavior:
 
 1. NubAgent marks the message as seen.
 2. NubAgent turns typing on.
-3. NubAgent sends your text plus recent conversation history to Gemini.
-4. NubAgent sends the reply back to Messenger.
-5. NubAgent stores the reply in Postgres.
-6. NubAgent turns typing off.
+3. If you sent only an image, NubAgent inspects it and asks you to send the question or instruction next.
+4. If you sent text, NubAgent sends your text, recent conversation history, and every supported image attachment that fits within the Gemini inline request size budget to Gemini.
+5. NubAgent sends the reply back to Messenger.
+6. NubAgent stores the reply in Postgres.
+7. NubAgent turns typing off.
 
 ## Exact Runtime Behavior
 
@@ -397,8 +430,10 @@ These details come directly from the current code.
 - Delivery receipts are ignored
 - Read receipts are ignored
 - Text messages are forwarded to Gemini
+- Supported image attachments are fetched and sent to Gemini as inline image parts until the Gemini inline request size budget is full
+- Image-only messages are summarized into stored image context, then the bot asks the user for the follow-up instruction
 - Postback payloads are converted into `Postback payload: <payload>`
-- Attachment-only messages receive a plain text fallback instead of going to Gemini
+- Non-image attachments still receive a plain text fallback
 
 ### Persistence
 
@@ -421,6 +456,12 @@ These details come directly from the current code.
 - `GEMINI_CHAT_MODEL` accepts one model or many models separated by commas
 - The first model is always attempted first
 - Later models are only attempted when Gemini returns a retryable load or availability style backend failure
+- `GEMINI_ENABLE_GOOGLE_SEARCH=true` enables web grounding
+- Preview models use a DuckDuckGo search pass and prompt injection before the Gemini request
+- Supported non-preview models send Gemini grounding tools in the request body
+- `GEMINI_ENABLE_CODE_EXECUTION=true` adds Gemini's code execution tool to the request body
+- `GEMINI_ENABLE_URL_CONTEXT=true` adds Gemini's URL Context tool to the request body on supported models
+- If grounding is enabled and none of the configured models support either path, the request fails clearly
 
 ### Messenger Sending
 
@@ -453,7 +494,11 @@ If `FACEBOOK_APP_SECRET` is set, the incoming request signature is missing or in
 
 ### Messenger User Gets The Attachment Fallback
 
-The message was attachment-only. Current code only forwards plain text and postback payloads to Gemini.
+The message was attachment-only, but the attachment was not a supported image or the image could not be fetched successfully.
+
+### Messenger User Gets "I checked the image. Now send your question or instruction about it."
+
+That is the expected flow for image-only messages. NubAgent inspects the image first, stores image context, and waits for the next Messenger message because Messenger image upload flow does not reliably pair the image with a same-turn text instruction.
 
 ### Messenger User Gets The Upstream Error Fallback
 
