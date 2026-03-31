@@ -1,8 +1,23 @@
 # NubAgent
 
-**Vercel + Google Gemini Direct Integration** — Deploy a serverless API that connects Facebook Messenger directly to Gemini, with zero middlemen.
+## The Problem
 
-Offline AI access means your deployment, your API key, your data. Vercel calls Gemini directly. No proxies, no external APIs—just you, Vercel, and Google.
+You want **offline AI access**—total control, no middlemen, no external dependencies.
+
+But:
+- 🚫 **Can't run local models.** Your device is too low-end. Llama 2? Mistral? They need GPU. You don't have one.
+- 🚫 **Need real-world AI.** Local models aren't good enough. You need Gemini, GPT, Claude—the cutting edge.
+- 🚫 **Can't use API wrappers.** They're expensive. They're slow. They see your data. They're another middleman.
+
+**You're stuck:** Need powerful AI, but want to own the deployment.
+
+## The Solution
+
+**Deploy your own Gemini endpoint.**
+
+NubAgent is a documentation guide for setting up **Vercel + Google Gemini direct integration**. Your deployment, your API key, your data. Vercel calls Gemini directly. No proxies. No middlemen. No wrappers.
+
+That's offline AI access: *you* own the deployment.
 
 ## Features
 
