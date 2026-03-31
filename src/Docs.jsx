@@ -8,7 +8,7 @@ import {
   ENVIRONMENT_VARIABLES,
   MIGRATION_NOTES,
   OPERATIONS_SECTIONS,
-} from "./lib/docsContent.js";
+} from "./docsContent.js";
 
 function CodeBlock({ children }) {
   return (
