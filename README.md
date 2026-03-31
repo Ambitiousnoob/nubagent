@@ -37,6 +37,8 @@ Visit [Google AI Studio](https://aistudio.google.com/app/apikey) and create a ne
 
 #### 2. Facebook Page Access Token
 
+First, you need a Facebook page. If you don't have one, [create a Facebook page](https://m.facebook.com/help/104002523024878/?helpref=uf_share).
+
 The page access token must be permanent to prevent expiration. Follow these steps:
 
 1. Go to [Facebook Graph API Explorer](https://developers.facebook.com/tools/explorer/)
