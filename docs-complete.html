@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NubAgent - Complete Setup Guide (No Gaps)</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        line-height: 1.6;
+        color: #333;
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      .container {
+        max-width: 1000px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+      }
+
+      header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 40px 20px;
+        text-align: center;
+      }
+
+      header h1 {
+        font-size: 2.5em;
+        margin-bottom: 10px;
+      }
+
+      main {
+        padding: 40px;
+      }
+
+      section {
+        margin-bottom: 60px;
+      }
+
+      h2 {
+        color: #667eea;
+        font-size: 2em;
+        margin-bottom: 30px;
+        border-left: 4px solid #667eea;
+        padding-left: 15px;
+      }
+
+      .flow-chart {
+        background: #f8f9ff;
+        border: 2px solid #667eea;
+        border-radius: 8px;
+        padding: 20px;
+        margin: 30px 0;
+        font-family: monospace;
+        white-space: pre-wrap;
+        line-height: 2;
+      }
+
+      .phase {
+        background: #f0f7ff;
+        border-left: 5px solid #667eea;
+        padding: 25px;
+        margin: 25px 0;
+        border-radius: 6px;
+      }
+
+      .phase-title {
+        font-size: 1.3em;
+        font-weight: bold;
+        color: #667eea;
+        margin-bottom: 15px;
+        display: flex;
+        align-items: center;
+      }
+
+      .phase-number {
+        display: inline-block;
+        width: 35px;
+        height: 35px;
+        line-height: 35px;
+        text-align: center;
+        background: #667eea;
+        color: white;
+        border-radius: 50%;
+        font-weight: bold;
+        margin-right: 15px;
+      }
+
+      .step {
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        padding: 20px;
+        margin: 15px 0;
+        margin-left: 50px;
+      }
+
+      .step-header {
+        font-weight: bold;
+        color: #764ba2;
+        margin-bottom: 10px;
+        font-size: 1.05em;
+      }
+
+      .step-content {
+        margin-left: 20px;
+        line-height: 1.8;
+      }
+
+      .step-content p {
+        margin: 10px 0;
+      }
+
+      .step-content ol, .step-content ul {
+        margin-left: 20px;
+        margin-top: 10px;
+      }
+
+      .step-content li {
+        margin: 8px 0;
+      }
+
+      code {
+        background: #f4f4f4;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-family: 'Courier New', monospace;
+        color: #d63384;
+      }
+
+      pre {
+        background: #1e1e1e;
+        color: #d4d4d4;
+        padding: 15px;
+        border-radius: 8px;
+        overflow-x: auto;
+        margin: 15px 0;
+        font-size: 0.85em;
+      }
+
+      pre code {
+        background: none;
+        color: inherit;
+        padding: 0;
+      }
+
+      .warning {
+        background: #fff3cd;
+        border-left: 4px solid #ffc107;
+        padding: 15px;
+        border-radius: 6px;
+        margin: 15px 0;
+      }
+
+      .success {
+        background: #d4edda;
+        border-left: 4px solid #28a745;
+        padding: 15px;
+        border-radius: 6px;
+        margin: 15px 0;
+      }
+
+      .info {
+        background: #d1ecf1;
+        border-left: 4px solid #17a2b8;
+        padding: 15px;
+        border-radius: 6px;
+        margin: 15px 0;
+      }
+
+      .screenshot-guide {
+        background: #fff;
+        border: 1px solid #ddd;
+        padding: 15px;
+        border-radius: 6px;
+        margin: 15px 0;
+        font-size: 0.9em;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 20px 0;
+      }
+
+      th, td {
+        border: 1px solid #ddd;
+        padding: 12px;
+        text-align: left;
+      }
+
+      th {
+        background: #667eea;
+        color: white;
+      }
+
+      tr:nth-child(even) {
+        background: #f9f9f9;
+      }
+
+      .checklist {
+        list-style: none;
+        padding-left: 0;
+      }
+
+      .checklist li:before {
+        content: "☐ ";
+        margin-right: 10px;
+        color: #667eea;
+      }
+
+      .checklist li.done:before {
+        content: "☑ ";
+        color: #28a745;
+      }
+
+      footer {
+        background: #f5f7fa;
+        border-top: 1px solid #ddd;
+        padding: 20px;
+        text-align: center;
+        color: #666;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>🤖 NubAgent Complete Setup</h1>
+        <p>Zero-Gap End-to-End Guide: From Project Clone to Full Deployment</p>
+      </header>
+
+      <main>
+        <!-- Overview -->
+        <section>
+          <h2>📍 Your Journey</h2>
+          <div class="flow-chart">Project Clone
+    ↓
+Environment Setup
+    ↓
+[PARALLEL PATHS]
+├─ Path A: Gemini API (Chat Endpoint)
+│   ├─ Create Google Account (if needed)
+│   ├─ Get Gemini API Key
+│   ├─ Test /api/chat
+│   └─ Deploy to Vercel
+│
+└─ Path B: Facebook Messenger (Webhook)
+    ├─ Create Facebook App
+    ├─ Set up Messenger Product
+    ├─ Configure Webhook
+    ├─ Get Access Tokens
+    └─ Subscribe to Page
+          </div>
+          <p>
+            This guide covers BOTH paths completely. You can do Path A only, Path B only, or both
+            together. No steps are skipped.
+          </p>
+        </section>
+
+        <!-- PHASE 0: Prerequisites -->
+        <section>
+          <h2>🔧 Phase 0: Prerequisites & Project Setup</h2>
+
+          <div class="phase">
+            <div class="phase-title">
+              <span class="phase-number">0.1</span>Prerequisites
+            </div>
+            <div class="step">
+              <div class="step-header">What You Need</div>
+              <div class="step-content">
+                <ul>
+                  <li><strong>Node.js 18+</strong> (for running locally)</li>
+                  <li><strong>npm</strong> (comes with Node.js)</li>
+                  <li><strong>Git</strong> (optional, for cloning)</li>
+                  <li><strong>Vercel Account</strong> (free tier works)</li>
+                  <li><strong>Google Account</strong> (for Gemini API - optional but recommended)</li>
+                  <li><strong>Facebook Account</strong> (for Facebook App - if using Messenger)</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-header">Step 0.1.1: Verify Node.js</div>
+              <div class="step-content">
+                <pre><code>node --version
+# Should output: v18.0.0 or higher
+
+npm --version
+# Should output: 9.0.0 or higher</code></pre>
+                <p>
+                  If not installed, download from
+                  <a href="https://nodejs.org/" target="_blank">nodejs.org</a>
+                </p>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-header">Step 0.1.2: Clone the Project</div>
+              <div class="step-content">
+                <pre><code>git clone https://github.com/Ambitiousnoob/nubagent.git
+cd nubagent</code></pre>
+                <p>Or download the ZIP and extract it.</p>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-header">Step 0.1.3: Install Dependencies</div>
+              <div class="step-content">
+                <pre><code>npm install</code></pre>
+                <p>Takes ~30 seconds. You should see "145 packages installed".</p>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-header">Step 0.1.4: Create .env File</div>
+              <div class="step-content">
+                <pre><code>cp .env.example .env</code></pre>
+                <p>This creates a local <code>.env</code> file that you'll fill in with your tokens.</p>
+              </div>
+            </div>
+
+            <div class="success">
+              <strong>✅ Phase 0 Complete</strong> - Your project is ready. Now choose your path.
+            </div>
+          </div>
+        </section>
+
+        <!-- PHASE 1: Gemini API Setup -->
+        <section>
+          <h2>⚡ Phase 1: Gemini API Setup (Chat Endpoint)</h2>
+          <p>
+            This enables the <code>/api/chat</code> endpoint, which powers the AI responses. This
+            is <strong>REQUIRED</strong> for both chat API and Messenger bot.
+          </p>
+
+          <div class="phase">
+            <div class="phase-title">
+              <span class="phase-number">1.1</span>Get Google Account
+            </div>
+            <div class="step">
+              <div class="step-header">Step 1.1.1: Sign Up for Google Account</div>
+              <div class="step-content">
+                <ol>
+                  <li>Go to <a href="https://accounts.google.com" target="_blank">accounts.google.com</a></li>
+                  <li>Click "Create account"</li>
+                  <li>Fill in your details (first name, last name, email)</li>
+                  <li>Create a password</li>
+                  <li>Complete verification (phone or recovery email)</li>
+                </ol>
+                <p>Skip this if you already have a Google account.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="phase">
+            <div class="phase-title">
+              <span class="phase-number">1.2</span>Generate Gemini API Key
+            </div>
+            <div class="step">
+              <div class="step-header">Step 1.2.1: Go to Google AI Studio</div>
+              <div class="step-content">
+                <ol>
+                  <li>
+                    Visit
+                    <a href="https://aistudio.google.com/app/apikey" target="_blank"
+                      >aistudio.google.com/app/apikey</a
+                    >
+                  </li>
+                  <li>Sign in with your Google account (if not already signed in)</li>
+                  <li>Click "Create API Key" button</li>
+                </ol>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-header">Step 1.2.2: Copy Your API Key</div>
+              <div class="step-content">
+                <ol>
+                  <li>A dialog will pop up with your new API key</li>
+                  <li>Click "Copy" to copy it to clipboard</li>
+                  <li><strong>DO NOT SHARE THIS KEY</strong></li>
+                </ol>
+                <div class="warning">
+                  <strong>⚠️ IMPORTANT:</strong> Keep this key secret. Anyone with this key can use
+                  your Gemini API quota and incur charges (if you have billing enabled).
+                </div>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-header">Step 1.2.3: Add to .env File</div>
+              <div class="step-content">
+                <ol>
+                  <li>Open your <code>.env</code> file in a text editor</li>
+                  <li>Find the line: <code>GEMINI_API_KEY=your_gemini_api_key_here</code></li>
+                  <li>Replace <code>your_gemini_api_key_here</code> with your actual API key</li>
+                  <li>Save the file</li>
+                </ol>
+                <pre><code># Example (NOT A REAL KEY)
+GEMINI_API_KEY=AIzaSyD_example_key_12345678901234567890</code></pre>
+              </div>
+            </div>
+
+            <div class="success">
+              <strong>✅ Gemini API Key Added</strong> - You can now use the chat endpoint.
+            </div>
+          </div>
+
+          <div class="phase">
+            <div class="phase-title">
+              <span class="phase-number">1.3</span>Test Locally
+            </div>
+            <div class="step">
+              <div class="step-header">Step 1.3.1: Start Development Server</div>
+              <div class="step-content">
+                <pre><code>npm run dev</code></pre>
+                <p>You should see:</p>
+                <pre><code>VITE v5.x.x  ready in xxx ms
+
+➜  Local:   http://localhost:5173/
+➜  API:     http://localhost:5173/api/chat</code></pre>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-header">Step 1.3.2: Test Chat API with curl</div>
+              <div class="step-content">
+                <p>Open another terminal and run:</p>
+                <pre><code>curl -X POST http://localhost:5173/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      { "role": "user", "content": "What is 2+2?" }
+    ]
+  }'</code></pre>
+                <p>You should get a JSON response with the AI's answer.</p>
+              </div>
+            </div>
+
+            <div class="success">
+              <strong>✅ Gemini API Working</strong> - Your chat endpoint is ready!
+            </div>
+          </div>
+        </section>
+
+        <!-- PHASE 2: Facebook Messenger Setup -->
+        <section>
+          <h2>💬 Phase 2: Facebook Messenger Setup (Optional)</h2>
+          <p>
+            This enables the <code>/api/webhook</code> endpoint, allowing users to chat via
+            Facebook Messenger. <strong>This is optional</strong> - you can skip this if you only
+            need the REST API.
+          </p>
+
+          <div class="phase">
+            <div class="phase-title">
+              <span class="phase-number">2.1</span>Create Facebook App
+            </div>
+            <div class="step">
+              <div class="step-header">Step 2.1.1: Go to Meta Developers</div>
+              <div class="step-content">
+                <ol>
+                  <li>
+                    Visit
+                    <a href="https://developers.facebook.com/apps" target="_blank"
+                      >developers.facebook.com/apps</a
+                    >
+                  </li>
+                  <li>Sign in with your Facebook account (or create one)</li>
+                  <li>Click "Create App"</li>
+                </ol>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-header">Step 2.1.2: Configure Your App</div>
+              <div class="step-content">
+                <ol>
+                  <li>Select "Business" as app type</li>
+                  <li>Fill in app details:
+                    <ul>
+                      <li><strong>App Name:</strong> "NubAgent Messenger" (or any name)</li>
+                      <li><strong>Contact Email:</strong> Your email</li>
+                      <li><strong>App Purpose:</strong> "Chat or Messaging"</li>
+                    </ul>
+                  </li>
+                  <li>Click "Create App"</li>
+                </ol>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-header">Step 2.1.3: Add Messenger Product</div>
+              <div class="step-content">
+                <ol>
+                  <li>On the app dashboard, click "Add Product"</li>
+                  <li>Find "Messenger" in the list</li>
+                  <li>Click "Set Up"</li>
+                </ol>
+              </div>
+            </div>
+
+            <div class="success">
+              <strong>✅ App Created</strong> - Messenger product is ready.
+            </div>
+          </div>
+
+          <div class="phase">
+            <div class="phase-title">
+              <span class="phase-number">2.2</span>Get Access Tokens
+            </div>
+            <div class="step">
+              <div class="step-header">Step 2.2.1: Create or Connect Facebook Page</div>
+              <div class="step-content">
+                <ol>
+                  <li>In Messenger settings, scroll to "Access Tokens"</li>
+                  <li>Click "Add or Remove Pages"</li>
+                  <li>If you don't have a page:
+                    <ol>
+                      <li>Click "Create New Page"</li>
+                      <li>Fill in page name and category (e.g., "NubAgent Bot")</li>
+                      <li>Complete setup</li>
+                    </ol>
+                  </li>
+                  <li>If you have a page: Select it from the dropdown</li>
+                </ol>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-header">Step 2.2.2: Copy Page Access Token</div>
+              <div class="step-content">
+                <ol>
+                  <li>In Access Tokens section, find your page</li>
+                  <li>Click "Generate Token"</li>
+                  <li>A token will appear - click "Copy"</li>
+                  <li>Add to .env file:
+                    <pre><code>PAGE_ACCESS_TOKEN=your_copied_token</code></pre>
+                  </li>
+                </ol>
+                <div class="warning">
+                  <strong>⚠️ IMPORTANT:</strong> This token gives access to your page. Keep it
+                  secret.
+                </div>
+              </div>
+            </div>
+
+            <div class="success">
+              <strong>✅ PAGE_ACCESS_TOKEN Added</strong>
+            </div>
+          </div>
+
+          <div class="phase">
+            <div class="phase-title">
+              <span class="phase-number">2.3</span>Set Up Webhook
+            </div>
+            <div class="step">
+              <div class="step-header">Step 2.3.1: Choose a Verify Token</div>
+              <div class="step-content">
+                <p>
+                  This is any random string you choose (not generated). It's used to verify that
+                  webhook requests come from Facebook.
+                </p>
+                <p><strong>Generate one:</strong></p>
+                <pre><code>echo $(openssl rand -hex 16)</code></pre>
+                <p>Or just make up a random string like: <code>my_secret_verify_token_12345</code></p>
+                <p>Add to .env file:</p>
+                <pre><code>VERIFY_TOKEN=my_secret_verify_token_12345</code></pre>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-header">Step 2.3.2: Get Your Webhook URL</div>
+              <div class="step-content">
+                <p>
+                  You'll need to deploy to Vercel first to get a public URL. For now, write down this
+                  template:
+                </p>
+                <pre><code>https://your-vercel-deployment.vercel.app/api/webhook</code></pre>
+                <p><strong>You'll come back to this after deploying.</strong></p>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-header">Step 2.3.3: Register Webhook (After Deployment)</div>
+              <div class="step-content">
+                <p>Once you've deployed to Vercel:</p>
+                <ol>
+                  <li>Go back to Meta Developers → Your App → Messenger → Settings</li>
+                  <li>Scroll to "Webhooks"</li>
+                  <li>Click "Add Callback URL"</li>
+                  <li>Fill in:
+                    <ul>
+                      <li><strong>Callback URL:</strong>
+                        <code>https://your-app.vercel.app/api/webhook</code></li>
+                      <li><strong>Verify Token:</strong> The token you chose above</li>
+                    </ul>
+                  </li>
+                  <li>Click "Verify and Save"</li>
+                </ol>
+                <p>
+                  Facebook will send a GET request to verify. If successful, it will save the webhook.
+                </p>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-header">Step 2.3.4: Subscribe to Events</div>
+              <div class="step-content">
+                <ol>
+                  <li>In Webhooks section, click "Select Events"</li>
+                  <li>Check <strong>"messages"</strong></li>
+                  <li>Click "Save"</li>
+                </ol>
+              </div>
+            </div>
+
+            <div class="success">
+              <strong>✅ Webhook Configured</strong> - Ready to receive messages.
+            </div>
+          </div>
+
+          <div class="phase">
+            <div class="phase-title">
+              <span class="phase-number">2.4</span>Subscribe Page to App
+            </div>
+            <div class="step">
+              <div class="step-header">Step 2.4.1: Enable Subscription</div>
+              <div class="step-content">
+                <ol>
+                  <li>In Messenger → Settings, scroll to "Webhook"</li>
+                  <li>Find your page in the list</li>
+                  <li>Click "Subscribe"</li>
+                  <li>You should see a checkmark next to your page</li>
+                </ol>
+              </div>
+            </div>
+
+            <div class="success">
+              <strong>✅ Messenger Setup Complete</strong> - Your bot is ready to receive messages!
+            </div>
+          </div>
+        </section>
+
+        <!-- PHASE 3: Deployment -->
+        <section>
+          <h2>🚀 Phase 3: Deploy to Vercel</h2>
+
+          <div class="phase">
+            <div class="phase-title">
+              <span class="phase-number">3.1</span>Push to GitHub
+            </div>
+            <div class="step">
+              <div class="step-header">Step 3.1.1: Initialize Git (if needed)</div>
+              <div class="step-content">
+                <pre><code>git init
+git add .
+git commit -m "Initial NubAgent setup"</code></pre>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-header">Step 3.1.2: Create GitHub Repo</div>
+              <div class="step-content">
+                <ol>
+                  <li>Go to <a href="https://github.com/new" target="_blank">github.com/new</a></li>
+                  <li>Create repository named "nubagent"</li>
+                  <li>Add remote and push:
+                    <pre><code>git remote add origin https://github.com/YOUR_USERNAME/nubagent.git
+git branch -M main
+git push -u origin main</code></pre>
+                  </li>
+                </ol>
+              </div>
+            </div>
+          </div>
+
+          <div class="phase">
+            <div class="phase-title">
+              <span class="phase-number">3.2</span>Deploy to Vercel
+            </div>
+            <div class="step">
+              <div class="step-header">Step 3.2.1: Connect Vercel</div>
+              <div class="step-content">
+                <ol>
+                  <li>Go to <a href="https://vercel.com/new" target="_blank">vercel.com/new</a></li>
+                  <li>Click "Import Git Repository"</li>
+                  <li>Select your GitHub repo</li>
+                  <li>Click "Import"</li>
+                </ol>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-header">Step 3.2.2: Add Environment Variables</div>
+              <div class="step-content">
+                <ol>
+                  <li>In Vercel project settings, go to "Environment Variables"</li>
+                  <li>Add each variable from your .env file:
+                    <ul>
+                      <li><code>GEMINI_API_KEY</code> = your API key</li>
+                      <li><code>PAGE_ACCESS_TOKEN</code> = your page token (if using Messenger)</li>
+                      <li><code>VERIFY_TOKEN</code> = your verify token (if using Messenger)</li>
+                    </ul>
+                  </li>
+                  <li>Click "Save"</li>
+                </ol>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-header">Step 3.2.3: Deploy</div>
+              <div class="step-content">
+                <ol>
+                  <li>Click "Deploy"</li>
+                  <li>Wait for deployment to complete (2-3 minutes)</li>
+                  <li>You'll get a URL like: <code>https://nubagent-abc123.vercel.app</code></li>
+                </ol>
+              </div>
+            </div>
+
+            <div class="success">
+              <strong>✅ Deployed!</strong> Your app is live.
+            </div>
+          </div>
+
+          <div class="phase">
+            <div class="phase-title">
+              <span class="phase-number">3.3</span>Finalize Messenger Setup (if applicable)
+            </div>
+            <div class="step">
+              <div class="step-header">Step 3.3.1: Register Webhook URL</div>
+              <div class="step-content">
+                <p>
+                  Go back to Phase 2.3.3 and use your Vercel URL:
+                  <code>https://your-vercel-app.vercel.app/api/webhook</code>
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- PHASE 4: Testing -->
+        <section>
+          <h2>✅ Phase 4: Verification & Testing</h2>
+
+          <div class="phase">
+            <div class="phase-title">
+              <span class="phase-number">4.1</span>Test Chat API
+            </div>
+            <div class="step">
+              <div class="step-header">Test Your Deployed API</div>
+              <div class="step-content">
+                <pre><code>curl -X POST https://your-vercel-app.vercel.app/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      { "role": "user", "content": "Hello!" }
+    ]
+  }'</code></pre>
+                <p>You should get a JSON response with the AI answer.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="phase">
+            <div class="phase-title">
+              <span class="phase-number">4.2</span>Test Messenger Webhook
+            </div>
+            <div class="step">
+              <div class="step-header">Send a Test Message</div>
+              <div class="step-content">
+                <ol>
+                  <li>Go to your Facebook Page</li>
+                  <li>Click the Messenger chat bubble</li>
+                  <li>Send your page a message from your personal account</li>
+                  <li>The bot should reply automatically</li>
+                </ol>
+                <div class="info">
+                  <strong>Note:</strong> It may take 1-2 seconds for the response to appear as the
+                  Gemini API is generating a response.
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Checklist -->
+        <section>
+          <h2>📋 Complete Setup Checklist</h2>
+
+          <div class="phase">
+            <div class="phase-title">
+              <span class="phase-number">✓</span>All Done?
+            </div>
+            <div class="step">
+              <ul class="checklist">
+                <li>☐ Node.js 18+ installed</li>
+                <li>☐ Project cloned: <code>git clone ...</code></li>
+                <li>☐ Dependencies installed: <code>npm install</code></li>
+                <li>☐ <code>.env</code> file created</li>
+                <li>☐ Gemini API key obtained from Google AI Studio</li>
+                <li>☐ <code>GEMINI_API_KEY</code> added to .env</li>
+                <li>☐ Chat API tested locally: <code>npm run dev</code></li>
+                <li>☐ Project pushed to GitHub (optional but recommended)</li>
+                <li>☐ Deployed to Vercel</li>
+                <li>☐ Environment variables added to Vercel</li>
+                <li>☐ <em>If using Messenger:</em></li>
+                <li>☐ Facebook App created</li>
+                <li>☐ Messenger product added</li>
+                <li>☐ <code>PAGE_ACCESS_TOKEN</code> obtained and added to .env & Vercel</li>
+                <li>☐ <code>VERIFY_TOKEN</code> chosen and added to .env & Vercel</li>
+                <li>☐ Webhook URL registered in Meta Developers</li>
+                <li>☐ Webhook events (messages) subscribed</li>
+                <li>☐ Page subscribed to webhook</li>
+                <li>☐ Chat API tested on Vercel deployment</li>
+                <li>☐ Messenger bot tested with a message</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <!-- Troubleshooting -->
+        <section>
+          <h2>🔧 Troubleshooting</h2>
+
+          <div class="phase">
+            <div class="phase-title">
+              <span class="phase-number">?</span>Common Issues
+            </div>
+
+            <div class="step">
+              <div class="step-header">Chat API returns 500 "Missing GEMINI_API_KEY"</div>
+              <div class="step-content">
+                <p><strong>Fix:</strong></p>
+                <ol>
+                  <li>Verify <code>GEMINI_API_KEY</code> is in your .env file</li>
+                  <li>Make sure it's not wrapped in quotes</li>
+                  <li>Restart your dev server: <code>npm run dev</code></li>
+                  <li>Check you didn't accidentally paste the key with newlines</li>
+                </ol>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-header">Messenger webhook returns 403 "Verification failed"</div>
+              <div class="step-content">
+                <p><strong>Fix:</strong></p>
+                <ol>
+                  <li>Double-check <code>VERIFY_TOKEN</code> in .env matches Meta Developers</li>
+                  <li>Ensure <code>VERIFY_TOKEN</code> is in Vercel environment variables</li>
+                  <li>Redeploy Vercel after adding variables</li>
+                  <li>Try registering webhook again in Meta Developers</li>
+                </ol>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-header">Messenger webhook returns 500 "Missing PAGE_ACCESS_TOKEN"</div>
+              <div class="step-content">
+                <p><strong>Fix:</strong></p>
+                <ol>
+                  <li>Verify <code>PAGE_ACCESS_TOKEN</code> is in Vercel environment variables</li>
+                  <li>Make sure token is complete (very long string)</li>
+                  <li>Regenerate the token in Meta Developers if unsure</li>
+                  <li>Redeploy Vercel</li>
+                </ol>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-header">No response from bot after messaging</div>
+              <div class="step-content">
+                <p><strong>Fix:</strong></p>
+                <ol>
+                  <li>Check that page is subscribed to webhook (check in Meta Developers)</li>
+                  <li>Check that <code>/api/webhook</code> is reachable:
+                    <pre><code>curl https://your-vercel-app.vercel.app/api/webhook</code></pre>
+                    Should return something (not 404)
+                  </li>
+                  <li>Check Vercel logs for errors</li>
+                  <li>Verify webhook URL registered correctly</li>
+                </ol>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer>
+        <p>NubAgent Complete Setup Guide — Zero Gaps</p>
+        <p>All steps included. Follow sequentially for guaranteed success.</p>
+      </footer>
+    </div>
+  </body>
+</html>
