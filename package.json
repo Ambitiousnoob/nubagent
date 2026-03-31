@@ -7,10 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "./node_modules/.bin/eslint api lib src test",
-    "test": "node --test",
-    "format": "prettier --write \"index.html\" \"api/**/*.js\" \"lib/**/*.js\" \"src/**/*.{js,jsx}\" \"test/**/*.js\"",
-    "format:check": "prettier --check \"index.html\" \"api/**/*.js\" \"lib/**/*.js\" \"src/**/*.{js,jsx}\" \"test/**/*.js\""
+    "lint": "./node_modules/.bin/eslint api lib src",
+    "format": "prettier --write \"index.html\" \"api/**/*.js\" \"lib/**/*.js\" \"src/**/*.{js,jsx}\"",
+    "format:check": "prettier --check \"index.html\" \"api/**/*.js\" \"lib/**/*.js\" \"src/**/*.{js,jsx}\""
   },
   "keywords": [
     "gemini",

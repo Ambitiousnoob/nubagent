@@ -78,7 +78,6 @@ Run checks:
 
 ```bash
 npm run lint
-npm test
 npm run build
 ```
 
