@@ -20,31 +20,31 @@ const SECTION_LINKS = [
   {
     href: "#top",
     label: "Overview",
-    detail: "Landing, purpose, and structure",
+    detail: "What the product exposes",
     icon: <BookOpen size={18} />,
   },
   {
     href: "#api-reference",
     label: "API Reference",
-    detail: "Public paths and owning files",
+    detail: "Request, response, and owning files",
     icon: <FileText size={18} />,
   },
   {
     href: "#api-creation",
     label: "API Playbook",
-    detail: "How new endpoints should ship",
+    detail: "How `/api/chat` should evolve",
     icon: <Layers3 size={18} />,
   },
   {
-    href: "#research-framework",
-    label: "Runtime Map",
-    detail: "Research DAG and orchestration",
+    href: "#operations",
+    label: "Operations",
+    detail: "Runtime behavior and env config",
     icon: <Network size={18} />,
   },
   {
-    href: "#subagent-catalog",
-    label: "Subagents",
-    detail: "Operational ownership groups",
+    href: "#migration",
+    label: "Migration",
+    detail: "What changed from the old runtime",
     icon: <Users size={18} />,
   },
 ];
@@ -227,12 +227,12 @@ export default function App() {
               <header className="app__desktop-header">
                 <div className="app__desktop-intro">
                   <button className="app__desktop-model" type="button">
-                    <span>Documentation Site</span>
+                    <span>Simple Chat API Docs</span>
                   </button>
                   <p className="app__desktop-copy">
-                    The chat workspace has been removed from the frontend. This
-                    build now surfaces the API, runtime, and ownership docs
-                    only.
+                    The frontend stays documentation-only. This build now
+                    documents the single Gemini-backed chat endpoint and the
+                    files that own it.
                   </p>
                 </div>
                 <div className="app__desktop-actions">

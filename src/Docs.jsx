@@ -5,12 +5,9 @@ import {
   API_CREATION_STEPS,
   API_REFERENCE_SECTIONS,
   BASIC_ENDPOINT_EXAMPLE,
-  RESEARCH_FRAMEWORK_V3_CAPABILITY_SUMMARY,
-  RESEARCH_FRAMEWORK_V3_GAPS,
-  RESEARCH_FRAMEWORK_V3_PHASES,
-  RESEARCH_FRAMEWORK_V31_STABILIZATION,
-  RESEARCH_FRAMEWORK_V31_STRESS_POINTS,
-  SUBAGENT_GROUPS,
+  ENVIRONMENT_VARIABLES,
+  MIGRATION_NOTES,
+  OPERATIONS_SECTIONS,
 } from "./lib/docsContent.js";
 
 function CodeBlock({ children }) {
@@ -87,53 +84,18 @@ function StepCard({ index, step }) {
   );
 }
 
-function SubagentGroup({ group }) {
+function NoteCard({ title, body, bullets = [] }) {
   return (
-    <section className="docs-group" id={group.id}>
-      <header className="docs-group__header">
-        <div>
-          <h3 className="docs-group__title">{group.title}</h3>
-          <p className="docs-group__summary">{group.summary}</p>
-        </div>
-        <span className="docs-group__count">
-          {group.agents.length} agent{group.agents.length === 1 ? "" : "s"}
-        </span>
-      </header>
-
-      <div className="docs-subagents">
-        {group.agents.map((agent) => (
-          <article key={agent.name} className="docs-subagent">
-            <div className="docs-subagent__name">{agent.name}</div>
-            <p className="docs-subagent__scope">{agent.scope}</p>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function FrameworkPhaseCard({ phase }) {
-  return (
-    <article className="docs-card docs-card--framework" id={phase.id}>
-      <div className="docs-card__eyebrow">
-        <span>Phase {phase.phase}</span>
-      </div>
-      <h3 className="docs-card__title">{phase.title}</h3>
-      <p className="docs-card__body">{phase.summary}</p>
-      <ul className="docs-card__list">
-        {phase.capabilities.map((item) => (
-          <li key={item}>{item}</li>
-        ))}
-      </ul>
-    </article>
-  );
-}
-
-function ShortCard({ title, body, tone = "default" }) {
-  return (
-    <article className={`docs-short-card docs-short-card--${tone}`}>
-      <h3 className="docs-short-card__title">{title}</h3>
-      <p className="docs-short-card__body">{body}</p>
+    <article className="docs-card">
+      <h3 className="docs-card__title">{title}</h3>
+      <p className="docs-card__body">{body}</p>
+      {bullets.length > 0 && (
+        <ul className="docs-card__list">
+          {bullets.map((bullet) => (
+            <li key={bullet}>{bullet}</li>
+          ))}
+        </ul>
+      )}
     </article>
   );
 }
@@ -143,16 +105,6 @@ export default function Docs() {
     (count, endpoint) => count + endpoint.paths.length,
     0,
   );
-  const totalSubagents = SUBAGENT_GROUPS.reduce(
-    (count, group) => count + group.agents.length,
-    0,
-  );
-  const frameworkPhases = RESEARCH_FRAMEWORK_V3_PHASES.filter(
-    (phase) => phase.phase !== "X",
-  );
-  const crossCuttingLayers = RESEARCH_FRAMEWORK_V3_PHASES.filter(
-    (phase) => phase.phase === "X",
-  );
 
   return (
     <div className="docs-page docs-page--refined">
@@ -160,11 +112,12 @@ export default function Docs() {
         <div className="docs-page__hero-copy">
           <div className="docs-page__eyebrow">NubAgent Docs</div>
           <h1 className="docs-page__title">
-            Runtime, API, and ownership reference
+            Simple Gemini chat API reference
           </h1>
           <p className="docs-page__lead">
-            Operator-facing docs for the API surface, research runtime, and the
-            owners behind each part of the system.
+            Operator-facing docs for the single public chat endpoint, the files
+            that own it, and the operational rules around the current
+            docs-only frontend.
           </p>
         </div>
 
@@ -173,24 +126,24 @@ export default function Docs() {
             <span className="docs-stat__value">
               {API_REFERENCE_SECTIONS.length}
             </span>
-            <span className="docs-stat__label">API sections</span>
+            <span className="docs-stat__label">API section</span>
           </div>
           <div className="docs-stat">
             <span className="docs-stat__value">{totalEndpoints}</span>
-            <span className="docs-stat__label">Public paths</span>
+            <span className="docs-stat__label">Public path</span>
           </div>
           <div className="docs-stat">
-            <span className="docs-stat__value">{totalSubagents}</span>
-            <span className="docs-stat__label">Subagents</span>
+            <span className="docs-stat__value">JSON</span>
+            <span className="docs-stat__label">Response mode</span>
           </div>
         </div>
       </div>
 
       <nav className="docs-page__jump-nav" aria-label="Docs sections">
         <a href="#api-reference">API Reference</a>
-        <a href="#api-creation">API Creation</a>
-        <a href="#research-framework">Research Framework v3.0</a>
-        <a href="#subagent-catalog">Subagents</a>
+        <a href="#api-creation">API Playbook</a>
+        <a href="#operations">Operations</a>
+        <a href="#migration">Migration</a>
       </nav>
 
       <section className="docs-section" id="api-reference">
@@ -200,23 +153,20 @@ export default function Docs() {
             <h2 className="docs-section__title">API reference</h2>
           </div>
           <p className="docs-section__body">
-            Use these cards to see which public paths exist, what they do, and
-            which files own them.
+            Use this section to inspect the live contract for the only public
+            endpoint in the repo.
           </p>
         </header>
 
         <div className="docs-section__intro-grid">
           <div className="docs-section__intro-card">
-            <span>What this covers</span>
-            <strong>
-              Dedicated endpoints, shared aliases, and the current public
-              contract.
-            </strong>
+            <span>Surface area</span>
+            <strong>One public route: `/api/chat`.</strong>
           </div>
           <div className="docs-section__intro-card">
-            <span>Use it for</span>
+            <span>Behavior</span>
             <strong>
-              Fast lookup of owning files, request shape, and response shape.
+              Plain chat completion backed by Gemini, with no agentic runtime.
             </strong>
           </div>
         </div>
@@ -232,24 +182,23 @@ export default function Docs() {
         <header className="docs-section__header">
           <div>
             <div className="docs-section__eyebrow">Implementation Guide</div>
-            <h2 className="docs-section__title">API creation playbook</h2>
+            <h2 className="docs-section__title">API playbook</h2>
           </div>
           <p className="docs-section__body">
-            Use this when you need to add or reshape a public endpoint. Pick the
-            right boundary first, then keep aliases, tests, and docs aligned.
+            This is the maintenance path for the current backend shape:
+            one public route, one provider adapter, and one docs surface.
           </p>
         </header>
 
         <div className="docs-section__intro-grid">
           <div className="docs-section__intro-card">
             <span>Primary rule</span>
-            <strong>Choose the right boundary first.</strong>
+            <strong>Do not re-expand the public API accidentally.</strong>
           </div>
           <div className="docs-section__intro-card">
             <span>Outcome</span>
             <strong>
-              New API work lands in a predictable place and stays easy to
-              maintain.
+              Contract changes stay small, reviewable, and easy to verify.
             </strong>
           </div>
         </div>
@@ -261,36 +210,32 @@ export default function Docs() {
         </div>
 
         <div className="docs-creation-grid">
-          <article className="docs-card">
-            <h3 className="docs-card__title">Creation checklist</h3>
-            <ul className="docs-card__list">
-              {API_CREATION_CHECKLIST.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </article>
+          <NoteCard
+            title="Creation checklist"
+            body="Run through this list whenever `/api/chat` changes."
+            bullets={API_CREATION_CHECKLIST}
+          />
 
           <article className="docs-card">
-            <h3 className="docs-card__title">
-              Where new API work usually lands
-            </h3>
+            <h3 className="docs-card__title">Where API work usually lands</h3>
             <div className="docs-card__paths">
               <code>api/chat.js</code>
-              <code>lib/tools/&lt;tool&gt;.js</code>
+              <code>lib/gemini-chat.js</code>
+              <code>lib/web.js</code>
               <code>vercel.json</code>
               <code>API.md</code>
             </div>
             <p className="docs-card__body">
-              The public API surface is intentionally narrow. Extend
-              `api/chat.js` for externally visible behavior and keep supporting
-              provider or tool logic behind that boundary in `lib/`.
+              Keep externally visible behavior in `api/chat.js`, push Gemini
+              mapping into `lib/gemini-chat.js`, and keep shared parsing or size
+              guards in `lib/web.js`.
             </p>
           </article>
         </div>
 
         <div className="docs-examples">
           <article className="docs-card">
-            <h3 className="docs-card__title">Basic endpoint shape</h3>
+            <h3 className="docs-card__title">Minimal endpoint skeleton</h3>
             <CodeBlock>{BASIC_ENDPOINT_EXAMPLE}</CodeBlock>
           </article>
 
@@ -301,157 +246,77 @@ export default function Docs() {
         </div>
       </section>
 
-      <section className="docs-section" id="research-framework">
+      <section className="docs-section" id="operations">
         <header className="docs-section__header">
           <div>
-            <div className="docs-section__eyebrow">Research Runtime</div>
-            <h2 className="docs-section__title">
-              Research Framework v3.0 — The Living Research Intelligence
-            </h2>
+            <div className="docs-section__eyebrow">Operations</div>
+            <h2 className="docs-section__title">Runtime and config notes</h2>
           </div>
           <p className="docs-section__body">
-            The research runtime is organized as a compiled graph with
-            verification, synthesis, and delivery stages that can be steered as
-            work progresses.
+            These are the practical rules that keep the endpoint predictable in
+            deployment.
           </p>
         </header>
 
-        <div className="docs-section__intro-grid">
-          <div className="docs-section__intro-card">
-            <span>Core shift</span>
-            <strong>
-              From a fixed pipeline to a steerable research runtime.
-            </strong>
-          </div>
-          <div className="docs-section__intro-card">
-            <span>Runtime shape</span>
-            <strong>
-              Compiled graph execution, recursive verification, and explicit
-              checkpoints.
-            </strong>
-          </div>
-        </div>
-
-        <div className="docs-framework-grid">
-          {frameworkPhases.map((phase) => (
-            <FrameworkPhaseCard key={phase.id} phase={phase} />
+        <div className="docs-creation-grid">
+          {OPERATIONS_SECTIONS.map((section) => (
+            <NoteCard
+              key={section.title}
+              title={section.title}
+              body={section.body}
+              bullets={section.bullets}
+            />
           ))}
         </div>
 
-        {crossCuttingLayers.length > 0 && (
-          <div className="docs-framework-crosscutting">
-            {crossCuttingLayers.map((layer) => (
-              <FrameworkPhaseCard key={layer.id} phase={layer} />
-            ))}
-          </div>
-        )}
-
         <article className="docs-card">
-          <h3 className="docs-card__title">What v2.0 still gets wrong</h3>
+          <h3 className="docs-card__title">Environment variables</h3>
           <div className="docs-table-wrap">
             <table className="docs-table">
               <thead>
                 <tr>
-                  <th>Gap</th>
-                  <th>Consequence</th>
+                  <th>Variable</th>
+                  <th>Required</th>
+                  <th>Default</th>
+                  <th>Description</th>
                 </tr>
               </thead>
               <tbody>
-                {RESEARCH_FRAMEWORK_V3_GAPS.map((row) => (
-                  <tr key={row.gap}>
-                    <td>{row.gap}</td>
-                    <td>{row.consequence}</td>
+                {ENVIRONMENT_VARIABLES.map((item) => (
+                  <tr key={item.name}>
+                    <td>
+                      <code>{item.name}</code>
+                    </td>
+                    <td>{item.required}</td>
+                    <td>{item.defaultValue}</td>
+                    <td>{item.description}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         </article>
-
-        <article className="docs-card">
-          <h3 className="docs-card__title">v3.0 capability summary</h3>
-          <div className="docs-table-wrap">
-            <table className="docs-table">
-              <thead>
-                <tr>
-                  <th>Dimension</th>
-                  <th>v2.0</th>
-                  <th>v3.0</th>
-                </tr>
-              </thead>
-              <tbody>
-                {RESEARCH_FRAMEWORK_V3_CAPABILITY_SUMMARY.map((row) => (
-                  <tr key={row.dimension}>
-                    <td>{row.dimension}</td>
-                    <td>{row.v2}</td>
-                    <td>{row.v3}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </article>
-
-        <div className="docs-creation-grid">
-          <article className="docs-card">
-            <h3 className="docs-card__title">Critical stress points in v3.0</h3>
-            <div className="docs-short-grid">
-              {RESEARCH_FRAMEWORK_V31_STRESS_POINTS.map((item) => (
-                <ShortCard
-                  key={item.id}
-                  title={item.title}
-                  body={item.impact}
-                  tone="warning"
-                />
-              ))}
-            </div>
-          </article>
-
-          <article className="docs-card">
-            <h3 className="docs-card__title">v3.1 stabilization layer</h3>
-            <div className="docs-short-grid">
-              {RESEARCH_FRAMEWORK_V31_STABILIZATION.map((item) => (
-                <ShortCard
-                  key={item.id}
-                  title={item.title}
-                  body={item.summary}
-                  tone="success"
-                />
-              ))}
-            </div>
-          </article>
-        </div>
       </section>
 
-      <section className="docs-section" id="subagent-catalog">
+      <section className="docs-section" id="migration">
         <header className="docs-section__header">
           <div>
-            <div className="docs-section__eyebrow">Ownership Map</div>
-            <h2 className="docs-section__title">NubAgent subagent catalog</h2>
+            <div className="docs-section__eyebrow">Migration</div>
+            <h2 className="docs-section__title">What changed</h2>
           </div>
           <p className="docs-section__body">
-            This is the web view of the local `nub_*` roster so you can see who
-            owns orchestration, search, fetch, verification, docs, and release.
+            These notes capture the intentional shift away from the older,
+            broader runtime.
           </p>
         </header>
 
-        <div className="docs-section__intro-grid">
-          <div className="docs-section__intro-card">
-            <span>Catalog purpose</span>
-            <strong>Every meaningful surface has a named owner.</strong>
-          </div>
-          <div className="docs-section__intro-card">
-            <span>Reading mode</span>
-            <strong>
-              Use these clusters as routing hints when work spans runtime,
-              retrieval, verification, or docs.
-            </strong>
-          </div>
-        </div>
-
-        <div className="docs-groups">
-          {SUBAGENT_GROUPS.map((group) => (
-            <SubagentGroup key={group.id} group={group} />
+        <div className="docs-creation-grid">
+          {MIGRATION_NOTES.map((item) => (
+            <NoteCard
+              key={item.title}
+              title={item.title}
+              body={item.body}
+            />
           ))}
         </div>
       </section>
