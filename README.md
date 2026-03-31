@@ -30,6 +30,19 @@ You need:
 2. An ordered Gemini model list in `GEMINI_CHAT_MODEL`
    Put the primary model first, followed by fallbacks.
 3. A Facebook Page access token with Messenger permissions
+   First, you need a Facebook page. If you do not have one, create it before generating the token.
+
+   The initial page token is valid for only 1 hour. Extend it and use the extended token for production:
+
+   1. Go to Facebook Graph API Explorer.
+   2. In the "User or Page" dropdown, select your Facebook page.
+   3. Generate a token if you do not already have one.
+   4. Copy that token and open Facebook Access Token Debugger.
+   5. Paste the token into the debugger and click "Debug".
+   6. Scroll to the bottom and click "Extend Access Token".
+   7. Copy the extended token and use that value for `PAGE_ACCESS_TOKEN`.
+
+   Use the extended token, not the original 1-hour token.
 4. A webhook verification token you choose yourself
 5. A Postgres database reachable from Vercel
 
@@ -46,9 +59,11 @@ Required:
 |----------|-------------|
 | `GEMINI_API_KEY` | One Gemini API key or a comma-separated key pool |
 | `GEMINI_CHAT_MODEL` | Required ordered model list, for example `model1,model2,model3` |
-| `PAGE_ACCESS_TOKEN` | Facebook Page access token |
+| `PAGE_ACCESS_TOKEN` | Extended Facebook Page access token for messaging |
 | `VERIFY_TOKEN` | Token used only for Facebook webhook verification |
 | `POSTGRES_URL` | Postgres connection string for durable message history |
+
+Use the extended page token for `PAGE_ACCESS_TOKEN`, not the original short-lived token.
 
 Optional:
 
