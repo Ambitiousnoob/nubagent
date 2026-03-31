@@ -1,13 +1,8 @@
 import React, { Component } from "react";
-import { AlertTriangle, RefreshCw } from "lucide-react";
-import { Button } from "./Button.jsx";
+import { AlertTriangle } from "lucide-react";
 
 const IS_DEV = Boolean(import.meta.env?.DEV);
 
-/**
- * Error Boundary Component
- * Catches JavaScript errors in child components
- */
 export class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
@@ -24,9 +19,7 @@ export class ErrorBoundary extends Component {
 
   componentDidCatch(error, errorInfo) {
     this.setState({ errorInfo });
-    console.error("ErrorBoundary caught:", error, errorInfo);
 
-    // Log to error tracking service if configured
     if (this.props.onError) {
       this.props.onError(error, errorInfo);
     }
@@ -40,70 +33,45 @@ export class ErrorBoundary extends Component {
   };
 
   render() {
-    if (this.state.hasError) {
-      if (this.props.fallback) {
-        return this.props.fallback;
-      }
-
-      return (
-        <div className="error-boundary">
-          <div className="error-boundary__icon">
-            <AlertTriangle size={48} />
-          </div>
-          <h2 className="error-boundary__title">Something went wrong</h2>
-          <p className="error-boundary__message">
-            {this.props.errorMessage ||
-              "An unexpected error occurred. Please try again."}
-          </p>
-          {IS_DEV && this.state.error && (
-            <details className="error-boundary__details">
-              <summary>Error Details</summary>
-              <pre className="error-boundary__stack">
-                {this.state.error.toString()}
-                {this.state.errorInfo?.componentStack}
-              </pre>
-            </details>
-          )}
-          <div className="error-boundary__actions">
-            <Button onClick={this.handleReset} icon={<RefreshCw size={16} />}>
-              Try Again
-            </Button>
-          </div>
-        </div>
-      );
+    if (!this.state.hasError) {
+      return this.props.children;
     }
 
-    return this.props.children;
-  }
-}
+    if (this.props.fallback) {
+      return this.props.fallback;
+    }
 
-/**
- * Functional Error Fallback Component
- * For use with React 18 error boundaries
- */
-export function ErrorFallback({ error, resetErrorBoundary }) {
-  return (
-    <div className="error-boundary">
-      <div className="error-boundary__icon">
-        <AlertTriangle size={48} />
+    return (
+      <div className="error-boundary">
+        <div className="error-boundary__icon">
+          <AlertTriangle size={48} />
+        </div>
+        <h2 className="error-boundary__title">Something went wrong</h2>
+        <p className="error-boundary__message">
+          {this.props.errorMessage ||
+            "An unexpected error occurred. Please try again."}
+        </p>
+        {IS_DEV && this.state.error && (
+          <details className="error-boundary__details">
+            <summary>Error Details</summary>
+            <pre className="error-boundary__stack">
+              {this.state.error.toString()}
+              {this.state.errorInfo?.componentStack}
+            </pre>
+          </details>
+        )}
+        <div className="error-boundary__actions">
+          <button
+            type="button"
+            className="sidebar__footer-item"
+            onClick={this.handleReset}
+          >
+            Try Again
+          </button>
+        </div>
       </div>
-      <h2 className="error-boundary__title">Something went wrong</h2>
-      <p className="error-boundary__message">
-        An unexpected error occurred. Please try again.
-      </p>
-      {IS_DEV && error && (
-        <details className="error-boundary__details">
-          <summary>Error Details</summary>
-          <pre className="error-boundary__stack">{error.toString()}</pre>
-        </details>
-      )}
-      <div className="error-boundary__actions">
-        <Button onClick={resetErrorBoundary} icon={<RefreshCw size={16} />}>
-          Try Again
-        </Button>
-      </div>
-    </div>
-  );
+    );
+  }
 }
 
 export default ErrorBoundary;

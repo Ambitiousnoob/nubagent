@@ -2,11 +2,13 @@ const { readBody } = require("../lib/web");
 const {
   metadataPayload,
   createChatResponsePayload,
-  normalizeChatBody,
   runGeminiChat,
 } = require("../lib/gemini-chat");
 
-const MAX_BODY_BYTES = 64 * 1024;
+const DEFAULT_MAX_BODY_BYTES = 64 * 1024;
+const envLimit = Number.parseInt(process.env.CHAT_BODY_LIMIT_BYTES || "", 10);
+const MAX_BODY_BYTES =
+  Number.isFinite(envLimit) && envLimit > 0 ? envLimit : DEFAULT_MAX_BODY_BYTES;
 
 const writeCorsHeaders = (res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -52,8 +54,7 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const normalizedBody = normalizeChatBody(body);
-    const result = await runGeminiChat(normalizedBody);
+    const result = await runGeminiChat(body);
     sendJson(res, 200, createChatResponsePayload(result));
   } catch (error) {
     if (Number(error?.status) >= 500 || !error?.status) {

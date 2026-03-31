@@ -1,7 +1,7 @@
 {
   "name": "nubagent",
   "version": "1.0.0",
-  "description": "AI-powered research assistant and chat interface",
+  "description": "Docs-only frontend with a simple Gemini chat API",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,12 +16,11 @@
     "format:check": "prettier --check \"index.html\" \"api/**/*.js\" \"lib/**/*.js\" \"scripts/**/*.js\" \"src/**/*.{js,jsx}\" \"tests/**/*.js\""
   },
   "keywords": [
-    "ai",
-    "chatbot",
-    "research",
-    "assistant",
+    "gemini",
+    "chat",
+    "docs",
     "react",
-    "nlp"
+    "vercel"
   ],
   "author": "NubAgent Team",
   "license": "MIT",
