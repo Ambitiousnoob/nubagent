@@ -83,8 +83,10 @@ All variables are required:
 | Variable | Description |
 |----------|-------------|
 | `GEMINI_API_KEY` | Google Gemini API authentication key (see Prerequisites above) |
-| `PAGE_ACCESS_TOKEN` | Long-lived Facebook page token for messaging (see Prerequisites above) |
+| `PAGE_ACCESS_TOKEN` | **Long-lived** Facebook page token for messaging (see Prerequisites above—use the extended token, not the original) |
 | `VERIFY_TOKEN` | Webhook verification token (see Prerequisites above) |
+
+⚠️ **Important**: Use the **extended token** from the Access Token Debugger, not the original token. The extended token remains valid for ~60 days, preventing authentication failures in production.
 
 ### Configure Facebook Webhook
 
