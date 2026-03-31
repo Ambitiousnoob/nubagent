@@ -31,9 +31,27 @@ NubAgent enables direct access to Google Gemini through Facebook Messenger as a 
 
 Obtain the following API credentials:
 
-- **Google Gemini API Key**: [Google AI Studio](https://aistudio.google.com/app/apikey)
-- **Facebook Page Access Token**: [Facebook Developer Dashboard](https://developers.facebook.com/) → Messenger Settings
-- **Webhook Verification Token**: Create a secure random string (used for Facebook webhook verification)
+#### 1. Google Gemini API Key
+
+Visit [Google AI Studio](https://aistudio.google.com/app/apikey) and create a new API key.
+
+#### 2. Facebook Page Access Token
+
+The page access token must be long-lived to prevent expiration. Follow these steps:
+
+1. Go to [Facebook Graph API Explorer](https://developers.facebook.com/tools/explorer/)
+2. In the dropdown labeled "User or Page", select your Facebook page
+3. Generate a token if you don't have one (click "Generate Access Token")
+4. Copy the token and visit [Facebook Access Token Debugger](https://developers.facebook.com/tools/debug/accesstoken/)
+5. Paste the token into the debugger and click "Debug"
+6. Scroll to the bottom and click "Extend Access Token"
+7. This generates a long-lived token (valid for ~60 days); copy this token for your configuration
+
+**Note**: Long-lived tokens are essential for production deployments to avoid token expiration interruptions.
+
+#### 3. Webhook Verification Token
+
+Create a secure random string (e.g., using `openssl rand -hex 32` or any password generator). This token is used only for Facebook's webhook verification during setup.
 
 ### Deployment
 
@@ -62,11 +80,11 @@ Then configure environment variables in the Vercel dashboard.
 
 All variables are required:
 
-| Variable | Description | Source |
-|----------|-------------|--------|
-| `GEMINI_API_KEY` | Google Gemini API authentication key | [Google AI Studio](https://aistudio.google.com/app/apikey) |
-| `PAGE_ACCESS_TOKEN` | Facebook page token for messaging | [Facebook Developer Dashboard](https://developers.facebook.com/) |
-| `VERIFY_TOKEN` | Webhook verification token (create a secure random string) | User-defined |
+| Variable | Description |
+|----------|-------------|
+| `GEMINI_API_KEY` | Google Gemini API authentication key (see Prerequisites above) |
+| `PAGE_ACCESS_TOKEN` | Long-lived Facebook page token for messaging (see Prerequisites above) |
+| `VERIFY_TOKEN` | Webhook verification token (see Prerequisites above) |
 
 ### Configure Facebook Webhook
 
