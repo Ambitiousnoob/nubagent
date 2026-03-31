@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 
 const envBlock = `GEMINI_API_KEY=your_gemini_api_key,your_second_gemini_api_key
-GEMINI_CHAT_MODEL=primary_model,fallback_model,another_fallback_model
+GEMINI_CHAT_MODEL=gemini-3-flash-preview,gemini-3.1-pro-preview
 PAGE_ACCESS_TOKEN=your_page_access_token
 VERIFY_TOKEN=your_webhook_verification_token
 POSTGRES_URL=postgresql://user:password@host:5432/database

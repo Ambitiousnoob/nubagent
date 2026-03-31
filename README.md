@@ -31,6 +31,21 @@ Messenger user
   -> reply back to the same user
 ```
 
+## Official Quick Links
+
+- [Google AI Studio](https://aistudio.google.com/)
+- [Gemini API key guide](https://ai.google.dev/gemini-api/docs/api-key)
+- [Gemini model list](https://ai.google.dev/models/gemini)
+- [Meta app dashboard](https://developers.facebook.com/apps/)
+- [Meta Messenger app setup guide](https://developers.facebook.com/docs/messenger-platform/getting-started/app-setup)
+- [Meta webhook setup guide](https://developers.facebook.com/docs/messenger-platform/getting-started/webhook-setup/)
+- [Meta Messenger send messages guide](https://developers.facebook.com/docs/messenger-platform/send-messages)
+- [Meta Page access tokens guide](https://developers.facebook.com/docs/pages/access-tokens/)
+- [Meta Graph API Explorer](https://developers.facebook.com/tools/explorer/)
+- [Meta Access Token Debugger](https://developers.facebook.com/tools/debug/accesstoken/)
+- [Vercel deployment protection guide](https://vercel.com/docs/deployment-protection)
+- [Vercel CLI docs](https://vercel.com/docs/cli)
+
 ## Before You Start
 
 You need all of the following before this repo can work end to end:
@@ -74,11 +89,12 @@ Important:
 
 ## Step 2. Create Gemini API Key(s)
 
-1. Open Google AI Studio.
-2. Go to the API Keys page.
-3. Create one Gemini API key, or create multiple keys if you want NubAgent to rotate through them.
-4. Copy the key values.
-5. Put them into `GEMINI_API_KEY` as a comma-separated list with no quotes.
+1. Open [Google AI Studio](https://aistudio.google.com/).
+2. If you want the official key instructions, open the [Gemini API key guide](https://ai.google.dev/gemini-api/docs/api-key).
+3. Go to the API Keys page.
+4. Create one Gemini API key, or create multiple keys if you want NubAgent to rotate through them.
+5. Copy the key values.
+6. Put them into `GEMINI_API_KEY` as a comma-separated list with no quotes.
 
 Example:
 
@@ -93,6 +109,8 @@ How the repo uses that value:
 
 ## Step 3. Choose Gemini Model(s)
 
+Use the official [Gemini model catalog](https://ai.google.dev/models/gemini).
+
 1. Pick at least one Gemini model ID that returns text output.
 2. Put the primary model first.
 3. Put fallback models after it, in the exact order you want them tried.
@@ -101,7 +119,7 @@ How the repo uses that value:
 Example:
 
 ```env
-GEMINI_CHAT_MODEL=gemini-2.5-flash,gemini-2.5-pro
+GEMINI_CHAT_MODEL=gemini-3-flash-preview,gemini-3.1-pro-preview
 ```
 
 Notes:
@@ -120,11 +138,6 @@ Required values:
 1. The Page access token you will use as `PAGE_ACCESS_TOKEN`
 2. A verification string you choose yourself for `VERIFY_TOKEN`
 
-Recommended values:
-
-1. The Page ID you can use as `PAGE_ID`
-2. The App Secret you can use as `FACEBOOK_APP_SECRET`
-
 Use this practical checklist:
 
 1. Create or choose the Facebook Page that should reply to users.
@@ -135,6 +148,14 @@ Use this practical checklist:
 6. Copy the Page ID.
 7. Copy the App Secret if you want signed webhook verification enabled.
 8. Choose your own `VERIFY_TOKEN` string. This can be any secret string you control.
+
+Direct links:
+
+- [Meta app dashboard](https://developers.facebook.com/apps/)
+- [Messenger app setup guide](https://developers.facebook.com/docs/messenger-platform/getting-started/app-setup)
+- [Page access token guide](https://developers.facebook.com/docs/pages/access-tokens/)
+- [Graph API Explorer](https://developers.facebook.com/tools/explorer/)
+- [Access Token Debugger](https://developers.facebook.com/tools/debug/accesstoken/)
 
 About the token:
 
@@ -178,7 +199,7 @@ Minimum working example:
 
 ```env
 GEMINI_API_KEY=key1,key2
-GEMINI_CHAT_MODEL=gemini-2.5-flash,gemini-2.5-pro
+GEMINI_CHAT_MODEL=gemini-3-flash-preview,gemini-3.1-pro-preview
 PAGE_ACCESS_TOKEN=your_page_access_token
 VERIFY_TOKEN=your_webhook_verify_token
 POSTGRES_URL=postgresql://user:password@host:5432/database
@@ -188,7 +209,7 @@ Recommended full example:
 
 ```env
 GEMINI_API_KEY=key1,key2
-GEMINI_CHAT_MODEL=gemini-2.5-flash,gemini-2.5-pro
+GEMINI_CHAT_MODEL=gemini-3-flash-preview,gemini-3.1-pro-preview
 PAGE_ACCESS_TOKEN=your_page_access_token
 VERIFY_TOKEN=your_webhook_verify_token
 POSTGRES_URL=postgresql://user:password@host:5432/database
@@ -253,6 +274,8 @@ If you do not have the Vercel CLI installed globally, use:
 npx vercel dev
 ```
 
+If you need the CLI docs, open the [Vercel CLI documentation](https://vercel.com/docs/cli).
+
 ### Smoke Test The Verification Endpoint
 
 After `vercel dev` starts, use the port it prints and test the handshake directly.
@@ -301,6 +324,10 @@ Important for Vercel:
 - The safest callback target is a public production URL
 - Do not point Meta at a URL that is still protected by Deployment Protection
 
+Official Vercel reference:
+
+[Vercel Deployment Protection documentation](https://vercel.com/docs/deployment-protection)
+
 ## Step 10. Configure The Messenger Webhook In Meta
 
 After deployment, wire your public webhook URL into your Meta app.
@@ -327,6 +354,12 @@ Notes:
 - Meta dashboard labels and menu paths can move over time; use the current equivalent UI if wording changes
 - This repo only processes Messenger page events
 - The callback path must stay `/api/webhook`
+
+Helpful Meta docs:
+
+- [Webhook setup guide](https://developers.facebook.com/docs/messenger-platform/getting-started/webhook-setup/)
+- [Messenger app setup guide](https://developers.facebook.com/docs/messenger-platform/getting-started/app-setup)
+- [Send messages guide](https://developers.facebook.com/docs/messenger-platform/send-messages)
 
 ## Step 11. Send A Real End-To-End Test Message
 
