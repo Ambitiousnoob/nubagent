@@ -4,7 +4,7 @@ NubAgent is a Facebook Messenger to Gemini bridge designed for Vercel. It expose
 
 This README is written as an operator guide. It is intentionally step by step, and it only documents behavior that matches the current code in this repository.
 
-<a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAmbitiousnoob%2Fnubagent&env=GEMINI_API_KEY,PAGE_ACCESS_TOKEN,VERIFY_TOKEN,POSTGRES_URL,PAGE_ID,FACEBOOK_APP_SECRET,GRAPH_API_VERSION,GEMINI_ENABLE_GOOGLE_SEARCH,GEMINI_ENABLE_CODE_EXECUTION,GEMINI_ENABLE_URL_CONTEXT,GEMINI_CHAT_MODEL,GEMINI_CHAT_THINKING_LEVEL,OPTIONAL_INSTRUCTION,SYSTEM_PROMPT&project-name=nubagent&repo-name=nubagent"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
+<a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAmbitiousnoob%2Fnubagent&env=GEMINI_API_KEY,PAGE_ACCESS_TOKEN,VERIFY_TOKEN,POSTGRES_URL,PAGE_ID,FACEBOOK_APP_SECRET,GRAPH_API_VERSION,GEMINI_ENABLE_GOOGLE_SEARCH,GEMINI_ENABLE_CODE_EXECUTION,GEMINI_ENABLE_URL_CONTEXT,GEMINI_CHAT_MODEL,GEMINI_CHAT_THINKING_LEVEL,OPTIONAL_INSTRUCTION&project-name=nubagent&repo-name=nubagent"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
 
 ## What This Repo Actually Does
 
@@ -237,7 +237,6 @@ GEMINI_ENABLE_CODE_EXECUTION=true
 GEMINI_ENABLE_URL_CONTEXT=true
 GEMINI_CHAT_THINKING_LEVEL=low
 OPTIONAL_INSTRUCTION=Prefer concise replies and include one concrete next step when useful.
-SYSTEM_PROMPT=You are NubAgent, a concise and helpful assistant replying inside Facebook Messenger. Prefer precise, practical wording over marketing language.
 ```
 
 ## Step 7. Understand Every Environment Variable
@@ -263,8 +262,7 @@ SYSTEM_PROMPT=You are NubAgent, a concise and helpful assistant replying inside 
 | `GEMINI_ENABLE_CODE_EXECUTION` | `false` | Enables Gemini's Python code execution tool |
 | `GEMINI_ENABLE_URL_CONTEXT` | `false` | Enables Gemini URL Context on supported models |
 | `GEMINI_CHAT_THINKING_LEVEL` | `low` | Accepts `none`, `off`, `minimal`, `low`, `medium`, or `high` |
-| `OPTIONAL_INSTRUCTION` | empty | Lower-priority guidance injected below `SYSTEM_PROMPT` |
-| `SYSTEM_PROMPT` | bundled default | System instruction passed to Gemini |
+| `OPTIONAL_INSTRUCTION` | empty | Lower-priority guidance injected below the bundled system instruction |
 
 Important details:
 
@@ -275,7 +273,7 @@ Important details:
 - `GEMINI_ENABLE_URL_CONTEXT=true` adds Gemini's URL Context tool on supported models
 - URL Context only helps when the user's prompt includes one or more URLs
 - Supported Messenger image attachments are forwarded to Gemini automatically as long as they fit within the Gemini inline request size budget; non-image attachments are not
-- `OPTIONAL_INSTRUCTION` is injected as a lower-priority user-context turn, so it does not outrank `SYSTEM_PROMPT`
+- `OPTIONAL_INSTRUCTION` is injected as a lower-priority user-context turn, so it does not outrank the bundled system instruction
 - The latest real user message is still sent after `OPTIONAL_INSTRUCTION`
 - Current repo history is stored as plain text only, so code execution is most reliable for single-turn reasoning in this bridge
 - `GEMINI_CHAT_THINKING_LEVEL=none` and `GEMINI_CHAT_THINKING_LEVEL=off` both disable the field
@@ -336,7 +334,7 @@ If that call fails:
 
 ### Option 1. One-Click Deploy
 
-<a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAmbitiousnoob%2Fnubagent&env=GEMINI_API_KEY,PAGE_ACCESS_TOKEN,VERIFY_TOKEN,POSTGRES_URL,PAGE_ID,FACEBOOK_APP_SECRET,GRAPH_API_VERSION,GEMINI_ENABLE_GOOGLE_SEARCH,GEMINI_ENABLE_CODE_EXECUTION,GEMINI_ENABLE_URL_CONTEXT,GEMINI_CHAT_MODEL,GEMINI_CHAT_THINKING_LEVEL,OPTIONAL_INSTRUCTION,SYSTEM_PROMPT&project-name=nubagent&repo-name=nubagent"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
+<a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAmbitiousnoob%2Fnubagent&env=GEMINI_API_KEY,PAGE_ACCESS_TOKEN,VERIFY_TOKEN,POSTGRES_URL,PAGE_ID,FACEBOOK_APP_SECRET,GRAPH_API_VERSION,GEMINI_ENABLE_GOOGLE_SEARCH,GEMINI_ENABLE_CODE_EXECUTION,GEMINI_ENABLE_URL_CONTEXT,GEMINI_CHAT_MODEL,GEMINI_CHAT_THINKING_LEVEL,OPTIONAL_INSTRUCTION&project-name=nubagent&repo-name=nubagent"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
 
 ### Option 2. CLI Deploy
 
