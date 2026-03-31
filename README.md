@@ -2,29 +2,33 @@
 
 ## The Problem
 
-You want **offline AI access**—total control, no middlemen, no external dependencies.
+You want **access to cutting-edge AI** (Gemini) **even when you can't access it directly**.
 
-But:
-- 🚫 **Can't run local models.** Your device is too low-end. Llama 2? Mistral? They need GPU. You don't have one.
-- 🚫 **Need real-world AI.** Local models aren't good enough. You need Gemini, GPT, Claude—the cutting edge.
-- 🚫 **Can't use API wrappers.** They're expensive. They're slow. They see your data. They're another middleman.
-
-**You're stuck:** Need powerful AI, but want to own the deployment.
+Real talk:
+- 🚫 **Your device is low-end.** Can't run local models like Llama or Mistral—no GPU.
+- 🚫 **Gemini/GPT apps require internet.** If you're offline, you can't use them.
+- 🚫 **API wrappers are expensive and slow.** You want direct, free access.
+- 🚫 **You don't want middlemen.** Wrappers = they see your data.
 
 ## The Solution
 
-**Deploy your own Gemini endpoint.**
+**Access Gemini through Facebook Messenger.**
 
-NubAgent is a documentation guide for setting up **Vercel + Google Gemini direct integration**. Your deployment, your API key, your data. Vercel calls Gemini directly. No proxies. No middlemen. No wrappers.
+You don't need direct internet to chat with Gemini. Deploy NubAgent (your own Gemini bot) on Vercel. Connect it to Facebook Messenger. Now:
+- Your friends can message your Facebook page
+- Your bot (running on Vercel) calls Gemini
+- Gemini's response comes back through Messenger
+- **No middleman API.** Direct Vercel → Gemini.
 
-That's offline AI access: *you* own the deployment.
+**Offline AI access:** When you don't have direct internet, use Messenger (which your phone has) to chat with your Gemini bot. It's like having a personal AI assistant on Facebook.
 
 ## Features
 
-- **Vercel → Gemini Direct** — Serverless function calls Gemini API directly
-- **Facebook Messenger Integration** — Chat with your AI via Facebook
-- **No Intermediaries** — Your key, your deployment, your data
-- **Production Ready** — Auto-scaling, load-balanced, on Vercel
+- **Vercel + Gemini Direct** — Your bot on Vercel calls Gemini directly (no middleman APIs)
+- **Facebook Messenger Access** — Chat with your Gemini bot through Messenger
+- **Offline-Friendly** — Use Messenger when direct internet isn't available; bot still has internet to call Gemini
+- **No Data Sharing** — Direct Vercel → Gemini. No wrappers, no third parties seeing your data
+- **Your Own Deployment** — You own the bot. You control the key. Your data stays yours.
 
 ## Quick Start
 
