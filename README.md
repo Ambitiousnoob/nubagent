@@ -99,13 +99,31 @@ Users message your Facebook page → Webhook receives message → Calls Gemini d
 
 ## Deployment
 
-Live at: **https://nubagent.vercel.app**
+### One-Click Deploy to Vercel
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAmbitiousnoob%2Fnubagent&env=GEMINI_API_KEY,PAGE_ACCESS_TOKEN,VERIFY_TOKEN&project-name=nubagent&repo-name=nubagent)
+
+**Steps:**
+1. Click the button above
+2. Connect your GitHub account
+3. Add environment variables when prompted:
+   - `GEMINI_API_KEY` (required) — Get from [Google AI Studio](https://aistudio.google.com/app/apikey)
+   - `PAGE_ACCESS_TOKEN` (optional) — For Facebook Messenger
+   - `VERIFY_TOKEN` (optional) — For Facebook Messenger
+4. Click "Deploy"
+5. Done! Your API is live
+
+### Or Deploy from CLI
 
 ```bash
+git clone https://github.com/Ambitiousnoob/nubagent.git
+cd nubagent
 vercel --prod
 ```
 
 Then add environment variables in Vercel dashboard → Settings → Environment Variables.
+
+**Live Example:** https://nubagent.vercel.app
 
 ## Architecture
 
@@ -118,9 +136,9 @@ Both endpoints call Gemini directly. No intermediate proxies or API layers.
 
 ## Documentation
 
-- **[docs-complete.html](./docs-complete.html)** — Complete zero-gap setup guide (22 steps, both paths)
-- **[DEPLOYMENT.md](./DEPLOYMENT.md)** — Deployment status and verification
-- **[MERGE_SUMMARY.md](./MERGE_SUMMARY.md)** — Architecture changes (merged .bot + nubagent)
+- **[index.html](./index.html)** — Live API documentation with examples
+- **GitHub:** [Ambitiousnoob/nubagent](https://github.com/Ambitiousnoob/nubagent)
+- **Issues:** [GitHub Issues](https://github.com/Ambitiousnoob/nubagent/issues)
 
 ## Development
 
@@ -141,7 +159,7 @@ npm run format    # Format with Prettier
 
 - **GitHub:** [Ambitiousnoob/nubagent](https://github.com/Ambitiousnoob/nubagent)
 - **Issues:** [GitHub Issues](https://github.com/Ambitiousnoob/nubagent/issues)
-- **Docs:** [docs-complete.html](./docs-complete.html)
+- **Live API:** https://nubagent.vercel.app
 
 ---
 
