@@ -223,7 +223,7 @@ export default function Docs() {
               <code>lib/gemini-chat.js</code>
               <code>lib/web.js</code>
               <code>vercel.json</code>
-              <code>API.md</code>
+              <code>README.md</code>
             </div>
             <p className="docs-card__body">
               Keep externally visible behavior in `api/chat.js`, push Gemini

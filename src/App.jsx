@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { ThemeProvider } from "./components/UI/ThemeProvider.jsx";
-import { ToastProvider } from "./components/UI/ToastProvider.jsx";
 import { ErrorBoundary } from "./components/UI/ErrorBoundary.jsx";
 import { useSettingsStore } from "./store/useSettingsStore.js";
 import Docs from "./Docs.jsx";
@@ -253,8 +252,6 @@ export default function App() {
               </div>
             </div>
           </main>
-
-          <ToastProvider />
         </div>
       </ErrorBoundary>
     </ThemeProvider>

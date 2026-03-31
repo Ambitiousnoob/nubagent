@@ -71,17 +71,17 @@ export const API_CREATION_STEPS = [
     body: "The runtime should remain easy to inspect from `vercel.json` down to the Gemini adapter.",
     bullets: [
       "Only `/api/chat` should rewrite into the serverless backend.",
-      "Document environment variables in `.env.example` and the markdown docs together.",
-      "When the contract changes, update tests and docs in the same commit.",
+      "Document environment variables in `.env.example` and `README.md` together.",
+      "When the contract changes, update the rendered docs and the README in the same commit.",
     ],
   },
   {
     title: "Verify the change with focused checks",
     body: "Most regressions here show up in request normalization, provider mapping, or docs drift.",
     bullets: [
-      "Run the targeted `/api/chat` test file.",
       "Run `npm run lint` after touching API or docs-site code.",
       "Run `npm run build` before shipping docs-site changes.",
+      "Exercise `GET /api/chat` and `POST /api/chat` manually when the contract changes.",
     ],
   },
 ];
@@ -90,9 +90,9 @@ export const API_CREATION_CHECKLIST = [
   "Confirm the change belongs inside `/api/chat`.",
   "Keep GET metadata accurate.",
   "Preserve the non-streaming JSON response contract.",
-  "Update `API.md`, `README.md`, and rendered docs together.",
+  "Update `README.md` and rendered docs together.",
   "Keep `vercel.json` aligned with the single-route backend.",
-  "Run targeted tests, lint, and build before pushing.",
+  "Run lint, build, and a manual API check before pushing.",
 ];
 
 export const BASIC_ENDPOINT_EXAMPLE = `const { readBody } = require("../lib/web");
