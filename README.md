@@ -45,9 +45,9 @@ The page access token must be permanent to prevent expiration. Follow these step
 4. Copy the token and visit [Facebook Access Token Debugger](https://developers.facebook.com/tools/debug/accesstoken/)
 5. Paste the token into the debugger and click "Debug"
 6. Scroll to the bottom and click "Extend Access Token"
-7. This generates a permanent token; copy this token for your configuration
+7. This generates a permanent token (valid for 1 hour); copy this token for your configuration
 
-**Note**: Permanent tokens are essential for production deployments to avoid token expiration interruptions.
+**Note**: Permanent tokens are valid for 1 hour. You will need to extend the token periodically for long-running production deployments.
 
 #### 3. Webhook Verification Token
 
