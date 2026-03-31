@@ -9,45 +9,39 @@ import {
 } from "../lib/appRoutes.js";
 
 describe("app route helpers", () => {
-  it("normalizes supported app views and falls back to chat", () => {
+  it("collapses all app views to the docs experience", () => {
     expect(normalizeAppView("docs")).toBe("docs");
-    expect(normalizeAppView("LIBRARY")).toBe("library");
-    expect(normalizeAppView("unknown")).toBe("chat");
+    expect(normalizeAppView("LIBRARY")).toBe("docs");
+    expect(normalizeAppView("unknown")).toBe("docs");
   });
 
-  it("maps browser pathnames back to stable app views", () => {
-    expect(getAppViewFromPathname("/")).toBe("chat");
-    expect(getAppViewFromPathname("/research")).toBe("chat");
+  it("maps legacy browser pathnames back to the single docs route", () => {
+    expect(getAppViewFromPathname("/")).toBe("docs");
+    expect(getAppViewFromPathname("/research")).toBe("docs");
     expect(getAppViewFromPathname("/docs/")).toBe("docs");
-    expect(getAppViewFromPathname("/library")).toBe("library");
-    expect(getAppViewFromLocation({ pathname: "/missing", search: "" })).toBe(
-      "chat",
-    );
+    expect(getAppViewFromPathname("/library")).toBe("docs");
+    expect(getAppViewFromLocation({ pathname: "/missing", search: "" })).toBe("docs");
   });
 
-  it("builds stable view urls and only carries session ids on the chat route", () => {
-    expect(buildAppViewHref("chat", { sessionId: "session-42" })).toBe(
-      "/?session=session-42",
-    );
-    expect(buildAppViewHref("docs", { sessionId: "session-42" })).toBe("/docs");
+  it("builds stable root urls for the docs site", () => {
+    expect(buildAppViewHref("chat")).toBe("/");
+    expect(buildAppViewHref("docs")).toBe("/");
     expect(
       buildAppViewUrl("chat", {
         locationLike: {
           origin: "https://nubagent.vercel.app",
           pathname: "/docs",
         },
-        sessionId: "session-42",
       }),
-    ).toBe("https://nubagent.vercel.app/?session=session-42");
+    ).toBe("https://nubagent.vercel.app/");
     expect(
       buildAppViewUrl("docs", {
         locationLike: { origin: "https://nubagent.vercel.app", pathname: "/" },
-        sessionId: "session-42",
       }),
-    ).toBe("https://nubagent.vercel.app/docs");
+    ).toBe("https://nubagent.vercel.app/");
   });
 
-  it("writes canonical urls into browser history", () => {
+  it("writes the canonical docs root into browser history", () => {
     const pushState = vi.fn();
     const replaceState = vi.fn();
 
@@ -55,28 +49,19 @@ describe("app route helpers", () => {
       historyLike: { pushState, replaceState },
       locationLike: {
         origin: "https://nubagent.vercel.app",
-        href: "https://nubagent.vercel.app/",
+        href: "https://nubagent.vercel.app/docs",
       },
     });
-    expect(pushState).toHaveBeenCalledWith(
-      {},
-      "",
-      "https://nubagent.vercel.app/library",
-    );
+    expect(pushState).toHaveBeenCalledWith({}, "", "https://nubagent.vercel.app/");
 
-    writeAppViewToHistory("chat", {
+    writeAppViewToHistory("docs", {
       replace: true,
-      sessionId: "session-42",
       historyLike: { pushState, replaceState },
       locationLike: {
         origin: "https://nubagent.vercel.app",
-        href: "https://nubagent.vercel.app/library",
+        href: "https://nubagent.vercel.app/chat",
       },
     });
-    expect(replaceState).toHaveBeenCalledWith(
-      {},
-      "",
-      "https://nubagent.vercel.app/?session=session-42",
-    );
+    expect(replaceState).toHaveBeenCalledWith({}, "", "https://nubagent.vercel.app/");
   });
 });

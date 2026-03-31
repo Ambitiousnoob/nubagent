@@ -1,7 +1,7 @@
 {
   "name": "NubAgent",
   "short_name": "NubAgent",
-  "description": "AI-powered research assistant and chat interface",
+  "description": "Documentation site for the NubAgent API surface, runtime, and ownership model.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0a0f",
@@ -64,17 +64,17 @@
   "prefer_related_applications": false,
   "shortcuts": [
     {
-      "name": "New Chat",
-      "short_name": "Chat",
-      "description": "Start a new chat session",
-      "url": "/?action=new-chat",
+      "name": "API Reference",
+      "short_name": "API",
+      "description": "Open the public API documentation",
+      "url": "/#api-reference",
       "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
     },
     {
-      "name": "Library",
-      "short_name": "Library",
-      "description": "View saved sessions",
-      "url": "/?view=library",
+      "name": "Runtime Map",
+      "short_name": "Runtime",
+      "description": "Jump to the research runtime documentation",
+      "url": "/#research-framework",
       "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
     }
   ],

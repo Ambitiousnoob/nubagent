@@ -94,7 +94,7 @@ describe("UI Store", () => {
   it("initializes with default state", () => {
     const state = useUIStore.getState();
     expect(state.sidebar.isOpen).toBe(true);
-    expect(state.sidebar.activeTab).toBe("chat");
+    expect(state.sidebar.activeTab).toBe("docs");
     expect(state.modals.settings).toBe(false);
     expect(state.toasts).toEqual([]);
   });
@@ -109,8 +109,8 @@ describe("UI Store", () => {
   it("sets active tab", () => {
     const { setActiveTab } = useUIStore.getState();
     setActiveTab("library");
-    expect(useUIStore.getState().sidebar.activeTab).toBe("library");
-    expect(useUIStore.getState().currentRoute).toBe("library");
+    expect(useUIStore.getState().sidebar.activeTab).toBe("docs");
+    expect(useUIStore.getState().currentRoute).toBe("docs");
   });
 
   it("opens and closes modals", () => {
@@ -149,27 +149,27 @@ describe("UI Store", () => {
   it("sets route", () => {
     const { setRoute } = useUIStore.getState();
     setRoute("library");
-    expect(useUIStore.getState().currentRoute).toBe("library");
-    expect(useUIStore.getState().sidebar.activeTab).toBe("library");
+    expect(useUIStore.getState().currentRoute).toBe("docs");
+    expect(useUIStore.getState().sidebar.activeTab).toBe("docs");
   });
 
-  it("normalizes invalid route updates back to chat", () => {
+  it("normalizes invalid route updates back to docs", () => {
     const { setRoute, setActiveTab } = useUIStore.getState();
     setRoute("unknown");
-    expect(useUIStore.getState().currentRoute).toBe("chat");
-    expect(useUIStore.getState().sidebar.activeTab).toBe("chat");
+    expect(useUIStore.getState().currentRoute).toBe("docs");
+    expect(useUIStore.getState().sidebar.activeTab).toBe("docs");
     setActiveTab("not-real");
-    expect(useUIStore.getState().currentRoute).toBe("chat");
-    expect(useUIStore.getState().sidebar.activeTab).toBe("chat");
+    expect(useUIStore.getState().currentRoute).toBe("docs");
+    expect(useUIStore.getState().sidebar.activeTab).toBe("docs");
   });
 
-  it("keeps the store default on chat and leaves pathname hydration to the app shell", () => {
+  it("hydrates the single docs route regardless of the initial pathname", () => {
     window.history.replaceState({}, "", "/docs");
     vi.resetModules();
     const hydratedStore = require("../store/useUIStore").useUIStore;
 
-    expect(hydratedStore.getState().currentRoute).toBe("chat");
-    expect(hydratedStore.getState().sidebar.activeTab).toBe("chat");
+    expect(hydratedStore.getState().currentRoute).toBe("docs");
+    expect(hydratedStore.getState().sidebar.activeTab).toBe("docs");
   });
 });
 

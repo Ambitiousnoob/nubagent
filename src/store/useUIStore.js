@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { getAppViewFromLocation, normalizeAppView } from "../lib/appRoutes.js";
 
 const getInitialRoute = () => {
-  if (typeof window === "undefined") return "chat";
+  if (typeof window === "undefined") return "docs";
   return normalizeAppView(getAppViewFromLocation(window.location));
 };
 

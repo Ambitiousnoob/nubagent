@@ -1,9 +1,7 @@
-export const DEFAULT_APP_VIEW = "chat";
+export const DEFAULT_APP_VIEW = "docs";
 
 export const APP_VIEW_PATHS = Object.freeze({
-  chat: "/",
-  library: "/library",
-  docs: "/docs",
+  docs: "/",
 });
 
 export function normalizeAppView(value = "", fallback = DEFAULT_APP_VIEW) {
@@ -17,7 +15,7 @@ export function normalizeAppView(value = "", fallback = DEFAULT_APP_VIEW) {
 
 export function normalizeAppPathname(value = "") {
   const raw = String(value || "").trim();
-  if (!raw) return APP_VIEW_PATHS.chat;
+  if (!raw) return APP_VIEW_PATHS.docs;
 
   let pathname = raw;
   try {
@@ -29,12 +27,18 @@ export function normalizeAppPathname(value = "") {
   pathname = pathname.replace(/\/{2,}/g, "/");
   if (!pathname.startsWith("/")) pathname = `/${pathname}`;
   if (pathname.length > 1) pathname = pathname.replace(/\/+$/, "") || "/";
-  return pathname || APP_VIEW_PATHS.chat;
+  return pathname || APP_VIEW_PATHS.docs;
 }
 
 export function getAppViewFromPathname(pathname = "") {
   const normalizedPathname = normalizeAppPathname(pathname);
-  if (normalizedPathname === "/chat" || normalizedPathname === "/research") {
+  if (
+    normalizedPathname === "/" ||
+    normalizedPathname === "/docs" ||
+    normalizedPathname === "/chat" ||
+    normalizedPathname === "/library" ||
+    normalizedPathname === "/research"
+  ) {
     return DEFAULT_APP_VIEW;
   }
   const match = Object.entries(APP_VIEW_PATHS).find(
@@ -46,51 +50,33 @@ export function getAppViewFromPathname(pathname = "") {
 export function getAppViewFromLocation(
   locationLike = typeof window !== "undefined" ? window.location : null,
 ) {
-  return getAppViewFromPathname(locationLike?.pathname || APP_VIEW_PATHS.chat);
+  return getAppViewFromPathname(locationLike?.pathname || APP_VIEW_PATHS.docs);
 }
 
-export function buildAppViewHref(
-  view = DEFAULT_APP_VIEW,
-  { sessionId = "" } = {},
-) {
+export function buildAppViewHref(view = DEFAULT_APP_VIEW) {
   const normalizedView = normalizeAppView(view);
-  const href = new URL(
-    APP_VIEW_PATHS[normalizedView],
-    "https://nubagent.local",
-  );
-  const normalizedSessionId = String(sessionId || "").trim();
-
-  if (normalizedView === "chat" && normalizedSessionId) {
-    href.searchParams.set("session", normalizedSessionId);
-  }
+  const href = new URL(APP_VIEW_PATHS[normalizedView], "https://nubagent.local");
 
   return `${href.pathname}${href.search}`;
 }
 
 export function buildAppViewUrl(
   view = DEFAULT_APP_VIEW,
-  {
-    sessionId = "",
-    locationLike = typeof window !== "undefined" ? window.location : null,
-  } = {},
+  { locationLike = typeof window !== "undefined" ? window.location : null } = {},
 ) {
   if (!locationLike?.origin) return "";
-  return new URL(
-    buildAppViewHref(view, { sessionId }),
-    locationLike.origin,
-  ).toString();
+  return new URL(buildAppViewHref(view), locationLike.origin).toString();
 }
 
 export function writeAppViewToHistory(
   view = DEFAULT_APP_VIEW,
   {
-    sessionId = "",
     replace = false,
     historyLike = typeof window !== "undefined" ? window.history : null,
     locationLike = typeof window !== "undefined" ? window.location : null,
   } = {},
 ) {
-  const nextUrl = buildAppViewUrl(view, { sessionId, locationLike });
+  const nextUrl = buildAppViewUrl(view, { locationLike });
   if (!nextUrl || !historyLike) return "";
 
   if (replace) {
