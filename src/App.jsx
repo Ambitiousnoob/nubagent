@@ -15,7 +15,7 @@ POSTGRES_URL=postgresql://user:password@host:5432/database
 GEMINI_ENABLE_GOOGLE_SEARCH=true
 GEMINI_ENABLE_CODE_EXECUTION=true
 GEMINI_ENABLE_URL_CONTEXT=true
-SYSTEM_PROMPT=You are NubAgent, a concise and helpful assistant replying inside Facebook Messenger.
+SYSTEM_PROMPT=You are NubAgent, a concise and helpful assistant replying inside Facebook Messenger. Prefer precise, practical wording over marketing language.
 OPTIONAL_INSTRUCTION=Prefer concise replies and include one concrete next step when useful.
 PAGE_ID=your_page_id`;
 

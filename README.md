@@ -237,7 +237,7 @@ GEMINI_ENABLE_CODE_EXECUTION=true
 GEMINI_ENABLE_URL_CONTEXT=true
 GEMINI_CHAT_THINKING_LEVEL=low
 OPTIONAL_INSTRUCTION=Prefer concise replies and include one concrete next step when useful.
-SYSTEM_PROMPT=You are NubAgent, a concise and helpful assistant replying inside Facebook Messenger.
+SYSTEM_PROMPT=You are NubAgent, a concise and helpful assistant replying inside Facebook Messenger. Prefer precise, practical wording over marketing language.
 ```
 
 ## Step 7. Understand Every Environment Variable
