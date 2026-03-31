@@ -4,6 +4,8 @@ NubAgent is a Facebook Messenger to Gemini bridge designed for Vercel. It expose
 
 This README is written as an operator guide. It is intentionally step by step, and it only documents behavior that matches the current code in this repository.
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAmbitiousnoob%2Fnubagent&env=GEMINI_API_KEY,PAGE_ACCESS_TOKEN,VERIFY_TOKEN,POSTGRES_URL,PAGE_ID,FACEBOOK_APP_SECRET,GRAPH_API_VERSION,GEMINI_CHAT_MODEL,GEMINI_CHAT_THINKING_LEVEL,SYSTEM_PROMPT&project-name=nubagent&repo-name=nubagent)
+
 ## What This Repo Actually Does
 
 - Serves a Messenger webhook from `api/webhook.js`
