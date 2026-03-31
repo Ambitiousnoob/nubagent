@@ -111,13 +111,11 @@ export default function Docs() {
       <div className="docs-page__hero">
         <div className="docs-page__hero-copy">
           <div className="docs-page__eyebrow">NubAgent Docs</div>
-          <h1 className="docs-page__title">
-            Simple Gemini chat API reference
-          </h1>
+          <h1 className="docs-page__title">Simple Gemini chat API reference</h1>
           <p className="docs-page__lead">
             Operator-facing docs for the single public chat endpoint, the files
-            that own it, and the operational rules around the current
-            docs-only frontend.
+            that own it, and the operational rules around the current docs-only
+            frontend.
           </p>
         </div>
 
@@ -185,8 +183,8 @@ export default function Docs() {
             <h2 className="docs-section__title">API playbook</h2>
           </div>
           <p className="docs-section__body">
-            This is the maintenance path for the current backend shape:
-            one public route, one provider adapter, and one docs surface.
+            This is the maintenance path for the current backend shape: one
+            public route, one provider adapter, and one docs surface.
           </p>
         </header>
 
@@ -312,11 +310,7 @@ export default function Docs() {
 
         <div className="docs-creation-grid">
           {MIGRATION_NOTES.map((item) => (
-            <NoteCard
-              key={item.title}
-              title={item.title}
-              body={item.body}
-            />
+            <NoteCard key={item.title} title={item.title} body={item.body} />
           ))}
         </div>
       </section>

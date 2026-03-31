@@ -45,10 +45,7 @@ module.exports = async (req, res) => {
     body = await readBody(req, { maxBytes: MAX_BODY_BYTES });
   } catch (error) {
     sendJson(res, Number(error?.status) || 400, {
-      error:
-        error?.status === 413
-          ? error.message
-          : "Invalid JSON body",
+      error: error?.status === 413 ? error.message : "Invalid JSON body",
     });
     return;
   }

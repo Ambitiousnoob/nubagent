@@ -133,7 +133,9 @@ export default function App() {
             />
           )}
 
-          <aside className={`sidebar ${isMobile && navOpen ? "sidebar--open" : ""}`}>
+          <aside
+            className={`sidebar ${isMobile && navOpen ? "sidebar--open" : ""}`}
+          >
             <div className="sidebar__header">
               <div className="sidebar__brand">
                 <div className="sidebar__logo">
@@ -184,7 +186,9 @@ export default function App() {
               >
                 {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
                 <span className="sidebar__footer-copy">
-                  <strong>{theme === "dark" ? "Light mode" : "Dark mode"}</strong>
+                  <strong>
+                    {theme === "dark" ? "Light mode" : "Dark mode"}
+                  </strong>
                   <small>{themeLabel}</small>
                 </span>
               </button>
@@ -206,7 +210,9 @@ export default function App() {
                 </span>
                 <div className="app__mobile-titleblock">
                   <span className="app__title">NubAgent Docs</span>
-                  <span className="app__mobile-detail">API and runtime site</span>
+                  <span className="app__mobile-detail">
+                    API and runtime site
+                  </span>
                 </div>
               </div>
               <div className="app__mobile-actions">

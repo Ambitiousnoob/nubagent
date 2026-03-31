@@ -184,7 +184,8 @@ export const ENVIRONMENT_VARIABLES = [
     name: "GEMINI_CHAT_THINKING_LEVEL",
     required: "No",
     defaultValue: "low",
-    description: "Default thinking level used when the request does not provide one.",
+    description:
+      "Default thinking level used when the request does not provide one.",
   },
   {
     name: "CHAT_BODY_LIMIT_BYTES",
