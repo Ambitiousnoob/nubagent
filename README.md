@@ -37,7 +37,7 @@ Visit [Google AI Studio](https://aistudio.google.com/app/apikey) and create a ne
 
 #### 2. Facebook Page Access Token
 
-The page access token must be long-lived to prevent expiration. Follow these steps:
+The page access token must be permanent to prevent expiration. Follow these steps:
 
 1. Go to [Facebook Graph API Explorer](https://developers.facebook.com/tools/explorer/)
 2. In the dropdown labeled "User or Page", select your Facebook page
@@ -45,9 +45,9 @@ The page access token must be long-lived to prevent expiration. Follow these ste
 4. Copy the token and visit [Facebook Access Token Debugger](https://developers.facebook.com/tools/debug/accesstoken/)
 5. Paste the token into the debugger and click "Debug"
 6. Scroll to the bottom and click "Extend Access Token"
-7. This generates a long-lived token (valid for ~60 days); copy this token for your configuration
+7. This generates a permanent token; copy this token for your configuration
 
-**Note**: Long-lived tokens are essential for production deployments to avoid token expiration interruptions.
+**Note**: Permanent tokens are essential for production deployments to avoid token expiration interruptions.
 
 #### 3. Webhook Verification Token
 
@@ -83,10 +83,10 @@ All variables are required:
 | Variable | Description |
 |----------|-------------|
 | `GEMINI_API_KEY` | Google Gemini API authentication key (see Prerequisites above) |
-| `PAGE_ACCESS_TOKEN` | **Long-lived** Facebook page token for messaging (see Prerequisites above—use the extended token, not the original) |
+| `PAGE_ACCESS_TOKEN` | **Permanent** Facebook page token for messaging (see Prerequisites above—use the extended token, not the original) |
 | `VERIFY_TOKEN` | Webhook verification token (see Prerequisites above) |
 
-⚠️ **Important**: Use the **extended token** from the Access Token Debugger, not the original token. The extended token remains valid for ~60 days, preventing authentication failures in production.
+⚠️ **Important**: Use the **permanent (extended) token** from the Access Token Debugger, not the original token. This prevents authentication failures in production.
 
 ### Configure Facebook Webhook
 
