@@ -8,7 +8,7 @@ It is built for people who want direct access to stronger AI behavior from a sim
 
 This README is written as an operator guide. It is intentionally step by step, and it only documents behavior that matches the current code in this repository.
 
-<a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAmbitiousnoob%2Fnubagent&env=GEMINI_API_KEY,PAGE_ACCESS_TOKEN,VERIFY_TOKEN,POSTGRES_URL,PAGE_ID,FACEBOOK_APP_SECRET,GRAPH_API_VERSION,GEMINI_ENABLE_GOOGLE_SEARCH,GEMINI_ENABLE_CODE_EXECUTION,GEMINI_ENABLE_URL_CONTEXT,GEMINI_CHAT_MODEL,GEMINI_CHAT_THINKING_LEVEL,OPTIONAL_INSTRUCTION&project-name=nubagent&repo-name=nubagent"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
+<a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAmbitiousnoob%2Fnubagent&env=GEMINI_API_KEY,PAGE_ACCESS_TOKEN,VERIFY_TOKEN,POSTGRES_URL,GEMINI_CHAT_MODEL,GEMINI_CHAT_THINKING_LEVEL,OPTIONAL_INSTRUCTION&project-name=nubagent&repo-name=nubagent"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
 
 ## Access Without Regular Paid Data
 
@@ -38,9 +38,9 @@ If you want a GitHub social preview image, use `assets/social-preview.png` from 
 
 - Serves a Messenger webhook from `api/webhook.js`
 - Calls Gemini through the REST `generateContent` endpoint
-- Can optionally enable web grounding with Gemini Google Search or DuckDuckGo
-- Can optionally enable Gemini URL Context for supported URLs in prompts
-- Can optionally enable Gemini code execution for Python-backed reasoning
+- Automatically enables web grounding when the selected Gemini model supports it
+- Automatically enables Gemini URL Context on supported models
+- Automatically enables Gemini code execution on supported models
 - Can pass supported Messenger image attachments through to Gemini as visual input
 - For image-only messages, first inspects the image and then waits for the user's next instruction
 - Sends `mark_seen`, `typing_on`, and `typing_off` sender actions in Messenger
@@ -97,13 +97,11 @@ You need all of the following before this repo can work end to end:
 6. A Postgres database reachable from your deployment
 7. A public HTTPS URL for `/api/webhook`
 
-Recommended extras:
+Optional controls:
 
-1. `PAGE_ID`, so Messenger requests use `/{page-id}/messages` directly
-2. `FACEBOOK_APP_SECRET`, so the webhook can verify `X-Hub-Signature-256`
-3. `GEMINI_ENABLE_GOOGLE_SEARCH=true`, so Gemini can use web grounding
-4. `GEMINI_ENABLE_CODE_EXECUTION=true`, so Gemini can run Python for calculation-heavy prompts
-5. `GEMINI_ENABLE_URL_CONTEXT=true`, so Gemini can read supported URLs in prompts
+1. `GEMINI_CHAT_THINKING_LEVEL`, if you want to tune thinking on supported models
+2. `OPTIONAL_INSTRUCTION`, if you want lower-priority project guidance added to each request
+3. `SYSTEM_PROMPT`, if you want to replace the bundled Messenger-focused system instruction
 
 ## Step 1. Clone The Repo And Install Dependencies
 
@@ -148,7 +146,7 @@ How the repo uses that value:
 
 - One key: NubAgent always uses that one key
 - Multiple keys: NubAgent rotates keys in round-robin order per running server instance
-- If you enable web grounding, Gemini still uses the same key rotation
+- If the active model uses web grounding, Gemini still uses the same key rotation
 
 ## Step 3. Choose Gemini Model(s)
 
@@ -171,7 +169,7 @@ Notes:
 - If you paste model names with a `models/` prefix, the repo strips that prefix automatically
 - The first model is the priority model
 - Later models are only tried when Gemini returns a retryable load or availability style backend failure
-- If you enable grounding, supported non-preview models use Gemini's Google Search tool and preview models use a DuckDuckGo search pass
+- Search grounding, code execution, and URL Context turn on automatically when the active model supports them
 
 ## Step 4. Prepare Your Facebook Page And Meta App
 
@@ -189,9 +187,7 @@ Use this practical checklist:
 3. Add Messenger to the app if it is not already enabled.
 4. Connect the app to the Page you want to message from.
 5. Generate the Page access token for that Page.
-6. Copy the Page ID.
-7. Copy the App Secret if you want signed webhook verification enabled.
-8. Choose your own `VERIFY_TOKEN` string. This can be any secret string you control.
+6. Choose your own `VERIFY_TOKEN` string. This can be any secret string you control.
 
 Direct links:
 
@@ -204,6 +200,7 @@ Direct links:
 About the token:
 
 - This repo needs a valid Page access token, not an app token
+- `PAGE_ID` is not required; Messenger sends use the `me` path by default
 - Before production use, inspect the token in Meta's Access Token Debugger and confirm it is the token you intend to run with
 - Meta changes dashboard labels often; if a menu name has moved, use the current equivalent UI in the Meta dashboard
 
@@ -257,14 +254,9 @@ GEMINI_CHAT_MODEL=gemini-2.5-flash,gemini-2.5-pro
 PAGE_ACCESS_TOKEN=your_page_access_token
 VERIFY_TOKEN=your_webhook_verify_token
 POSTGRES_URL=postgresql://user:password@host:5432/database
-PAGE_ID=your_page_id
-FACEBOOK_APP_SECRET=your_app_secret
-GRAPH_API_VERSION=v23.0
-GEMINI_ENABLE_GOOGLE_SEARCH=true
-GEMINI_ENABLE_CODE_EXECUTION=true
-GEMINI_ENABLE_URL_CONTEXT=true
 GEMINI_CHAT_THINKING_LEVEL=low
 OPTIONAL_INSTRUCTION=Prefer concise replies and include one concrete next step when useful.
+SYSTEM_PROMPT=You are NubAgent. Keep replies short, practical, and easy to read on mobile.
 ```
 
 ## Step 7. Understand Every Environment Variable
@@ -283,30 +275,23 @@ OPTIONAL_INSTRUCTION=Prefer concise replies and include one concrete next step w
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `PAGE_ID` | empty | Recommended. If empty, Messenger requests use `me` |
-| `FACEBOOK_APP_SECRET` | empty | Enables `X-Hub-Signature-256` verification for POST webhooks |
-| `GRAPH_API_VERSION` | `v23.0` | Graph API version used for Messenger requests |
-| `GEMINI_ENABLE_GOOGLE_SEARCH` | `false` | Enables web grounding for Gemini requests |
-| `GEMINI_ENABLE_CODE_EXECUTION` | `false` | Enables Gemini's Python code execution tool |
-| `GEMINI_ENABLE_URL_CONTEXT` | `false` | Enables Gemini URL Context on supported models |
 | `GEMINI_CHAT_THINKING_LEVEL` | `low` | Accepts `none`, `off`, `minimal`, `low`, `medium`, or `high` |
 | `OPTIONAL_INSTRUCTION` | empty | Lower-priority guidance injected below the bundled system instruction |
+| `SYSTEM_PROMPT` | bundled default | Replaces the built-in Messenger-focused system instruction |
 
 Important details:
 
-- `GEMINI_ENABLE_GOOGLE_SEARCH=true` enables web grounding for Gemini requests
-- Preview models use a DuckDuckGo search pass; supported non-preview models use Gemini grounding tools
-- Gemini 1.5 grounding uses the legacy retrieval tool shape automatically; newer supported non-preview models use `google_search`
-- `GEMINI_ENABLE_CODE_EXECUTION=true` adds Gemini's built-in Python code execution tool
-- `GEMINI_ENABLE_URL_CONTEXT=true` adds Gemini's URL Context tool on supported models
+- Search grounding, code execution, and URL Context are enabled automatically when the active model supports them
+- Supported models use Gemini grounding tools directly; unsupported preview-only cases fall back to a DuckDuckGo search pass
+- Gemini 1.5 grounding uses the legacy retrieval tool shape automatically; newer supported models use `google_search`
 - URL Context only helps when the user's prompt includes one or more URLs
 - Supported Messenger image attachments are forwarded to Gemini automatically as long as they fit within the Gemini inline request size budget; non-image attachments are not
 - `OPTIONAL_INSTRUCTION` is injected as a lower-priority user-context turn, so it does not outrank the bundled system instruction
 - The latest real user message is still sent after `OPTIONAL_INSTRUCTION`
+- `SYSTEM_PROMPT` replaces the bundled system instruction when you set it
 - Current repo history is stored as plain text only, so code execution is most reliable for single-turn reasoning in this bridge
 - `GEMINI_CHAT_THINKING_LEVEL=none` and `GEMINI_CHAT_THINKING_LEVEL=off` both disable the field
 - In the current code, `GEMINI_CHAT_THINKING_LEVEL` is only sent for Gemini 3+ model names
-- If `FACEBOOK_APP_SECRET` is set, every incoming POST must include a valid signature or the webhook returns `403`
 - If any required messaging env is missing, `POST /api/webhook` returns `500`
 - If `VERIFY_TOKEN` is missing, `GET /api/webhook` returns `500`
 
@@ -362,7 +347,7 @@ If that call fails:
 
 ### Option 1. One-Click Deploy
 
-<a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAmbitiousnoob%2Fnubagent&env=GEMINI_API_KEY,PAGE_ACCESS_TOKEN,VERIFY_TOKEN,POSTGRES_URL,PAGE_ID,FACEBOOK_APP_SECRET,GRAPH_API_VERSION,GEMINI_ENABLE_GOOGLE_SEARCH,GEMINI_ENABLE_CODE_EXECUTION,GEMINI_ENABLE_URL_CONTEXT,GEMINI_CHAT_MODEL,GEMINI_CHAT_THINKING_LEVEL,OPTIONAL_INSTRUCTION&project-name=nubagent&repo-name=nubagent"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
+<a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAmbitiousnoob%2Fnubagent&env=GEMINI_API_KEY,PAGE_ACCESS_TOKEN,VERIFY_TOKEN,POSTGRES_URL,GEMINI_CHAT_MODEL,GEMINI_CHAT_THINKING_LEVEL,OPTIONAL_INSTRUCTION&project-name=nubagent&repo-name=nubagent"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
 
 ### Option 2. CLI Deploy
 
@@ -482,16 +467,13 @@ These details come directly from the current code.
 - `GEMINI_CHAT_MODEL` accepts one model or many models separated by commas
 - The first model is always attempted first
 - Later models are only attempted when Gemini returns a retryable load or availability style backend failure
-- `GEMINI_ENABLE_GOOGLE_SEARCH=true` enables web grounding
-- Preview models use a DuckDuckGo search pass and prompt injection before the Gemini request
-- Supported non-preview models send Gemini grounding tools in the request body
-- `GEMINI_ENABLE_CODE_EXECUTION=true` adds Gemini's code execution tool to the request body
-- `GEMINI_ENABLE_URL_CONTEXT=true` adds Gemini's URL Context tool to the request body on supported models
-- If grounding is enabled and none of the configured models support either path, the request fails clearly
+- Search grounding, code execution, and URL Context are enabled automatically when the active model supports them
+- Supported models send Gemini grounding tools in the request body
+- Unsupported preview-only cases use a DuckDuckGo search pass and prompt injection before the Gemini request
 
 ### Messenger Sending
 
-- Replies are sent through `https://graph.facebook.com/{GRAPH_API_VERSION}/{PAGE_ID or me}/messages`
+- Replies are sent through Meta Graph API using the built-in default version and the `me` path
 - Long text replies are split into chunks of at most 1800 characters
 
 ## Troubleshooting
@@ -516,7 +498,7 @@ One or more required messaging env vars are missing:
 
 ### `POST /api/webhook` Returns `403`
 
-If `FACEBOOK_APP_SECRET` is set, the incoming request signature is missing or invalid.
+Webhook signature verification is enabled, and the incoming request signature is missing or invalid.
 
 ### Messenger User Gets The Attachment Fallback
 
