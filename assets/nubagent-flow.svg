@@ -1,0 +1,47 @@
+<svg width="1200" height="420" viewBox="0 0 1200 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="420" rx="28" fill="#0B1324"/>
+  <rect x="36" y="36" width="1128" height="348" rx="24" fill="#0F1A2E" stroke="#24324C"/>
+  <text x="60" y="84" fill="#E8F0FF" font-size="32" font-weight="700" font-family="Segoe UI, Arial, sans-serif">NubAgent request flow</text>
+  <text x="60" y="114" fill="#A9B6CD" font-size="18" font-weight="500" font-family="Segoe UI, Arial, sans-serif">What actually happens when someone messages the page</text>
+
+  <g>
+    <rect x="60" y="168" width="218" height="112" rx="20" fill="#14233D" stroke="#2E4970"/>
+    <text x="84" y="206" fill="#85B4FF" font-size="15" font-weight="700" font-family="Segoe UI, Arial, sans-serif">1. INBOUND</text>
+    <text x="84" y="238" fill="#F4F8FF" font-size="28" font-weight="700" font-family="Segoe UI, Arial, sans-serif">Messenger user</text>
+    <text x="84" y="264" fill="#B8C4D9" font-size="17" font-weight="500" font-family="Segoe UI, Arial, sans-serif">Text, postback, or supported image</text>
+  </g>
+
+  <g>
+    <rect x="340" y="168" width="242" height="112" rx="20" fill="#14233D" stroke="#2E4970"/>
+    <text x="364" y="206" fill="#85B4FF" font-size="15" font-weight="700" font-family="Segoe UI, Arial, sans-serif">2. WEBHOOK</text>
+    <text x="364" y="238" fill="#F4F8FF" font-size="28" font-weight="700" font-family="Segoe UI, Arial, sans-serif">/api/webhook</text>
+    <text x="364" y="264" fill="#B8C4D9" font-size="17" font-weight="500" font-family="Segoe UI, Arial, sans-serif">Signature check, typing state, dedupe</text>
+  </g>
+
+  <g>
+    <rect x="644" y="168" width="226" height="112" rx="20" fill="#14233D" stroke="#2E4970"/>
+    <text x="668" y="206" fill="#85B4FF" font-size="15" font-weight="700" font-family="Segoe UI, Arial, sans-serif">3. MODEL</text>
+    <text x="668" y="238" fill="#F4F8FF" font-size="28" font-weight="700" font-family="Segoe UI, Arial, sans-serif">Gemini API</text>
+    <text x="668" y="264" fill="#B8C4D9" font-size="17" font-weight="500" font-family="Segoe UI, Arial, sans-serif">Fallback models, tools, image input</text>
+  </g>
+
+  <g>
+    <rect x="932" y="168" width="208" height="112" rx="20" fill="#14233D" stroke="#2E4970"/>
+    <text x="956" y="206" fill="#85B4FF" font-size="15" font-weight="700" font-family="Segoe UI, Arial, sans-serif">4. OUTBOUND</text>
+    <text x="956" y="238" fill="#F4F8FF" font-size="28" font-weight="700" font-family="Segoe UI, Arial, sans-serif">Reply to page chat</text>
+    <text x="956" y="264" fill="#B8C4D9" font-size="17" font-weight="500" font-family="Segoe UI, Arial, sans-serif">Chunked plain-text response</text>
+  </g>
+
+  <g>
+    <rect x="452" y="314" width="296" height="52" rx="18" fill="#10233A" stroke="#274467"/>
+    <text x="600" y="347" text-anchor="middle" fill="#DCE6F7" font-size="20" font-weight="600" font-family="Segoe UI, Arial, sans-serif">Postgres stores recent history and image context</text>
+  </g>
+
+  <path d="M290 224H326" stroke="#5DD8C1" stroke-width="10" stroke-linecap="round"/>
+  <path d="M330 224L358 208V240L330 224Z" fill="#5DD8C1"/>
+  <path d="M594 224H630" stroke="#5DD8C1" stroke-width="10" stroke-linecap="round"/>
+  <path d="M634 224L662 208V240L634 224Z" fill="#5DD8C1"/>
+  <path d="M882 224H918" stroke="#5DD8C1" stroke-width="10" stroke-linecap="round"/>
+  <path d="M922 224L950 208V240L922 224Z" fill="#5DD8C1"/>
+  <path d="M598 314V286" stroke="#5DD8C1" stroke-width="8" stroke-linecap="round"/>
+</svg>

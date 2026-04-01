@@ -1,10 +1,38 @@
 # NubAgent
 
+![NubAgent banner](assets/nubagent-banner.svg)
+
 NubAgent is a Facebook Messenger to Gemini bridge designed for Vercel. It exposes a real `/api/webhook` endpoint, verifies the Messenger handshake, forwards inbound text to Gemini, and sends the reply back through the Messenger Send API.
+
+It is built for people who want direct access to stronger AI behavior from a simple Messenger chat, which makes it practical on low-end phones that cannot run local models well.
 
 This README is written as an operator guide. It is intentionally step by step, and it only documents behavior that matches the current code in this repository.
 
 <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAmbitiousnoob%2Fnubagent&env=GEMINI_API_KEY,PAGE_ACCESS_TOKEN,VERIFY_TOKEN,POSTGRES_URL,PAGE_ID,FACEBOOK_APP_SECRET,GRAPH_API_VERSION,GEMINI_ENABLE_GOOGLE_SEARCH,GEMINI_ENABLE_CODE_EXECUTION,GEMINI_ENABLE_URL_CONTEXT,GEMINI_CHAT_MODEL,GEMINI_CHAT_THINKING_LEVEL,OPTIONAL_INSTRUCTION&project-name=nubagent&repo-name=nubagent"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
+
+## Access Without Regular Paid Data
+
+This is not an offline system. Messenger still needs a working network path.
+
+NubAgent can still be practical in cases like these:
+
+- countries and carriers that support Facebook basic mode or Free Basics
+- carriers that offer Facebook or Messenger access without regular data charges
+- SIMs or plans where Facebook or Messenger traffic is sponsored or zero-rated
+- low-end phones that can run Messenger but cannot run local AI models well
+
+Check these official references before you rely on that access pattern:
+
+- [Connect to Facebook without data charges](https://www.facebook.com/help/548059885266896/)
+- [Devices you can use to connect to Facebook without data charges](https://www.facebook.com/help/320951141622544/)
+- [Unable to connect to basic mode on Facebook](https://www.facebook.com/help/193971691069066/)
+- [How to get Free Basics](https://www.facebook.com/help/1489856091251073/)
+
+## Quick Visual Overview
+
+![NubAgent flow](assets/nubagent-flow.svg)
+
+If you want a GitHub social preview image, use `assets/social-preview.png` from this repository in the repo settings.
 
 ## What This Repo Actually Does
 

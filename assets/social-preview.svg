@@ -1,0 +1,44 @@
+<svg width="1280" height="640" viewBox="0 0 1280 640" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="112" y1="40" x2="1172" y2="600" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0E172A"/>
+      <stop offset="1" stop-color="#08111E"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="256" y1="164" x2="1016" y2="472" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4F8CFF"/>
+      <stop offset="0.52" stop-color="#5DD8C1"/>
+      <stop offset="1" stop-color="#8B5CF6"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="640" rx="36" fill="url(#bg)"/>
+  <circle cx="180" cy="110" r="240" fill="#4F8CFF" fill-opacity="0.14"/>
+  <circle cx="1136" cy="558" r="280" fill="#5DD8C1" fill-opacity="0.12"/>
+  <rect x="56" y="52" width="1168" height="536" rx="30" fill="#0B1324" fill-opacity="0.76" stroke="#22314B"/>
+  <rect x="96" y="98" width="1088" height="444" rx="28" fill="#0E182B" stroke="#22314B"/>
+  <text x="124" y="196" fill="#FFFFFF" font-size="86" font-weight="700" font-family="Segoe UI, Arial, sans-serif">NubAgent</text>
+  <text x="126" y="256" fill="#C7D4EA" font-size="34" font-weight="500" font-family="Segoe UI, Arial, sans-serif">Messenger access to stronger Gemini workflows from a simple chat surface.</text>
+  <text x="126" y="306" fill="#8FA2C3" font-size="24" font-weight="500" font-family="Segoe UI, Arial, sans-serif">Built for lightweight devices using Messenger instead of local model installs.</text>
+
+  <g>
+    <rect x="126" y="358" width="170" height="42" rx="21" fill="#13223B" stroke="#294165"/>
+    <text x="211" y="385" text-anchor="middle" fill="#EDF3FF" font-size="20" font-weight="600" font-family="Segoe UI, Arial, sans-serif">Messenger</text>
+    <rect x="310" y="358" width="126" height="42" rx="21" fill="#13223B" stroke="#294165"/>
+    <text x="373" y="385" text-anchor="middle" fill="#EDF3FF" font-size="20" font-weight="600" font-family="Segoe UI, Arial, sans-serif">Gemini</text>
+    <rect x="450" y="358" width="118" height="42" rx="21" fill="#13223B" stroke="#294165"/>
+    <text x="509" y="385" text-anchor="middle" fill="#EDF3FF" font-size="20" font-weight="600" font-family="Segoe UI, Arial, sans-serif">Vercel</text>
+    <rect x="582" y="358" width="138" height="42" rx="21" fill="#13223B" stroke="#294165"/>
+    <text x="651" y="385" text-anchor="middle" fill="#EDF3FF" font-size="20" font-weight="600" font-family="Segoe UI, Arial, sans-serif">Postgres</text>
+  </g>
+
+  <g>
+    <rect x="760" y="166" width="352" height="250" rx="26" fill="#0C1526" stroke="#263650"/>
+    <text x="792" y="214" fill="#86B3FF" font-size="18" font-weight="700" font-family="Consolas, Menlo, monospace">capabilities</text>
+    <text x="792" y="258" fill="#F6FAFF" font-size="28" font-weight="700" font-family="Consolas, Menlo, monospace">- webhook verify + dedupe</text>
+    <text x="792" y="300" fill="#F6FAFF" font-size="28" font-weight="700" font-family="Consolas, Menlo, monospace">- model fallback + key pool</text>
+    <text x="792" y="342" fill="#F6FAFF" font-size="28" font-weight="700" font-family="Consolas, Menlo, monospace">- image inspection + follow-up</text>
+    <text x="792" y="384" fill="#F6FAFF" font-size="28" font-weight="700" font-family="Consolas, Menlo, monospace">- code execution + URL context</text>
+  </g>
+
+  <path d="M716 290H566" stroke="url(#accent)" stroke-width="12" stroke-linecap="round"/>
+  <path d="M570 290L598 274V306L570 290Z" fill="url(#accent)"/>
+</svg>
