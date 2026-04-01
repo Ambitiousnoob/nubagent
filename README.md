@@ -2,6 +2,8 @@
 
 ![NubAgent banner](assets/nubagent-banner.svg)
 
+![MIT License](https://img.shields.io/badge/License-MIT-yellow.svg)
+
 NubAgent is a Facebook Messenger to Gemini bridge designed for Vercel. It exposes a real `/api/webhook` endpoint, verifies the Messenger handshake, forwards inbound text to Gemini, and sends the reply back through the Messenger Send API.
 
 It is built for people who want direct access to stronger AI behavior from a simple Messenger chat, which makes it practical on low-end phones that cannot run local models well.
@@ -9,6 +11,30 @@ It is built for people who want direct access to stronger AI behavior from a sim
 This README is written as an operator guide. It is intentionally step by step, and it only documents behavior that matches the current code in this repository.
 
 <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAmbitiousnoob%2Fnubagent&env=GEMINI_API_KEY,PAGE_ACCESS_TOKEN,VERIFY_TOKEN,POSTGRES_URL,GEMINI_CHAT_MODEL,GEMINI_CHAT_THINKING_LEVEL,OPTIONAL_INSTRUCTION&project-name=nubagent&repo-name=nubagent"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
+
+## Table of Contents
+
+- [Access Without Regular Paid Data](#access-without-regular-paid-data)
+- [Quick Visual Overview](#quick-visual-overview)
+- [What This Repo Actually Does](#what-this-repo-actually-does)
+- [What This Repo Does Not Do](#what-this-repo-does-not-do)
+- [Architecture](#architecture)
+- [Official Quick Links](#official-quick-links)
+- [Before You Start](#before-you-start)
+- [Step 1. Clone The Repo And Install Dependencies](#step-1-clone-the-repo-and-install-dependencies)
+- [Step 2. Create Gemini API Keys](#step-2-create-gemini-api-keys)
+- [Step 3. Choose Gemini Models](#step-3-choose-gemini-models)
+- [Step 4. Prepare Your Facebook Page And Meta App](#step-4-prepare-your-facebook-page-and-meta-app)
+- [Step 5. Create The Postgres Database](#step-5-create-the-postgres-database)
+- [Step 6. Create Your .env File](#step-6-create-your-env-file)
+- [Step 7. Understand Every Environment Variable](#step-7-understand-every-environment-variable)
+- [Step 8. Run The App Locally](#step-8-run-the-app-locally)
+- [Step 9. Deploy To Vercel](#step-9-deploy-to-vercel)
+- [Step 10. Configure The Messenger Webhook In Meta](#step-10-configure-the-messenger-webhook-in-meta)
+- [Step 11. Send A Real End-To-End Test Message](#step-11-send-a-real-end-to-end-test-message)
+- [Exact Runtime Behavior](#exact-runtime-behavior)
+- [Troubleshooting](#troubleshooting)
+- [Project Structure](#project-structure)
 
 ## Access Without Regular Paid Data
 
@@ -127,7 +153,7 @@ Important:
 - `npm run dev` does not serve `api/webhook`
 - Use `vercel dev` or `npx vercel dev` when you want to exercise the webhook locally
 
-## Step 2. Create Gemini API Key(s)
+## Step 2. Create Gemini API Keys
 
 1. Open [Google AI Studio](https://aistudio.google.com/).
 2. If you want the official key instructions, open the [Gemini API key guide](https://ai.google.dev/gemini-api/docs/api-key).
@@ -148,7 +174,7 @@ How the repo uses that value:
 - Multiple keys: NubAgent rotates keys in round-robin order per running server instance
 - If the active model uses web grounding, Gemini still uses the same key rotation
 
-## Step 3. Choose Gemini Model(s)
+## Step 3. Choose Gemini Models
 
 Use the official [Gemini model catalog](https://ai.google.dev/models/gemini).
 
@@ -270,18 +296,27 @@ SYSTEM_PROMPT=You are NubAgent. Keep replies short, practical, and easy to read 
 | `PAGE_ACCESS_TOKEN` | Valid Page access token for Messenger sends |
 | `VERIFY_TOKEN` | Secret string used only for webhook verification |
 | `POSTGRES_URL` | Postgres connection string for durable message history |
+| `FACEBOOK_APP_SECRET` | Your Facebook App Secret, used to verify webhook signatures. |
 
 ### Optional Variables
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
+| `CRON_SECRET` | empty | A secret passed in `Authorization: Bearer` to secure cron jobs. |
+| `GRAPH_API_VERSION` | `v23.0` | The Facebook Graph API version to use. |
+| `GEMINI_ENABLE_GOOGLE_SEARCH` | `true` | Enable or disable Google Search grounding. |
+| `GEMINI_ENABLE_CODE_EXECUTION` | `true` | Enable or disable code execution. |
+| `GEMINI_ENABLE_URL_CONTEXT` | `true` | Enable or disable URL context. |
 | `GEMINI_CHAT_THINKING_LEVEL` | `low` | Accepts `none`, `off`, `minimal`, `low`, `medium`, or `high` |
 | `OPTIONAL_INSTRUCTION` | empty | Lower-priority guidance injected below the bundled system instruction |
 | `SYSTEM_PROMPT` | bundled default | Replaces the built-in Messenger-focused system instruction |
 
 Important details:
 
-- Search grounding, code execution, and URL Context are enabled automatically when the active model supports them
+- Search grounding, code execution, and URL Context are enabled automatically when the active model supports them. You can disable them with the `GEMINI_ENABLE_` flags.
+- `supportsGoogleSearch` is enabled for Gemini 1.5, 2.0-flash, 2.5 and 3 models.
+- `supportsCodeExecution` is enabled for Gemini 2.0-flash, 2.5 and 3 models.
+- `supportsUrlContext` is enabled for Gemini 2.5 and 3 models.
 - Supported models use Gemini grounding tools directly; unsupported preview-only cases fall back to a DuckDuckGo search pass
 - Gemini 1.5 grounding uses the legacy retrieval tool shape automatically; newer supported models use `google_search`
 - URL Context only helps when the user's prompt includes one or more URLs
@@ -294,6 +329,7 @@ Important details:
 - In the current code, `GEMINI_CHAT_THINKING_LEVEL` is only sent for Gemini 3+ model names
 - If any required messaging env is missing, `POST /api/webhook` returns `500`
 - If `VERIFY_TOKEN` is missing, `GET /api/webhook` returns `500`
+- If `FACEBOOK_APP_SECRET` is set and the signature is invalid, `POST /api/webhook` returns `403`.
 
 ## Step 8. Run The App Locally
 
@@ -531,14 +567,26 @@ Check all of the following:
 
 ```text
 api/
+  maintenance.js
   webhook.js
 lib/
   config.js
+  duckduckgo.js
   gemini.js
   history.js
   messenger.js
+  profile-state.js
+  vision.js
 src/
   App.jsx
   main.jsx
   styles.css
 ```
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a pull request.
+
+## License
+
+This project is licensed under the MIT License.

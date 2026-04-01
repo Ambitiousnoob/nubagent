@@ -1,44 +1,44 @@
 <svg width="1280" height="320" viewBox="0 0 1280 320" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="bg" x1="120" y1="24" x2="1140" y2="296" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#0E1629"/>
-      <stop offset="1" stop-color="#08111E"/>
+      <stop stop-color="#0F172A"/>
+      <stop offset="1" stop-color="#1E293B"/>
     </linearGradient>
     <linearGradient id="glow" x1="236" y1="54" x2="929" y2="274" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#4F8CFF"/>
-      <stop offset="0.5" stop-color="#5DD8C1"/>
-      <stop offset="1" stop-color="#8B5CF6"/>
+      <stop stop-color="#38BDF8"/>
+      <stop offset="0.5" stop-color="#818CF8"/>
+      <stop offset="1" stop-color="#38BDF8"/>
     </linearGradient>
   </defs>
   <rect width="1280" height="320" rx="28" fill="url(#bg)"/>
-  <circle cx="112" cy="78" r="188" fill="#4F8CFF" fill-opacity="0.18"/>
-  <circle cx="1148" cy="262" r="224" fill="#5DD8C1" fill-opacity="0.12"/>
-  <rect x="48" y="44" width="1184" height="232" rx="24" fill="#0B1324" fill-opacity="0.68" stroke="#24324C"/>
-  <path d="M48 112H1232" stroke="#1C2940"/>
-  <circle cx="84" cy="78" r="8" fill="#FF6B6B"/>
-  <circle cx="112" cy="78" r="8" fill="#F7B955"/>
-  <circle cx="140" cy="78" r="8" fill="#59D185"/>
-  <text x="78" y="170" fill="white" font-size="76" font-weight="700" font-family="Segoe UI, Arial, sans-serif">NubAgent</text>
-  <text x="82" y="214" fill="#B8C4D9" font-size="28" font-weight="500" font-family="Segoe UI, Arial, sans-serif">Messenger bridge for Gemini with durable memory and low-friction access from simple devices.</text>
+  <circle cx="112" cy="78" r="188" fill="#38BDF8" fill-opacity="0.18"/>
+  <circle cx="1148" cy="262" r="224" fill="#818CF8" fill-opacity="0.12"/>
+  <rect x="48" y="44" width="1184" height="232" rx="24" fill="#1E293B" fill-opacity="0.68" stroke="#38BDF8"/>
+  <path d="M48 112H1232" stroke="#38BDF8"/>
+  <circle cx="84" cy="78" r="8" fill="#38BDF8"/>
+  <circle cx="112" cy="78" r="8" fill="#818CF8"/>
+  <circle cx="140" cy="78" r="8" fill="#38BDF8"/>
+  <text x="78" y="170" fill="#F8FAFC" font-size="76" font-weight="700" font-family="Segoe UI, Arial, sans-serif">NubAgent</text>
+  <text x="82" y="214" fill="#F8FAFC" font-size="28" font-weight="500" font-family="Segoe UI, Arial, sans-serif">Messenger bridge for Gemini with durable memory and low-friction access from simple devices.</text>
   <g>
-    <rect x="80" y="238" width="134" height="36" rx="18" fill="#13223B" stroke="#294165"/>
-    <text x="147" y="261" text-anchor="middle" fill="#DCE6F7" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">Messenger</text>
-    <rect x="226" y="238" width="106" height="36" rx="18" fill="#13223B" stroke="#294165"/>
-    <text x="279" y="261" text-anchor="middle" fill="#DCE6F7" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">Gemini</text>
-    <rect x="344" y="238" width="102" height="36" rx="18" fill="#13223B" stroke="#294165"/>
-    <text x="395" y="261" text-anchor="middle" fill="#DCE6F7" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">Vercel</text>
-    <rect x="458" y="238" width="120" height="36" rx="18" fill="#13223B" stroke="#294165"/>
-    <text x="518" y="261" text-anchor="middle" fill="#DCE6F7" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">Postgres</text>
-    <rect x="590" y="238" width="138" height="36" rx="18" fill="#13223B" stroke="#294165"/>
-    <text x="659" y="261" text-anchor="middle" fill="#DCE6F7" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">Image Input</text>
-    <rect x="740" y="238" width="160" height="36" rx="18" fill="#13223B" stroke="#294165"/>
-    <text x="820" y="261" text-anchor="middle" fill="#DCE6F7" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">Model Fallback</text>
+    <rect x="80" y="238" width="134" height="36" rx="18" fill="#1E293B" stroke="#38BDF8"/>
+    <text x="147" y="261" text-anchor="middle" fill="#F8FAFC" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">Messenger</text>
+    <rect x="226" y="238" width="106" height="36" rx="18" fill="#1E293B" stroke="#38BDF8"/>
+    <text x="279" y="261" text-anchor="middle" fill="#F8FAFC" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">Gemini</text>
+    <rect x="344" y="238" width="102" height="36" rx="18" fill="#1E293B" stroke="#38BDF8"/>
+    <text x="395" y="261" text-anchor="middle" fill="#F8FAFC" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">Vercel</text>
+    <rect x="458" y="238" width="120" height="36" rx="18" fill="#1E293B" stroke="#38BDF8"/>
+    <text x="518" y="261" text-anchor="middle" fill="#F8FAFC" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">Postgres</text>
+    <rect x="590" y="238" width="138" height="36" rx="18" fill="#1E293B" stroke="#38BDF8"/>
+    <text x="659" y="261" text-anchor="middle" fill="#F8FAFC" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">Image Input</text>
+    <rect x="740" y="238" width="160" height="36" rx="18" fill="#1E293B" stroke="#38BDF8"/>
+    <text x="820" y="261" text-anchor="middle" fill="#F8FAFC" font-size="18" font-weight="600" font-family="Segoe UI, Arial, sans-serif">Model Fallback</text>
   </g>
   <g>
-    <rect x="936" y="138" width="244" height="88" rx="18" fill="#0D1A2D" stroke="#253754"/>
-    <text x="960" y="172" fill="#8EA2C4" font-size="16" font-weight="600" font-family="Consolas, Menlo, monospace">route</text>
-    <text x="960" y="196" fill="#F6FAFF" font-size="28" font-weight="700" font-family="Consolas, Menlo, monospace">Messenger -&gt; Gemini</text>
-    <text x="960" y="216" fill="#8EA2C4" font-size="16" font-weight="500" font-family="Consolas, Menlo, monospace">/api/webhook with durable chat state</text>
+    <rect x="936" y="138" width="244" height="88" rx="18" fill="#1E293B" stroke="#38BDF8"/>
+    <text x="960" y="172" fill="#F8FAFC" font-size="16" font-weight="600" font-family="Consolas, Menlo, monospace">route</text>
+    <text x="960" y="196" fill="#F8FAFC" font-size="28" font-weight="700" font-family="Consolas, Menlo, monospace">Messenger -&gt; Gemini</text>
+    <text x="960" y="216" fill="#F8FAFC" font-size="16" font-weight="500" font-family="Consolas, Menlo, monospace">/api/webhook with durable chat state</text>
     <path d="M928 182H770" stroke="url(#glow)" stroke-width="10" stroke-linecap="round"/>
     <path d="M774 182L802 166V198L774 182Z" fill="url(#glow)"/>
   </g>
