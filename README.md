@@ -68,8 +68,9 @@ If you want a GitHub social preview image, use `assets/social-preview.png` from 
 - Automatically enables Gemini URL Context on supported models
 - Automatically enables Gemini code execution on supported models
 - Can pass supported Messenger image attachments through to Gemini as visual input
-- For image-only messages, first inspects the image and then waits for the user's next instruction
+- For image-only messages, first inspects the image, replies with a short visual summary, and then waits for the user's next instruction
 - Sends `mark_seen`, `typing_on`, and `typing_off` sender actions in Messenger
+- Repairs the Messenger `Get Started` state and the persistent menu item that links to NubAgent
 - Stores conversation history in Postgres by sender PSID
 - Uses round-robin Gemini API key selection when you provide multiple keys
 - Uses ordered Gemini model fallback when the primary model returns a load or availability style backend failure
@@ -455,7 +456,7 @@ Expected behavior:
 
 1. NubAgent marks the message as seen.
 2. NubAgent turns typing on.
-3. If you sent only an image, NubAgent inspects it and asks you to send the question or instruction next.
+3. If you sent only an image, NubAgent inspects it, replies with a short visual summary, and asks you to send the question or instruction next.
 4. If you sent text, NubAgent sends your text, recent conversation history, and every supported image attachment that fits within the Gemini inline request size budget to Gemini.
 5. NubAgent sends the reply back to Messenger.
 6. NubAgent stores the reply in Postgres.
@@ -470,6 +471,7 @@ These details come directly from the current code.
 - `GET /api/webhook` handles the Messenger verification challenge
 - `POST /api/webhook` only processes payloads where `object === "page"`
 - Methods other than `GET` and `POST` return `405`
+- Incoming webhook traffic opportunistically repairs the Messenger profile state in the background
 
 ### Event Handling
 
@@ -478,7 +480,7 @@ These details come directly from the current code.
 - Read receipts are ignored
 - Text messages are forwarded to Gemini
 - Supported image attachments are fetched and sent to Gemini as inline image parts until the Gemini inline request size budget is full
-- Image-only messages are summarized into stored image context, then the bot asks the user for the follow-up instruction
+- Image-only messages are summarized into stored image context, then the bot sends that summary back to Messenger before waiting for the follow-up instruction
 - Postback payloads are converted into `Postback payload: <payload>`
 - Non-image attachments still receive a plain text fallback
 
@@ -540,9 +542,9 @@ Webhook signature verification is enabled, and the incoming request signature is
 
 The message was attachment-only, but the attachment was not a supported image or the image could not be fetched successfully.
 
-### Messenger User Gets "I checked the image. Now send your question or instruction about it."
+### Messenger User Gets An Image Summary And Follow-Up Prompt
 
-That is the expected flow for image-only messages. NubAgent inspects the image first, stores image context, and waits for the next Messenger message because Messenger image upload flow does not reliably pair the image with a same-turn text instruction.
+That is the expected flow for image-only messages. NubAgent inspects the image first, stores image context, sends a short visual summary back to Messenger, and then waits for the next Messenger message because Messenger image upload flow does not reliably pair the image with a same-turn text instruction.
 
 ### Messenger User Gets The Upstream Error Fallback
 
@@ -562,6 +564,10 @@ Check all of the following:
 3. The webhook is subscribed to `messages` and `messaging_postbacks`
 4. Vercel Deployment Protection is not blocking the callback URL
 5. The Page access token is valid for the Page you connected
+
+### Menu Options Or Quick Actions Does Not Show "Built with NubAgent Team"
+
+The repo now repairs Messenger profile state during normal webhook traffic and still supports `/api/maintenance` for explicit repair runs. If the button still does not appear, send a real message to the Page first so Messenger webhook traffic can trigger the background repair, then confirm the Page access token belongs to the same Page whose Messenger profile you expect to update.
 
 ## Project Structure
 

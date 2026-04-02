@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { waitUntil } from "@vercel/functions";
 
 import {
   getRuntimeConfig,
@@ -8,9 +9,10 @@ import {
 import { getConversationStore } from "../lib/history.js";
 import { generateGeminiReply } from "../lib/gemini.js";
 import { sendSenderAction, sendTextMessage } from "../lib/messenger.js";
+import { maybeRepairProfileState } from "../lib/profile-state.js";
 import {
-  IMAGE_READY_REPLY,
   buildImageContextPrompt,
+  buildImageReadyReply,
   buildPromptWithImageContext,
   buildStoredInboundText,
   buildVisionPrompt,
@@ -22,6 +24,7 @@ const ATTACHMENT_FALLBACK =
   "I can reply to text and supported image messages right now. Send text or a PNG, JPEG, WEBP, HEIC, or HEIF image.";
 const UPSTREAM_FAILURE_REPLY =
   "I hit an upstream error while talking to Gemini. Please try again in a moment.";
+const TYPING_REFRESH_INTERVAL_MS = 5000;
 
 export function sendJson(res, statusCode, payload) {
   res.statusCode = statusCode;
@@ -110,6 +113,97 @@ function withStage(error, stage) {
   return wrapped;
 }
 
+async function sendActionSafely({
+  senderId,
+  action,
+  config,
+  sendAction,
+  logger,
+}) {
+  try {
+    await sendAction(senderId, action, config);
+    return true;
+  } catch (error) {
+    logger.warn?.("Failed to send Messenger sender action", {
+      senderId,
+      action,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+}
+
+function createTypingController({ senderId, config, sendAction, logger }) {
+  let stopped = false;
+  let heartbeatTimer = null;
+  let actionQueue = Promise.resolve();
+
+  const enqueueSenderAction = (action) => {
+    actionQueue = actionQueue.then(async () => {
+      if (stopped && action === "typing_on") {
+        return false;
+      }
+
+      return sendActionSafely({
+        senderId,
+        action,
+        config,
+        sendAction,
+        logger,
+      });
+    });
+
+    return actionQueue;
+  };
+
+  const scheduleHeartbeat = () => {
+    heartbeatTimer = setTimeout(async () => {
+      heartbeatTimer = null;
+
+      if (stopped) {
+        return;
+      }
+
+      await enqueueSenderAction("typing_on");
+
+      if (!stopped) {
+        scheduleHeartbeat();
+      }
+    }, TYPING_REFRESH_INTERVAL_MS);
+
+    if (typeof heartbeatTimer?.unref === "function") {
+      heartbeatTimer.unref();
+    }
+  };
+
+  return {
+    async start() {
+      const started = await enqueueSenderAction("typing_on");
+
+      if (started && !stopped) {
+        scheduleHeartbeat();
+      }
+
+      return started;
+    },
+
+    async stop() {
+      if (stopped) {
+        return;
+      }
+
+      stopped = true;
+
+      if (heartbeatTimer) {
+        clearTimeout(heartbeatTimer);
+        heartbeatTimer = null;
+      }
+
+      await enqueueSenderAction("typing_off");
+    },
+  };
+}
+
 function handleVerification(req, res, config) {
   if (!hasVerificationConfig(config)) {
     sendJson(res, 500, {
@@ -160,7 +254,13 @@ export function createWebhookHandler({
     const prompt = buildVisionPrompt(rawPrompt, imageAttachments.length);
     const sourceEventId = extractSourceEventId(event);
 
-    await sendAction(senderId, "mark_seen", config).catch(() => {});
+    await sendActionSafely({
+      senderId,
+      action: "mark_seen",
+      config,
+      sendAction,
+      logger,
+    });
 
     if (!prompt) {
       if (event?.message?.attachments?.length) {
@@ -172,9 +272,17 @@ export function createWebhookHandler({
       return;
     }
 
+    const typingController = createTypingController({
+      senderId,
+      config,
+      sendAction,
+      logger,
+    });
     let typingEnabled = false;
 
     try {
+      typingEnabled = await typingController.start();
+
       const store = await conversationStoreFactory(config);
       const inboundResult = await store
         .saveInboundTurn({
@@ -193,9 +301,6 @@ export function createWebhookHandler({
         });
         return;
       }
-
-      await sendAction(senderId, "typing_on", config).catch(() => {});
-      typingEnabled = true;
 
       const inlineParts = await loadInlineImageParts(imageAttachments).catch(
         (error) => {
@@ -237,14 +342,19 @@ export function createWebhookHandler({
             throw withStage(error, "db:save_image_context");
           });
 
-        await sendTextMessageImpl(senderId, IMAGE_READY_REPLY, config).catch(
+        const imageReadyReply = buildImageReadyReply(
+          imageSummary,
+          inlineParts.length,
+        );
+
+        await sendTextMessageImpl(senderId, imageReadyReply, config).catch(
           (error) => {
             throw withStage(error, "messenger:send_text");
           },
         );
 
         await store
-          .saveModelTurn({ senderId, text: IMAGE_READY_REPLY })
+          .saveModelTurn({ senderId, text: imageReadyReply })
           .catch((error) => {
             throw withStage(error, "db:save_model");
           });
@@ -298,13 +408,19 @@ export function createWebhookHandler({
       );
     } finally {
       if (typingEnabled) {
-        await sendAction(senderId, "typing_off", config).catch(() => {});
+        await typingController.stop();
       }
     }
   }
 
   return async function handler(req, res) {
     const config = configLoader();
+
+    const profileRepairTask = maybeRepairProfileState(config, logger);
+
+    if (profileRepairTask) {
+      waitUntil(profileRepairTask.catch(() => {}));
+    }
 
     if (req.method === "GET") {
       handleVerification(req, res, config);
