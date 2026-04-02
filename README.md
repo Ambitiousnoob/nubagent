@@ -65,8 +65,10 @@ If you want a GitHub social preview image, use `assets/social-preview.png` from 
 - Serves a Messenger webhook from `api/webhook.js`
 - Calls Gemini through the REST `generateContent` endpoint
 - Automatically enables web grounding when the selected Gemini model supports it
-- Automatically enables Gemini URL Context on supported models
+- Automatically enables Gemini URL Context on supported models and prefers a URL-capable configured model when the prompt includes URLs
 - Automatically enables Gemini code execution on supported models
+- Automatically enables Grounding with Google Maps for geo-specific prompts on supported models
+- Supports Gemini context caching through implicit cache hits and optional explicit `cachedContent` resources
 - Can pass supported Messenger image attachments through to Gemini as visual input
 - For image-only messages, first inspects the image, replies with a short visual summary, and then waits for the user's next instruction
 - Sends `mark_seen`, `typing_on`, and `typing_off` sender actions in Messenger
@@ -305,7 +307,11 @@ SYSTEM_PROMPT=You are NubAgent. Keep replies short, practical, and easy to read 
 | `GRAPH_API_VERSION` | `v23.0` | The Facebook Graph API version to use. |
 | `GEMINI_ENABLE_GOOGLE_SEARCH` | `true` | Enable or disable Google Search grounding. |
 | `GEMINI_ENABLE_CODE_EXECUTION` | `true` | Enable or disable code execution. |
+| `GEMINI_ENABLE_GOOGLE_MAPS` | `true` | Enable or disable Grounding with Google Maps for geo-specific prompts. |
 | `GEMINI_ENABLE_URL_CONTEXT` | `true` | Enable or disable URL context. |
+| `GEMINI_CACHED_CONTENT` | empty | Optional explicit cached content resource. Use either one `cachedContents/...` value for a single configured model or comma-separated `model=cachedContents/...` mappings for multi-model setups. |
+| `GEMINI_GOOGLE_MAPS_LATITUDE` | empty | Optional latitude used as location context for Google Maps grounded prompts such as `near me`. |
+| `GEMINI_GOOGLE_MAPS_LONGITUDE` | empty | Optional longitude used as location context for Google Maps grounded prompts such as `near me`. |
 | `GEMINI_CHAT_THINKING_LEVEL` | `low` | Accepts `none`, `off`, `minimal`, `low`, `medium`, or `high` |
 | `OPTIONAL_INSTRUCTION` | empty | Lower-priority guidance injected below the bundled system instruction |
 | `SYSTEM_PROMPT` | bundled default | Replaces the built-in Messenger-focused system instruction |
@@ -313,13 +319,18 @@ SYSTEM_PROMPT=You are NubAgent. Keep replies short, practical, and easy to read 
 Important details:
 
 - Search grounding, code execution, and URL Context are enabled automatically when the active model supports them. You can disable them with the `GEMINI_ENABLE_` flags.
+- Implicit Gemini caching is automatic on supported models, and the repo can also attach an explicit `cachedContent` resource when `GEMINI_CACHED_CONTENT` is configured.
 - `supportsGoogleSearch` is enabled for Gemini 1.5, 2.0-flash, 2.5 and 3 models.
-- `supportsCodeExecution` is enabled for Gemini 2.0-flash, 2.5 and 3 models.
+- `supportsCodeExecution` is enabled for Gemini 1.5 text models, Gemini 2.0 Flash, Gemini 2.5, and Gemini 3 models.
 - `supportsUrlContext` is enabled for Gemini 2.5 and 3 models.
+- Grounding with Google Maps is enabled for Gemini 2.5 models and Gemini 2.0 Flash, but not Gemini 3 or Gemini 2.0 Flash Lite.
+- Gemini explicit caches can only be used with the model they were created for, so multi-model configurations should use `model=cachedContents/...` mappings instead of a single fallback cache name.
 - Supported models use Gemini grounding tools directly; unsupported preview-only cases fall back to a DuckDuckGo search pass
 - Gemini 1.5 grounding uses the legacy retrieval tool shape automatically; newer supported models use `google_search`
-- URL Context only helps when the user's prompt includes one or more URLs
+- URL Context only helps when the user's prompt includes one or more URLs, and the runtime prefers the first configured model that supports it
+- Geo-specific prompts prefer the first configured model that supports Grounding with Google Maps
 - Supported Messenger image attachments are forwarded to Gemini automatically as long as they fit within the Gemini inline request size budget; non-image attachments are not
+- When Google Maps grounding is used, Messenger replies append plain text Google Maps source links
 - `OPTIONAL_INSTRUCTION` is injected as a lower-priority user-context turn, so it does not outrank the bundled system instruction
 - The latest real user message is still sent after `OPTIONAL_INSTRUCTION`
 - `SYSTEM_PROMPT` replaces the bundled system instruction when you set it
@@ -481,6 +492,8 @@ These details come directly from the current code.
 - Text messages are forwarded to Gemini
 - Supported image attachments are fetched and sent to Gemini as inline image parts until the Gemini inline request size budget is full
 - Image-only messages are summarized into stored image context, then the bot sends that summary back to Messenger before waiting for the follow-up instruction
+- Prompts with URLs prefer a configured Gemini model that supports URL Context
+- Geo-specific prompts can use Grounding with Google Maps, and grounded replies include Google Maps source links
 - Postback payloads are converted into `Postback payload: <payload>`
 - Non-image attachments still receive a plain text fallback
 
@@ -506,6 +519,7 @@ These details come directly from the current code.
 - The first model is always attempted first
 - Later models are only attempted when Gemini returns a retryable load or availability style backend failure
 - Search grounding, code execution, and URL Context are enabled automatically when the active model supports them
+- When `GEMINI_CACHED_CONTENT` is configured, the request attaches the matching explicit `cachedContent` resource and logs cache-hit usage metadata when Gemini reports cached tokens
 - Supported models send Gemini grounding tools in the request body
 - Unsupported preview-only cases use a DuckDuckGo search pass and prompt injection before the Gemini request
 
@@ -564,6 +578,32 @@ Check all of the following:
 3. The webhook is subscribed to `messages` and `messaging_postbacks`
 4. Vercel Deployment Protection is not blocking the callback URL
 5. The Page access token is valid for the Page you connected
+
+### URL Context Does Not Seem To Work
+
+Check all of the following:
+
+1. The prompt includes one or more full `https://` or `http://` URLs
+2. Your configured model list includes at least one Gemini 2.5 or Gemini 3 text model
+3. `GEMINI_ENABLE_URL_CONTEXT` is not disabled
+
+### Google Maps Grounding Does Not Seem To Work
+
+Check all of the following:
+
+1. The prompt is clearly geo-specific, such as asking for places, routes, or nearby recommendations
+2. Your configured model list includes Gemini 2.5 Pro, Gemini 2.5 Flash, Gemini 2.5 Flash-Lite, or Gemini 2.0 Flash
+3. `GEMINI_ENABLE_GOOGLE_MAPS` is not disabled
+4. For `near me` style prompts, `GEMINI_GOOGLE_MAPS_LATITUDE` and `GEMINI_GOOGLE_MAPS_LONGITUDE` are set when you want a fixed default location context
+
+### Context Caching Does Not Seem To Work
+
+Check all of the following:
+
+1. For implicit caching, the repeated prefix is large enough and similar enough across nearby requests for Gemini to reuse it
+2. For explicit caching, `GEMINI_CACHED_CONTENT` is set to a valid `cachedContents/...` resource name
+3. For multi-model setups, the cache is mapped to the exact configured model name that created it
+4. If you are using explicit caching, the cache has not expired
 
 ### Menu Options Or Quick Actions Does Not Show "Built with NubAgent Team"
 
