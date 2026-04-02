@@ -2,7 +2,11 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { waitUntil } from "@vercel/functions";
 
 import { handleCommand, parseCommand } from "../lib/commands.js";
-import { getRuntimeConfig, hasMessagingConfig, hasVerificationConfig } from "../lib/config.js";
+import {
+  getRuntimeConfig,
+  hasMessagingConfig,
+  hasVerificationConfig,
+} from "../lib/config.js";
 import {
   buildPromptWithPersistentContext,
   buildRollingConversationSummary,
@@ -546,7 +550,8 @@ export function createWebhookHandler({
             store,
           });
 
-          replyText = commandResult?.reply || "I could not process that command.";
+          replyText =
+            commandResult?.reply || "I could not process that command.";
           replyGenerated = true;
 
           const sendResult = await sendTextWithRetries({
@@ -607,7 +612,11 @@ export function createWebhookHandler({
         currentStage = "attachments:load_inline_images";
         const inlineParts = await loadInlineImageParts(imageAttachments);
 
-        if (imageAttachments.length > 0 && inlineParts.length === 0 && !rawPrompt) {
+        if (
+          imageAttachments.length > 0 &&
+          inlineParts.length === 0 &&
+          !rawPrompt
+        ) {
           replyText = ATTACHMENT_FALLBACK;
           replyGenerated = true;
 
@@ -716,7 +725,8 @@ export function createWebhookHandler({
         const history = await store.getConversationHistory(senderId, {
           excludeMessageId: inboundResult.messageId,
         });
-        const conversationSummary = await store.getConversationSummary(senderId);
+        const conversationSummary =
+          await store.getConversationSummary(senderId);
         const memoryEntries = await store.findRelevantMemory(senderId, prompt, {
           limit: config.memoryMaxItems,
         });
