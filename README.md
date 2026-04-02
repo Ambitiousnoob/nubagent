@@ -420,13 +420,14 @@ https://your-public-domain.example/api/webhook
 ```
 
 2. Open the Messenger webhook settings for your app.
-3. Paste that callback URL.
-4. Paste the exact same `VERIFY_TOKEN` value you configured in Vercel.
-5. Complete the webhook verification flow.
-6. Subscribe the app to these webhook fields:
-   - `messages`
-   - `messaging_postbacks`
-7. Save the webhook configuration.
+3. In the "Callback URL" field, paste your public webhook URL.
+4. In the "Verify token" field, paste the exact same `VERIFY_TOKEN` value you configured in Vercel.
+5. Click "Verify and save".
+6. In the "Webhook" section, select "Page" from the dropdown menu.
+7. Click "Subscribe to events".
+8. In the subscription fields, subscribe to `messages` and `messaging_postbacks`.
+9. Turn off "Attach a client certificate to Webhook requests".
+10. Save the webhook configuration.
 
 Notes:
 
