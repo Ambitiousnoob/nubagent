@@ -223,8 +223,6 @@ Direct links:
 - [Graph API Explorer](https://developers.facebook.com/tools/explorer/)
 - [Access Token Debugger](https://developers.facebook.com/tools/debug/accesstoken/)
 
-About the token:
-
 - This repo needs a valid Page access token, not an app token
 - `PAGE_ID` is not required; Messenger sends use the `me` path by default
 - Before production use, inspect the token in Meta's Access Token Debugger and confirm it is the token you intend to run with
@@ -438,6 +436,7 @@ Notes:
 
 Helpful Meta docs:
 
+- [Your app-specific webhook settings](https://developers.facebook.com/apps/1098695178551898/use_cases/customize/?use_case_enum=WEBHOOKS&business_id=4157540321144368&selected_tab=webhooks&product_route=webhooks)
 - [Webhook setup guide](https://developers.facebook.com/docs/messenger-platform/getting-started/webhook-setup/)
 - [Messenger app setup guide](https://developers.facebook.com/docs/messenger-platform/getting-started/app-setup)
 - [Send messages guide](https://developers.facebook.com/docs/messenger-platform/send-messages)
