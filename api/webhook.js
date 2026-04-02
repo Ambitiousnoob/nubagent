@@ -26,6 +26,44 @@ const UPSTREAM_FAILURE_REPLY =
   "I hit an upstream error while talking to Gemini. Please try again in a moment.";
 const TYPING_REFRESH_INTERVAL_MS = 5000;
 
+function isGeminiStage(stage) {
+  return typeof stage === "string" && stage.startsWith("gemini");
+}
+
+function extractGeminiFailureReply(error) {
+  const apiMessage =
+    typeof error?.apiMessage === "string" ? error.apiMessage.trim() : "";
+
+  if (apiMessage) {
+    return apiMessage;
+  }
+
+  const message =
+    typeof error?.message === "string" ? error.message.trim() : "";
+
+  if (!message) {
+    return "";
+  }
+
+  if (/^Gemini API \d+:/i.test(message)) {
+    return message.replace(/^Gemini API \d+:\s*/i, "").trim();
+  }
+
+  if (/^Gemini\b/i.test(message)) {
+    return message;
+  }
+
+  return "";
+}
+
+export function buildFailureReply(error) {
+  if (!isGeminiStage(error?.stage)) {
+    return UPSTREAM_FAILURE_REPLY;
+  }
+
+  return extractGeminiFailureReply(error) || UPSTREAM_FAILURE_REPLY;
+}
+
 export function sendJson(res, statusCode, payload) {
   res.statusCode = statusCode;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -403,9 +441,11 @@ export function createWebhookHandler({
         message: error instanceof Error ? error.message : String(error),
       });
 
-      await sendTextMessageImpl(senderId, UPSTREAM_FAILURE_REPLY, config).catch(
-        () => {},
-      );
+      await sendTextMessageImpl(
+        senderId,
+        buildFailureReply(error),
+        config,
+      ).catch(() => {});
     } finally {
       if (typingEnabled) {
         await typingController.stop();
