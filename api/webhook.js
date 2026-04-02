@@ -1,19 +1,25 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { waitUntil } from "@vercel/functions";
 
+import { handleCommand, parseCommand } from "../lib/commands.js";
+import { getRuntimeConfig, hasMessagingConfig, hasVerificationConfig } from "../lib/config.js";
 import {
-  getRuntimeConfig,
-  hasMessagingConfig,
-  hasVerificationConfig,
-} from "../lib/config.js";
+  buildPromptWithPersistentContext,
+  buildRollingConversationSummary,
+  extractMemoryCandidates,
+} from "../lib/context.js";
+import { generateGeminiReply, isRetryableGeminiError } from "../lib/gemini.js";
 import { getConversationStore } from "../lib/history.js";
-import { generateGeminiReply } from "../lib/gemini.js";
-import { sendSenderAction, sendTextMessage } from "../lib/messenger.js";
+import {
+  isRetryableMessengerError,
+  sendSenderAction,
+  sendTextMessage,
+} from "../lib/messenger.js";
 import { maybeRepairProfileState } from "../lib/profile-state.js";
+import { retryAsync, summarizeError } from "../lib/reliability.js";
 import {
   buildImageContextPrompt,
   buildImageReadyReply,
-  buildPromptWithImageContext,
   buildStoredInboundText,
   buildVisionPrompt,
   extractImageAttachments,
@@ -140,15 +146,20 @@ export function extractSourceEventId(event) {
   return event?.message?.mid || event?.postback?.mid || null;
 }
 
-function withStage(error, stage) {
-  if (error instanceof Error) {
-    error.stage = stage;
-    return error;
+function extractEventType(event, imageAttachments) {
+  if (event?.postback) {
+    return "postback";
   }
 
-  const wrapped = new Error(String(error));
-  wrapped.stage = stage;
-  return wrapped;
+  if (Array.isArray(imageAttachments) && imageAttachments.length > 0) {
+    return "image_message";
+  }
+
+  return "message";
+}
+
+function logStructured(logger, level, eventName, payload) {
+  logger[level]?.(eventName, payload);
 }
 
 async function sendActionSafely({
@@ -162,10 +173,10 @@ async function sendActionSafely({
     await sendAction(senderId, action, config);
     return true;
   } catch (error) {
-    logger.warn?.("Failed to send Messenger sender action", {
+    logStructured(logger, "warn", "messenger.sender_action.failed", {
       senderId,
       action,
-      message: error instanceof Error ? error.message : String(error),
+      message: summarizeError(error),
     });
     return false;
   }
@@ -272,12 +283,164 @@ function handleVerification(req, res, config) {
   sendText(res, 200, challenge);
 }
 
+async function sendTextWithRetries({
+  senderId,
+  text,
+  config,
+  sendTextMessageImpl,
+  logger,
+  retryStage,
+}) {
+  return retryAsync(
+    async () => {
+      await sendTextMessageImpl(senderId, text, config);
+    },
+    {
+      retries: config.reliabilityRetryLimit,
+      baseDelayMs: config.reliabilityRetryBaseMs,
+      shouldRetry: isRetryableMessengerError,
+      onRetry: (error, attempt) => {
+        logStructured(logger, "warn", "messenger.send.retry", {
+          senderId,
+          stage: retryStage,
+          attempt,
+          message: summarizeError(error),
+        });
+      },
+    },
+  );
+}
+
+async function generateReplyWithRetries({
+  prompt,
+  history,
+  config,
+  inlineParts,
+  geminiReply,
+  logger,
+  senderId,
+  sourceEventId,
+  stage,
+}) {
+  return retryAsync(
+    async () =>
+      geminiReply({
+        prompt,
+        history,
+        config,
+        inlineParts,
+      }),
+    {
+      retries: config.reliabilityRetryLimit,
+      baseDelayMs: config.reliabilityRetryBaseMs,
+      shouldRetry: isRetryableGeminiError,
+      onRetry: (error, attempt) => {
+        logStructured(logger, "warn", "gemini.reply.retry", {
+          senderId,
+          sourceEventId,
+          stage,
+          attempt,
+          message: summarizeError(error),
+        });
+      },
+    },
+  );
+}
+
+async function saveAutoMemory({ senderId, rawPrompt, store, logger }) {
+  const candidates = extractMemoryCandidates(rawPrompt);
+
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  const saved = [];
+
+  for (const candidate of candidates) {
+    try {
+      saved.push(
+        await store.saveMemory({
+          senderId,
+          content: candidate.content,
+          kind: candidate.kind,
+          source: "auto",
+        }),
+      );
+    } catch (error) {
+      logStructured(logger, "warn", "memory.auto_save.failed", {
+        senderId,
+        message: summarizeError(error),
+      });
+    }
+  }
+
+  return saved;
+}
+
+async function refreshConversationSummary({
+  senderId,
+  store,
+  summaryMaxChars,
+  logger,
+}) {
+  try {
+    const previousSummary = await store.getConversationSummary(senderId);
+    const history = await store.getSummarySourceHistory(senderId);
+    const nextSummary = buildRollingConversationSummary(history, {
+      previousSummary,
+      maxChars: summaryMaxChars,
+    });
+
+    if (nextSummary) {
+      await store.saveConversationSummary({
+        senderId,
+        summary: nextSummary,
+      });
+    }
+  } catch (error) {
+    logStructured(logger, "warn", "summary.refresh.failed", {
+      senderId,
+      message: summarizeError(error),
+    });
+  }
+}
+
+async function recordFailedOutboundSafely({
+  store,
+  senderId,
+  sourceEventId,
+  stage,
+  replyText,
+  error,
+  logger,
+}) {
+  try {
+    await store.recordFailedOutbound({
+      senderId,
+      sourceEventId,
+      stage,
+      replyText,
+      errorMessage: summarizeError(error),
+      retryCount: error?.retryCount || 0,
+    });
+  } catch (recordError) {
+    logStructured(logger, "warn", "messenger.failed_outbound.record_failed", {
+      senderId,
+      sourceEventId,
+      stage,
+      message: summarizeError(recordError),
+    });
+  }
+}
+
 export function createWebhookHandler({
   configLoader = getRuntimeConfig,
   conversationStoreFactory = getConversationStore,
   geminiReply = generateGeminiReply,
   sendAction = sendSenderAction,
   sendTextMessageImpl = sendTextMessage,
+  profileRepair = maybeRepairProfileState,
+  waitUntilImpl = waitUntil,
   logger = console,
 } = {}) {
   async function processEvent(event, config) {
@@ -291,175 +454,420 @@ export function createWebhookHandler({
     const rawPrompt = extractInboundPrompt(event);
     const prompt = buildVisionPrompt(rawPrompt, imageAttachments.length);
     const sourceEventId = extractSourceEventId(event);
-
-    await sendActionSafely({
-      senderId,
-      action: "mark_seen",
-      config,
-      sendAction,
-      logger,
-    });
-
-    if (!prompt) {
-      if (event?.message?.attachments?.length) {
-        await sendTextMessageImpl(senderId, ATTACHMENT_FALLBACK, config).catch(
-          () => {},
-        );
-      }
-
-      return;
-    }
-
-    const typingController = createTypingController({
-      senderId,
-      config,
-      sendAction,
-      logger,
-    });
+    const command = parseCommand(rawPrompt);
+    const eventType = extractEventType(event, imageAttachments);
+    let store;
     let typingEnabled = false;
+    let inboundSaved = false;
+    let modelTurnSaved = false;
+    let replyGenerated = false;
+    let replySent = false;
+    let replyText = "";
+    let totalRetryCount = 0;
+    let currentStage = "received";
 
     try {
+      store = await conversationStoreFactory(config);
+      const eventRecord = await store.beginEventProcessing({
+        senderId,
+        sourceEventId,
+        eventType,
+      });
+
+      if (!eventRecord.inserted) {
+        logStructured(logger, "info", "webhook.event.duplicate", {
+          senderId,
+          sourceEventId,
+        });
+        return;
+      }
+
+      logStructured(logger, "info", "webhook.event.received", {
+        senderId,
+        sourceEventId,
+        eventType,
+        hasCommand: Boolean(command),
+        imageCount: imageAttachments.length,
+      });
+
+      await sendActionSafely({
+        senderId,
+        action: "mark_seen",
+        config,
+        sendAction,
+        logger,
+      });
+
+      if (!prompt && !command) {
+        if (event?.message?.attachments?.length) {
+          replyText = ATTACHMENT_FALLBACK;
+          replyGenerated = true;
+          currentStage = "messenger:send_attachment_fallback";
+          const sendResult = await sendTextWithRetries({
+            senderId,
+            text: replyText,
+            config,
+            sendTextMessageImpl,
+            logger,
+            retryStage: currentStage,
+          });
+          totalRetryCount += sendResult.retryCount;
+          replySent = true;
+        }
+
+        await store.updateEventProcessing({
+          senderId,
+          sourceEventId,
+          status: "completed",
+          stage: prompt ? "completed" : "ignored",
+          replyGenerated,
+          replySent,
+          retryCount: totalRetryCount,
+        });
+        return;
+      }
+
+      const typingController = createTypingController({
+        senderId,
+        config,
+        sendAction,
+        logger,
+      });
+
       typingEnabled = await typingController.start();
 
-      const store = await conversationStoreFactory(config);
-      const inboundResult = await store
-        .saveInboundTurn({
+      try {
+        if (command) {
+          currentStage = "command";
+
+          const commandResult = await handleCommand({
+            command,
+            senderId,
+            store,
+          });
+
+          replyText = commandResult?.reply || "I could not process that command.";
+          replyGenerated = true;
+
+          const sendResult = await sendTextWithRetries({
+            senderId,
+            text: replyText,
+            config,
+            sendTextMessageImpl,
+            logger,
+            retryStage: "command_reply",
+          });
+          totalRetryCount += sendResult.retryCount;
+          replySent = true;
+
+          await store.updateEventProcessing({
+            senderId,
+            sourceEventId,
+            status: "completed",
+            stage: "command",
+            replyGenerated: true,
+            replySent: true,
+            retryCount: totalRetryCount,
+          });
+          return;
+        }
+
+        currentStage = "db:save_inbound";
+        const inboundResult = await store.saveInboundTurn({
           senderId,
           text: buildStoredInboundText(rawPrompt, imageAttachments.length),
           sourceEventId,
-        })
-        .catch((error) => {
-          throw withStage(error, "db:save_inbound");
         });
 
-      if (!inboundResult.inserted) {
-        logger.info?.("Skipping duplicate Messenger event", {
+        if (!inboundResult.inserted) {
+          logStructured(logger, "info", "webhook.event.duplicate_inbound", {
+            senderId,
+            sourceEventId,
+          });
+          await store.updateEventProcessing({
+            senderId,
+            sourceEventId,
+            status: "completed",
+            stage: "duplicate_inbound",
+            retryCount: totalRetryCount,
+          });
+          return;
+        }
+
+        inboundSaved = true;
+        await store.updateEventProcessing({
           senderId,
           sourceEventId,
-        });
-        return;
-      }
-
-      const inlineParts = await loadInlineImageParts(imageAttachments).catch(
-        (error) => {
-          throw withStage(error, "attachments:load_inline_images");
-        },
-      );
-
-      if (
-        imageAttachments.length > 0 &&
-        inlineParts.length === 0 &&
-        !rawPrompt
-      ) {
-        await sendTextMessageImpl(senderId, ATTACHMENT_FALLBACK, config).catch(
-          () => {},
-        );
-        await store
-          .saveModelTurn({ senderId, text: ATTACHMENT_FALLBACK })
-          .catch(() => {});
-        return;
-      }
-
-      if (imageAttachments.length > 0 && !rawPrompt) {
-        const imageSummary = await geminiReply({
-          prompt: buildImageContextPrompt(inlineParts.length),
-          history: [],
-          config,
-          inlineParts,
-        }).catch((error) => {
-          throw withStage(error, "gemini:image_context");
+          stage: "inbound_saved",
+          inboundSaved: true,
         });
 
-        await store
-          .saveLatestImageContext({
+        waitUntil(saveAutoMemory({ senderId, rawPrompt, store, logger }));
+
+        currentStage = "attachments:load_inline_images";
+        const inlineParts = await loadInlineImageParts(imageAttachments);
+
+        if (imageAttachments.length > 0 && inlineParts.length === 0 && !rawPrompt) {
+          replyText = ATTACHMENT_FALLBACK;
+          replyGenerated = true;
+
+          const sendResult = await sendTextWithRetries({
+            senderId,
+            text: replyText,
+            config,
+            sendTextMessageImpl,
+            logger,
+            retryStage: "attachment_fallback",
+          });
+          totalRetryCount += sendResult.retryCount;
+          replySent = true;
+
+          currentStage = "db:save_model";
+          await store.saveModelTurn({ senderId, text: replyText });
+          modelTurnSaved = true;
+          waitUntil(
+            refreshConversationSummary({
+              senderId,
+              store,
+              summaryMaxChars: config.summaryMaxChars,
+              logger,
+            }),
+          );
+
+          await store.updateEventProcessing({
+            senderId,
+            sourceEventId,
+            status: "completed",
+            stage: "completed",
+            inboundSaved,
+            replyGenerated,
+            replySent,
+            modelTurnSaved,
+            retryCount: totalRetryCount,
+          });
+          return;
+        }
+
+        if (imageAttachments.length > 0 && !rawPrompt) {
+          currentStage = "gemini:image_context";
+          const imageSummaryResult = await generateReplyWithRetries({
+            prompt: buildImageContextPrompt(inlineParts.length),
+            history: [],
+            config,
+            inlineParts,
+            geminiReply,
+            logger,
+            senderId,
+            sourceEventId,
+            stage: currentStage,
+          });
+          totalRetryCount += imageSummaryResult.retryCount;
+          const imageSummary = imageSummaryResult.value;
+
+          currentStage = "db:save_image_context";
+          await store.saveLatestImageContext({
             senderId,
             summary: imageSummary,
             sourceEventId,
-          })
-          .catch((error) => {
-            throw withStage(error, "db:save_image_context");
           });
 
-        const imageReadyReply = buildImageReadyReply(
-          imageSummary,
-          inlineParts.length,
-        );
+          replyText = buildImageReadyReply(imageSummary, inlineParts.length);
+          replyGenerated = true;
 
-        await sendTextMessageImpl(senderId, imageReadyReply, config).catch(
-          (error) => {
-            throw withStage(error, "messenger:send_text");
-          },
-        );
-
-        await store
-          .saveModelTurn({ senderId, text: imageReadyReply })
-          .catch((error) => {
-            throw withStage(error, "db:save_model");
+          currentStage = "messenger:send_text";
+          const sendResult = await sendTextWithRetries({
+            senderId,
+            text: replyText,
+            config,
+            sendTextMessageImpl,
+            logger,
+            retryStage: currentStage,
           });
+          totalRetryCount += sendResult.retryCount;
+          replySent = true;
 
-        return;
-      }
+          currentStage = "db:save_model";
+          await store.saveModelTurn({ senderId, text: replyText });
+          modelTurnSaved = true;
+          waitUntil(
+            refreshConversationSummary({
+              senderId,
+              store,
+              summaryMaxChars: config.summaryMaxChars,
+              logger,
+            }),
+          );
 
-      const history = await store
-        .getConversationHistory(senderId, {
+          await store.updateEventProcessing({
+            senderId,
+            sourceEventId,
+            status: "completed",
+            stage: "completed",
+            inboundSaved,
+            replyGenerated,
+            replySent,
+            modelTurnSaved,
+            retryCount: totalRetryCount,
+          });
+          return;
+        }
+
+        currentStage = "db:load_history";
+        const history = await store.getConversationHistory(senderId, {
           excludeMessageId: inboundResult.messageId,
-        })
-        .catch((error) => {
-          throw withStage(error, "db:load_history");
+        });
+        const conversationSummary = await store.getConversationSummary(senderId);
+        const memoryEntries = await store.findRelevantMemory(senderId, prompt, {
+          limit: config.memoryMaxItems,
+        });
+        const imageContext =
+          imageAttachments.length === 0
+            ? await store.getLatestImageContext(senderId)
+            : null;
+        const contextualPrompt = buildPromptWithPersistentContext({
+          prompt,
+          imageContext,
+          conversationSummary,
+          memoryEntries,
+          maxContextChars: config.promptContextMaxChars,
+          maxMemoryItems: config.memoryMaxItems,
+          maxMemoryChars: config.memoryMaxChars,
         });
 
-      const imageContext =
-        imageAttachments.length === 0
-          ? await store.getLatestImageContext(senderId).catch((error) => {
-              throw withStage(error, "db:load_image_context");
-            })
-          : null;
+        currentStage = "gemini";
+        const replyResult = await generateReplyWithRetries({
+          prompt: contextualPrompt,
+          history,
+          config,
+          inlineParts,
+          geminiReply,
+          logger,
+          senderId,
+          sourceEventId,
+          stage: currentStage,
+        });
+        totalRetryCount += replyResult.retryCount;
+        replyText = replyResult.value;
+        replyGenerated = true;
 
-      const reply = await geminiReply({
-        prompt: imageContext
-          ? buildPromptWithImageContext(prompt, imageContext)
-          : prompt,
-        history,
-        config,
-        inlineParts,
-      }).catch((error) => {
-        throw withStage(error, "gemini");
-      });
+        currentStage = "messenger:send_text";
+        const sendResult = await sendTextWithRetries({
+          senderId,
+          text: replyText,
+          config,
+          sendTextMessageImpl,
+          logger,
+          retryStage: currentStage,
+        });
+        totalRetryCount += sendResult.retryCount;
+        replySent = true;
 
-      await sendTextMessageImpl(senderId, reply, config).catch((error) => {
-        throw withStage(error, "messenger:send_text");
-      });
+        currentStage = "db:save_model";
+        await store.saveModelTurn({ senderId, text: replyText });
+        modelTurnSaved = true;
+        waitUntil(
+          refreshConversationSummary({
+            senderId,
+            store,
+            summaryMaxChars: config.summaryMaxChars,
+            logger,
+          }),
+        );
 
-      await store.saveModelTurn({ senderId, text: reply }).catch((error) => {
-        throw withStage(error, "db:save_model");
-      });
+        await store.updateEventProcessing({
+          senderId,
+          sourceEventId,
+          status: "completed",
+          stage: "completed",
+          inboundSaved,
+          replyGenerated,
+          replySent,
+          modelTurnSaved,
+          retryCount: totalRetryCount,
+        });
+      } finally {
+        if (typingEnabled) {
+          await typingController.stop();
+        }
+      }
     } catch (error) {
-      logger.error?.("Failed to process Messenger event", {
+      const failedStage = error?.stage || currentStage || "unknown";
+
+      logStructured(logger, "error", "webhook.event.failed", {
         senderId,
         sourceEventId,
-        stage: error?.stage || "unknown",
-        message: error instanceof Error ? error.message : String(error),
+        stage: failedStage,
+        replyGenerated,
+        replySent,
+        modelTurnSaved,
+        message: summarizeError(error),
       });
 
-      await sendTextMessageImpl(
-        senderId,
-        buildFailureReply(error),
-        config,
-      ).catch(() => {});
-    } finally {
-      if (typingEnabled) {
-        await typingController.stop();
+      if (store) {
+        await store
+          .updateEventProcessing({
+            senderId,
+            sourceEventId,
+            status: "failed",
+            stage: failedStage,
+            inboundSaved,
+            replyGenerated,
+            replySent,
+            modelTurnSaved,
+            retryCount: error?.retryCount ?? totalRetryCount,
+            failureMessage: summarizeError(error),
+          })
+          .catch(() => {});
+      }
+
+      if (store && replyGenerated && !replySent && replyText) {
+        await recordFailedOutboundSafely({
+          store,
+          senderId,
+          sourceEventId,
+          stage: failedStage,
+          replyText,
+          error,
+          logger,
+        });
+      }
+
+      if (!replyGenerated && !replySent) {
+        const failureReply = buildFailureReply(error);
+
+        try {
+          const failureSendResult = await sendTextWithRetries({
+            senderId,
+            text: failureReply,
+            config,
+            sendTextMessageImpl,
+            logger,
+            retryStage: "messenger:send_failure_reply",
+          });
+          totalRetryCount += failureSendResult.retryCount;
+        } catch (sendError) {
+          if (store) {
+            await recordFailedOutboundSafely({
+              store,
+              senderId,
+              sourceEventId,
+              stage: "messenger:send_failure_reply",
+              replyText: failureReply,
+              error: sendError,
+              logger,
+            });
+          }
+        }
       }
     }
   }
 
   return async function handler(req, res) {
     const config = configLoader();
-
-    const profileRepairTask = maybeRepairProfileState(config, logger);
+    const profileRepairTask = profileRepair(config, logger);
 
     if (profileRepairTask) {
-      waitUntil(profileRepairTask.catch(() => {}));
+      waitUntilImpl(profileRepairTask.catch(() => {}));
     }
 
     if (req.method === "GET") {

@@ -64,6 +64,7 @@ If you want a GitHub social preview image, use `assets/social-preview.png` from 
 
 - Serves a Messenger webhook from `api/webhook.js`
 - Calls Gemini through the REST `generateContent` endpoint
+- Supports in-chat control commands like `/help`, `/reset`, `/summary`, `/memory`, `/forget`, and `/privacy`
 - Automatically attaches every enabled Gemini tool that the selected model supports
 - Automatically enables web grounding on supported models
 - Automatically enables Gemini URL Context on supported models and prefers a URL-capable configured model when the prompt includes URLs
@@ -74,7 +75,8 @@ If you want a GitHub social preview image, use `assets/social-preview.png` from 
 - For image-only messages, first inspects the image, replies with a short visual summary, and then waits for the user's next instruction
 - Sends `mark_seen`, `typing_on`, and `typing_off` sender actions in Messenger
 - Repairs the Messenger `Get Started` state and the persistent menu item that links to NubAgent
-- Stores conversation history in Postgres by sender PSID
+- Stores conversation history, long-term memory, rolling summaries, and operational event records in Postgres by sender PSID
+- Exposes a JSON health/status route at `/api/health`
 - Uses round-robin Gemini API key selection when you provide multiple keys
 - Uses ordered Gemini model fallback when the primary model returns a load or availability style backend failure
 
@@ -82,7 +84,7 @@ If you want a GitHub social preview image, use `assets/social-preview.png` from 
 
 - It does not process audio, video, file, or other non-image attachments as model input
 - It does not provide an admin dashboard
-- It does not ship database migrations; it creates its single table automatically on first use
+- It does not ship database migrations; it creates its tables automatically on first use
 - It does not persist any state outside Postgres
 
 ## Architecture
@@ -132,6 +134,7 @@ Optional controls:
 1. `GEMINI_CHAT_THINKING_LEVEL`, if you want to tune thinking on supported models
 2. `OPTIONAL_INSTRUCTION`, if you want lower-priority project guidance added to each request
 3. `SYSTEM_PROMPT`, if you want to replace the bundled Messenger-focused system instruction
+4. Reliability and memory tuning env vars like `RELIABILITY_RETRY_LIMIT`, `RELIABILITY_RETRY_BASE_MS`, `MEMORY_MAX_ITEMS`, and `SUMMARY_MAX_CHARS`
 
 ## Step 1. Clone The Repo And Install Dependencies
 

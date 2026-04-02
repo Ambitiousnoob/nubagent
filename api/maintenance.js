@@ -1,4 +1,5 @@
 import { getRuntimeConfig } from "../lib/config.js";
+import { getConversationStore } from "../lib/history.js";
 import { ensureProfileState } from "../lib/profile-state.js";
 
 function sendJson(res, statusCode, payload) {
@@ -43,10 +44,15 @@ export default async function handler(req, res) {
   }
 
   try {
+    const store = await getConversationStore(config);
     await ensureProfileState(config);
+    const cleanupResult = await store.cleanupOperationalData({
+      retentionDays: config.reliabilityRetentionDays,
+    });
 
     sendJson(res, 200, {
       ok: true,
+      cleanup: cleanupResult,
     });
   } catch (error) {
     sendJson(res, 500, {
