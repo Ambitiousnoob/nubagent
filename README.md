@@ -10,12 +10,13 @@ It is built for people who want direct access to stronger AI behavior from a sim
 
 This README is written as an operator guide. It is intentionally step by step, and it only documents behavior that matches the current code in this repository.
 
-<a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAmbitiousnoob%2Fnubagent&env=GEMINI_API_KEY,PAGE_ACCESS_TOKEN,VERIFY_TOKEN,POSTGRES_URL,GEMINI_CHAT_MODEL,GEMINI_CHAT_THINKING_LEVEL,OPTIONAL_INSTRUCTION&project-name=nubagent&repo-name=nubagent"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
+<a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAmbitiousnoob%2Fnubagent&env=GEMINI_API_KEY,PAGE_ACCESS_TOKEN,VERIFY_TOKEN,POSTGRES_URL,GEMINI_CHAT_MODEL,OPTIONAL_INSTRUCTION&project-name=nubagent&repo-name=nubagent"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
 
 ## Table of Contents
 
 - [Access Without Regular Paid Data](#access-without-regular-paid-data)
 - [Quick Visual Overview](#quick-visual-overview)
+- [Credits](#credits)
 - [What This Repo Actually Does](#what-this-repo-actually-does)
 - [What This Repo Does Not Do](#what-this-repo-does-not-do)
 - [Architecture](#architecture)
@@ -60,11 +61,16 @@ Check these official references before you rely on that access pattern:
 
 If you want a GitHub social preview image, use `assets/social-preview.png` from this repository in the repo settings.
 
+## Credits
+
+- Developer: `Ambitiousnoob`
+- Repository: `github.com/Ambitiousnoob/nubagent`
+
 ## What This Repo Actually Does
 
 - Serves a Messenger webhook from `api/webhook.js`
-- Calls Gemini through the REST `generateContent` endpoint
-- Supports in-chat control commands like `!help`, `!credits`, `!reset`, `!summary`, `!memory`, `!location`, `!forget`, and `!privacy`
+- Calls Gemini through the REST `generateContent` endpoint and uses direct reverse geocoding for exact-address lookups from saved coordinates
+- Supports in-chat control commands like `!help`, `!credits`, `!thinking`, `!reset`, `!summary`, `!memory`, `!location`, `!forget`, and `!privacy`
 - Command parsing is prefix-based, so control commands only trigger when the message starts with `!`
 - Automatically attaches every enabled Gemini tool that the selected model supports
 - Automatically enables web grounding on supported models
@@ -72,6 +78,7 @@ If you want a GitHub social preview image, use `assets/social-preview.png` from 
 - Automatically enables Gemini code execution on supported models
 - Automatically enables Grounding with Google Maps on supported models and prefers a Maps-capable configured model for Maps-related prompts
 - Saves per-user location from Messenger pins or `!location` capture links and uses the latest shared location for Google Maps grounded prompts such as `near me` or `where am I`
+- Resolves exact-address prompts from saved coordinates with reverse geocoding, then falls back to a Google Maps link when no precise address can be resolved
 - Supports Gemini context caching through implicit cache hits and optional explicit `cachedContent` resources
 - Can pass supported Messenger image attachments through to Gemini as visual input
 - For image-only messages, first inspects the image, replies with a short visual summary, and then waits for the user's next instruction
@@ -133,10 +140,11 @@ You need all of the following before this repo can work end to end:
 
 Optional controls:
 
-1. `GEMINI_CHAT_THINKING_LEVEL`, if you want to tune thinking on supported models
+1. `!thinking`, if you want per-user thinking control inside Messenger
 2. `OPTIONAL_INSTRUCTION`, if you want lower-priority project guidance added to each request
 3. `SYSTEM_PROMPT`, if you want to replace the bundled Messenger-focused system instruction
 4. Reliability and memory tuning env vars like `RELIABILITY_RETRY_LIMIT`, `RELIABILITY_RETRY_BASE_MS`, `MEMORY_MAX_ITEMS`, and `SUMMARY_MAX_CHARS`
+5. `GEMINI_CHAT_THINKING_LEVEL`, if you want an optional bot-wide default for chats that have not set `!thinking`
 
 ## Step 1. Clone The Repo And Install Dependencies
 
@@ -292,7 +300,6 @@ GEMINI_CHAT_MODEL=gemini-2.5-flash,gemini-2.5-pro
 PAGE_ACCESS_TOKEN=your_page_access_token
 VERIFY_TOKEN=your_webhook_verify_token
 POSTGRES_URL=postgresql://user:password@host:5432/database
-GEMINI_CHAT_THINKING_LEVEL=low
 OPTIONAL_INSTRUCTION=Prefer concise replies and include one concrete next step when useful.
 SYSTEM_PROMPT=You are NubAgent. Keep replies short, practical, and easy to read on mobile.
 ```
@@ -323,11 +330,13 @@ SYSTEM_PROMPT=You are NubAgent. Keep replies short, practical, and easy to read 
 | `GEMINI_CACHED_CONTENT` | empty | Optional explicit cached content resource. Use either one `cachedContents/...` value for a single configured model or comma-separated `model=cachedContents/...` mappings for multi-model setups. |
 | `GEMINI_GOOGLE_MAPS_LATITUDE` | empty | Optional default latitude used as Google Maps location context when a user has not shared a Messenger location pin. |
 | `GEMINI_GOOGLE_MAPS_LONGITUDE` | empty | Optional default longitude used as Google Maps location context when a user has not shared a Messenger location pin. |
-| `GEMINI_CHAT_THINKING_LEVEL` | `low` | Accepts `none`, `off`, `minimal`, `low`, `medium`, or `high` |
+| `GEMINI_CHAT_THINKING_LEVEL` | `low` | Optional bot-wide default for chats that have not set `!thinking`. Accepts `none`, `off`, `minimal`, `low`, `medium`, or `high` |
 | `OPTIONAL_INSTRUCTION` | empty | Lower-priority guidance injected below the bundled system instruction |
 | `SYSTEM_PROMPT` | bundled default | Replaces the built-in Messenger-focused system instruction |
 | `APP_BASE_URL` | empty | Optional canonical base URL used when `!location` generates a browser capture link. If empty, NubAgent uses the current webhook request origin. |
 | `LOCATION_CAPTURE_TTL_MINUTES` | `15` | Expiration window for one-time `!location` browser capture links. |
+| `GOOGLE_GEOCODING_API_KEY` | empty | Optional Google Geocoding API key used for exact-address reverse geocoding from saved coordinates. |
+| `GOOGLE_MAPS_API_KEY` | empty | Optional alias for `GOOGLE_GEOCODING_API_KEY`. If both are set, `GOOGLE_GEOCODING_API_KEY` wins. |
 
 Important details:
 
@@ -345,13 +354,15 @@ Important details:
 - Geo-specific prompts prefer the first configured model that supports Grounding with Google Maps
 - Supported Messenger image attachments are forwarded to Gemini automatically as long as they fit within the Gemini inline request size budget
 - Messenger location pins and `!location` browser captures are stored and reused as Google Maps grounding context
+- `!thinking` stores a per-user thinking preference that overrides the bot-wide default for that sender
+- Exact-address prompts use reverse geocoding instead of relying on Gemini Maps grounding; the runtime tries Google Geocoding first when a key is configured, otherwise it falls back to OpenStreetMap Nominatim and finally to a Google Maps link
 - When Google Maps grounding is used, Messenger replies append plain text Google Maps source links
 - `OPTIONAL_INSTRUCTION` is injected as a lower-priority user-context turn, so it does not outrank the bundled system instruction
 - The latest real user message is still sent after `OPTIONAL_INSTRUCTION`
 - `SYSTEM_PROMPT` replaces the bundled system instruction when you set it
 - Current repo history is stored as plain text only, so code execution is most reliable for single-turn reasoning in this bridge
 - `GEMINI_CHAT_THINKING_LEVEL=none` and `GEMINI_CHAT_THINKING_LEVEL=off` both disable the field
-- In the current code, `GEMINI_CHAT_THINKING_LEVEL` is only sent for Gemini 3+ model names
+- In the current code, the effective thinking level from `!thinking` or `GEMINI_CHAT_THINKING_LEVEL` is only sent for Gemini 3+ model names
 - If any required messaging env is missing, `POST /api/webhook` returns `500`
 - If `VERIFY_TOKEN` is missing, `GET /api/webhook` returns `500`
 - If `FACEBOOK_APP_SECRET` is set and the signature is invalid, `POST /api/webhook` returns `403`.
@@ -408,7 +419,7 @@ If that call fails:
 
 ### Option 1. One-Click Deploy
 
-<a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAmbitiousnoob%2Fnubagent&env=GEMINI_API_KEY,PAGE_ACCESS_TOKEN,VERIFY_TOKEN,POSTGRES_URL,GEMINI_CHAT_MODEL,GEMINI_CHAT_THINKING_LEVEL,OPTIONAL_INSTRUCTION&project-name=nubagent&repo-name=nubagent"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
+<a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAmbitiousnoob%2Fnubagent&env=GEMINI_API_KEY,PAGE_ACCESS_TOKEN,VERIFY_TOKEN,POSTGRES_URL,GEMINI_CHAT_MODEL,OPTIONAL_INSTRUCTION&project-name=nubagent&repo-name=nubagent"><img src="https://vercel.com/button" alt="Deploy with Vercel" /></a>
 
 ### Option 2. CLI Deploy
 
@@ -509,6 +520,9 @@ These details come directly from the current code.
 - Image-only messages are summarized into stored image context, then the bot sends that summary back to Messenger before waiting for the follow-up instruction
 - Prompts with URLs prefer a configured Gemini model that supports URL Context
 - Geo-specific prompts can use Grounding with Google Maps, and grounded replies include Google Maps source links
+- Exact-address prompts such as `What is my exact address?` use the saved coordinates and a reverse-geocode pass instead of Gemini-only inference
+- `!credits` returns the repository credits even if Messenger does not render the persistent menu item
+- `!thinking` reads and writes a per-user thinking preference that overrides the bot default for Gemini requests
 - Postback payloads are converted into `Postback payload: <payload>`
 - Non-image attachments still receive a plain text fallback
 
@@ -519,6 +533,7 @@ These details come directly from the current code.
 - Duplicate events are acknowledged without generating a second reply
 - Outbound model turns are only stored after the Messenger send succeeds
 - The table name is `messenger_messages`
+- Per-user thinking preferences are stored separately from chat memory so `!thinking` does not pollute the prompt context
 
 ### Prompt Window
 
@@ -612,6 +627,15 @@ Check all of the following:
 3. `GEMINI_ENABLE_GOOGLE_MAPS` is not disabled
 4. For `near me` style prompts, either the user has shared a Messenger location pin, opened a `!location` capture link, or `GEMINI_GOOGLE_MAPS_LATITUDE` and `GEMINI_GOOGLE_MAPS_LONGITUDE` are set as a fixed default location context
 
+### Exact Address Lookup Is Not Specific Enough
+
+Check all of the following:
+
+1. The user has already shared a Messenger location pin or completed a `!location` browser capture
+2. The prompt is asking for an address-style result such as `What is my exact address?`
+3. If you want Google geocoding first, set `GOOGLE_GEOCODING_API_KEY` or `GOOGLE_MAPS_API_KEY`
+4. If no provider can resolve a precise street address, the bot will fall back to coordinates plus a Google Maps link instead of guessing
+
 ### Context Caching Does Not Seem To Work
 
 Check all of the following:
@@ -623,7 +647,7 @@ Check all of the following:
 
 ### Menu Options Or Quick Actions Does Not Show "Built with nubagent"
 
-The repo now repairs Messenger profile state during normal webhook traffic and still supports `/api/maintenance` for explicit repair runs. If the button still does not appear, send a real message to the Page first so Messenger webhook traffic can trigger the background repair, then confirm the Page access token belongs to the same Page whose Messenger profile you expect to update.
+The repo now repairs Messenger profile state during normal webhook traffic and still supports `/api/maintenance` for explicit repair runs. If the button still does not appear, send a real message to the Page first so Messenger webhook traffic can trigger the background repair, then confirm the Page access token belongs to the same Page whose Messenger profile you expect to update. The in-chat fallback is `!credits`.
 
 ## Project Structure
 
@@ -640,6 +664,7 @@ lib/
   location-capture.js
   messenger.js
   profile-state.js
+  reverse-geocode.js
   vision.js
 src/
   App.jsx

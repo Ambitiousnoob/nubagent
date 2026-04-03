@@ -3,6 +3,7 @@ import { waitUntil } from "@vercel/functions";
 
 import { handleCommand, parseCommand } from "../lib/commands.js";
 import {
+  applyThinkingLevelPreference,
   getRuntimeConfig,
   hasMessagingConfig,
   hasVerificationConfig,
@@ -571,6 +572,7 @@ export function createWebhookHandler({
     let replyText = "";
     let totalRetryCount = 0;
     let currentStage = "received";
+    let effectiveGeminiConfig = config;
 
     try {
       store = await conversationStoreFactory(config);
@@ -705,6 +707,16 @@ export function createWebhookHandler({
           return;
         }
 
+        currentStage = "db:load_user_settings";
+        const userSettings =
+          typeof store.getUserSettings === "function"
+            ? await store.getUserSettings(senderId)
+            : null;
+        effectiveGeminiConfig = applyThinkingLevelPreference(
+          config,
+          userSettings?.thinkingLevel,
+        );
+
         currentStage = "db:save_inbound";
         const inboundResult = await store.saveInboundTurn({
           senderId,
@@ -794,7 +806,7 @@ export function createWebhookHandler({
           const imageSummaryResult = await generateReplyWithRetries({
             prompt: buildImageContextPrompt(inlineParts.length),
             history: [],
-            config,
+            config: effectiveGeminiConfig,
             inlineParts,
             geminiReply,
             logger,
@@ -1025,13 +1037,13 @@ export function createWebhookHandler({
           Number.isFinite(sharedLocation?.latitude) &&
           Number.isFinite(sharedLocation?.longitude)
             ? {
-                ...config,
+                ...effectiveGeminiConfig,
                 geminiGoogleMapsLocation: {
                   latitude: sharedLocation.latitude,
                   longitude: sharedLocation.longitude,
                 },
               }
-            : config;
+            : effectiveGeminiConfig;
         const contextualPrompt = buildPromptWithPersistentContext({
           prompt,
           imageContext,
