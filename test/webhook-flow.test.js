@@ -610,9 +610,16 @@ test("webhook appends a saved location map link for self-address prompts", async
       },
       async saveModelTurn() {},
     }),
+    reverseGeocodeLocationImpl: async () => {
+      return {
+        formattedAddress:
+          "Maharlika Highway, Barangay Balintawak, Lipa, Batangas, Philippines",
+        precise: true,
+      };
+    },
     geminiReply: async () => {
       geminiCalls += 1;
-      return "I cannot determine your exact address from the shared location.";
+      return "should not run";
     },
     sendAction: async () => {},
     sendTextMessageImpl: async (_senderId, text) => {
@@ -632,10 +639,82 @@ test("webhook appends a saved location map link for self-address prompts", async
     createResponse(),
   );
 
-  assert.equal(geminiCalls, 1);
+  assert.equal(geminiCalls, 0);
   assert.equal(sentMessages.length, 1);
   assert.match(
     sentMessages[0],
-    /Saved location map:\nhttps:\/\/www\.google\.com\/maps\/search\/\?api=1&query=14\.0866683%2C121\.1628163/,
+    /Nearest resolved address:\nMaharlika Highway, Barangay Balintawak, Lipa, Batangas, Philippines/,
+  );
+  assert.match(
+    sentMessages[0],
+    /Open in Google Maps:\nhttps:\/\/www\.google\.com\/maps\/search\/\?api=1&query=14\.0866683%2C121\.1628163/,
+  );
+});
+
+test("webhook falls back to a Google Maps link when reverse geocoding cannot resolve an address", async () => {
+  const sentMessages = [];
+  let geminiCalls = 0;
+  const handler = createWebhookHandler({
+    configLoader: buildConfig,
+    conversationStoreFactory: async () => ({
+      async beginEventProcessing() {
+        return { inserted: true, tracked: true };
+      },
+      async updateEventProcessing() {},
+      async saveInboundTurn() {
+        return { inserted: true, messageId: 1 };
+      },
+      async getConversationHistory() {
+        return [];
+      },
+      async getConversationSummary() {
+        return "";
+      },
+      async findRelevantMemory() {
+        return [];
+      },
+      async getLatestLocation() {
+        return {
+          latitude: 14.0866683,
+          longitude: 121.1628163,
+        };
+      },
+      async getLatestImageContext() {
+        return null;
+      },
+      async saveModelTurn() {},
+    }),
+    reverseGeocodeLocationImpl: async () => null,
+    geminiReply: async () => {
+      geminiCalls += 1;
+      return "should not run";
+    },
+    sendAction: async () => {},
+    sendTextMessageImpl: async (_senderId, text) => {
+      sentMessages.push(text);
+    },
+    profileRepair: () => null,
+    waitUntilImpl: () => {},
+    logger: {
+      info() {},
+      warn() {},
+      error() {},
+    },
+  });
+
+  await handler(
+    createRequest(createPayload("What is my exact address?")),
+    createResponse(),
+  );
+
+  assert.equal(geminiCalls, 0);
+  assert.equal(sentMessages.length, 1);
+  assert.match(
+    sentMessages[0],
+    /I could not resolve a specific address from your saved location right now/,
+  );
+  assert.match(
+    sentMessages[0],
+    /Open in Google Maps:\nhttps:\/\/www\.google\.com\/maps\/search\/\?api=1&query=14\.0866683%2C121\.1628163/,
   );
 });

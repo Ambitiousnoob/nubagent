@@ -25,6 +25,10 @@ import {
   resolveLocationCaptureBaseUrl,
 } from "../lib/location-capture.js";
 import { maybeRepairProfileState } from "../lib/profile-state.js";
+import {
+  buildReverseGeocodeReply,
+  reverseGeocodeLocation,
+} from "../lib/reverse-geocode.js";
 import { retryAsync, summarizeError } from "../lib/reliability.js";
 import {
   buildImageContextPrompt,
@@ -95,32 +99,6 @@ function buildDirectLocationReply(locationContext) {
   }
 
   return `The latest location pin you shared is:\nLatitude: ${locationContext.latitude}\nLongitude: ${locationContext.longitude}\n\nI will use this as your location for Google Maps grounded prompts like "cafes near me".`;
-}
-
-function buildSharedLocationMapLink(locationContext) {
-  if (!hasLocationContext(locationContext)) {
-    return "";
-  }
-
-  const query = encodeURIComponent(
-    `${locationContext.latitude},${locationContext.longitude}`,
-  );
-
-  return `https://www.google.com/maps/search/?api=1&query=${query}`;
-}
-
-function appendSharedLocationMapLink(replyText, locationContext) {
-  const mapLink = buildSharedLocationMapLink(locationContext);
-
-  if (!mapLink || typeof replyText !== "string" || !replyText.trim()) {
-    return replyText;
-  }
-
-  if (replyText.includes(mapLink)) {
-    return replyText;
-  }
-
-  return `${replyText.trim()}\n\nSaved location map:\n${mapLink}`;
 }
 
 async function buildLocationCaptureMessage({
@@ -556,6 +534,7 @@ export function createWebhookHandler({
   configLoader = getRuntimeConfig,
   conversationStoreFactory = getConversationStore,
   geminiReply = generateGeminiReply,
+  reverseGeocodeLocationImpl = reverseGeocodeLocation,
   sendAction = sendSenderAction,
   sendTextMessageImpl = sendTextMessage,
   profileRepair = maybeRepairProfileState,
@@ -989,6 +968,55 @@ export function createWebhookHandler({
           });
           return;
         }
+        if (isSelfAddressPrompt(prompt) && hasLocationContext(sharedLocation)) {
+          currentStage = "geocode:reverse";
+          const resolvedAddress = await reverseGeocodeLocationImpl({
+            location: sharedLocation,
+            config,
+          });
+          replyText = buildReverseGeocodeReply({
+            location: sharedLocation,
+            resolvedAddress,
+          });
+          replyGenerated = true;
+
+          currentStage = "messenger:send_text";
+          const sendResult = await sendTextWithRetries({
+            senderId,
+            text: replyText,
+            config,
+            sendTextMessageImpl,
+            logger,
+            retryStage: currentStage,
+          });
+          totalRetryCount += sendResult.retryCount;
+          replySent = true;
+
+          currentStage = "db:save_model";
+          await store.saveModelTurn({ senderId, text: replyText });
+          modelTurnSaved = true;
+          waitUntil(
+            refreshConversationSummary({
+              senderId,
+              store,
+              summaryMaxChars: config.summaryMaxChars,
+              logger,
+            }),
+          );
+
+          await store.updateEventProcessing({
+            senderId,
+            sourceEventId,
+            status: "completed",
+            stage: "completed",
+            inboundSaved,
+            replyGenerated,
+            replySent,
+            modelTurnSaved,
+            retryCount: totalRetryCount,
+          });
+          return;
+        }
         const imageContext =
           imageAttachments.length === 0
             ? await store.getLatestImageContext(senderId)
@@ -1029,9 +1057,6 @@ export function createWebhookHandler({
         });
         totalRetryCount += replyResult.retryCount;
         replyText = replyResult.value;
-        if (isSelfAddressPrompt(prompt) && hasLocationContext(sharedLocation)) {
-          replyText = appendSharedLocationMapLink(replyText, sharedLocation);
-        }
         replyGenerated = true;
 
         currentStage = "messenger:send_text";
