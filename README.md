@@ -64,7 +64,7 @@ If you want a GitHub social preview image, use `assets/social-preview.png` from 
 
 - Serves a Messenger webhook from `api/webhook.js`
 - Calls Gemini through the REST `generateContent` endpoint
-- Supports in-chat control commands like `!help`, `!reset`, `!summary`, `!memory`, `!location`, `!forget`, and `!privacy`
+- Supports in-chat control commands like `!help`, `!credits`, `!reset`, `!summary`, `!memory`, `!location`, `!forget`, and `!privacy`
 - Command parsing is prefix-based, so control commands only trigger when the message starts with `!`
 - Automatically attaches every enabled Gemini tool that the selected model supports
 - Automatically enables web grounding on supported models

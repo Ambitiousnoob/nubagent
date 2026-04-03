@@ -120,6 +120,7 @@ test("webhook handles commands without calling Gemini", async () => {
   assert.equal(geminiCalls, 0);
   assert.equal(sentMessages.length, 1);
   assert.match(sentMessages[0], /!help - show commands and capabilities/);
+  assert.match(sentMessages[0], /!credits - show project credits/);
   assert.equal(eventUpdates.at(-1)?.status, "completed");
   assert.equal(eventUpdates.at(-1)?.stage, "command");
 });

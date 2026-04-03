@@ -9,6 +9,11 @@ test("parseCommand recognizes bang commands and get started payload", () => {
     args: "",
     raw: "!summary",
   });
+  assert.deepEqual(parseCommand("!credits"), {
+    name: "credits",
+    args: "",
+    raw: "!credits",
+  });
   assert.equal(parseCommand("/summary"), null);
   assert.equal(parseCommand("summary"), null);
   assert.equal(parseCommand("help"), null);
@@ -63,6 +68,21 @@ test("handleCommand deletes all memory through !forget all", async () => {
   });
 
   assert.equal(result.reply, "Deleted 2 saved memories.");
+});
+
+test("handleCommand returns project credits through !credits", async () => {
+  const result = await handleCommand({
+    command: parseCommand("!credits"),
+    senderId: "user-credits",
+    store: {},
+  });
+
+  assert.match(result.reply, /^Credits:/);
+  assert.match(result.reply, /Built with nubagent/);
+  assert.match(
+    result.reply,
+    /https:\/\/github\.com\/ambitiousnoob\/nubagent/,
+  );
 });
 
 test("handleCommand returns a location capture link", async () => {
