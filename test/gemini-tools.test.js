@@ -76,3 +76,23 @@ test("self-location prompts attach google maps when a location context is config
 
   assert.deepEqual(body.tools, [{ googleMaps: {} }]);
 });
+
+test("address prompts add explicit reverse-geocode guidance", () => {
+  const body = buildRequestBody({
+    prompt: "What is my exact address right now?",
+    history: [],
+    config: buildConfig({
+      systemPrompt: "You are NubAgent.",
+    }),
+  });
+
+  assert.deepEqual(body.tools, [{ googleMaps: {} }]);
+  assert.match(
+    body.contents.at(-1)?.parts?.[0]?.text || "",
+    /Address lookup instruction:/,
+  );
+  assert.match(
+    body.systemInstruction?.parts?.[0]?.text || "",
+    /most precise nearby address or named place available/i,
+  );
+});

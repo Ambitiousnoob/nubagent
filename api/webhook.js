@@ -45,11 +45,20 @@ const UPSTREAM_FAILURE_REPLY =
 const TYPING_REFRESH_INTERVAL_MS = 5000;
 const SELF_LOCATION_PATTERN =
   /\b(?:what is my location|where am i|where i am|my location|current location)\b/i;
+const SELF_ADDRESS_PATTERN =
+  /\b(?:exact address|my address|current address|street address|postal address|mailing address|what(?:'s| is) my address|what(?:'s| is) my exact address|where exactly am i|what address am i (?:at|in)|which address am i (?:at|in))\b/i;
 
 function isDirectLocationPrompt(prompt) {
   return (
     typeof prompt === "string" &&
     SELF_LOCATION_PATTERN.test(prompt.trim())
+  );
+}
+
+function isSelfAddressPrompt(prompt) {
+  return (
+    typeof prompt === "string" &&
+    SELF_ADDRESS_PATTERN.test(prompt.trim())
   );
 }
 
@@ -86,6 +95,32 @@ function buildDirectLocationReply(locationContext) {
   }
 
   return `The latest location pin you shared is:\nLatitude: ${locationContext.latitude}\nLongitude: ${locationContext.longitude}\n\nI will use this as your location for Google Maps grounded prompts like "cafes near me".`;
+}
+
+function buildSharedLocationMapLink(locationContext) {
+  if (!hasLocationContext(locationContext)) {
+    return "";
+  }
+
+  const query = encodeURIComponent(
+    `${locationContext.latitude},${locationContext.longitude}`,
+  );
+
+  return `https://www.google.com/maps/search/?api=1&query=${query}`;
+}
+
+function appendSharedLocationMapLink(replyText, locationContext) {
+  const mapLink = buildSharedLocationMapLink(locationContext);
+
+  if (!mapLink || typeof replyText !== "string" || !replyText.trim()) {
+    return replyText;
+  }
+
+  if (replyText.includes(mapLink)) {
+    return replyText;
+  }
+
+  return `${replyText.trim()}\n\nSaved location map:\n${mapLink}`;
 }
 
 async function buildLocationCaptureMessage({
@@ -905,6 +940,55 @@ export function createWebhookHandler({
           });
           return;
         }
+        if (isSelfAddressPrompt(prompt) && !hasLocationContext(sharedLocation)) {
+          currentStage = "db:create_location_capture_token";
+          replyText = await buildLocationCaptureMessage({
+            senderId,
+            store,
+            config,
+            baseUrl: requestBaseUrl,
+            leadIn:
+              "I need your current location before I can look up the nearest address.",
+          });
+          replyGenerated = true;
+
+          currentStage = "messenger:send_text";
+          const sendResult = await sendTextWithRetries({
+            senderId,
+            text: replyText,
+            config,
+            sendTextMessageImpl,
+            logger,
+            retryStage: currentStage,
+          });
+          totalRetryCount += sendResult.retryCount;
+          replySent = true;
+
+          currentStage = "db:save_model";
+          await store.saveModelTurn({ senderId, text: replyText });
+          modelTurnSaved = true;
+          waitUntil(
+            refreshConversationSummary({
+              senderId,
+              store,
+              summaryMaxChars: config.summaryMaxChars,
+              logger,
+            }),
+          );
+
+          await store.updateEventProcessing({
+            senderId,
+            sourceEventId,
+            status: "completed",
+            stage: "completed",
+            inboundSaved,
+            replyGenerated,
+            replySent,
+            modelTurnSaved,
+            retryCount: totalRetryCount,
+          });
+          return;
+        }
         const imageContext =
           imageAttachments.length === 0
             ? await store.getLatestImageContext(senderId)
@@ -945,6 +1029,9 @@ export function createWebhookHandler({
         });
         totalRetryCount += replyResult.retryCount;
         replyText = replyResult.value;
+        if (isSelfAddressPrompt(prompt) && hasLocationContext(sharedLocation)) {
+          replyText = appendSharedLocationMapLink(replyText, sharedLocation);
+        }
         replyGenerated = true;
 
         currentStage = "messenger:send_text";

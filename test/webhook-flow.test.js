@@ -450,6 +450,72 @@ test("webhook explains when no saved location exists for a direct self-location 
   );
 });
 
+test("webhook sends a location capture link for self-address prompts when no saved location exists", async () => {
+  const sentMessages = [];
+  let geminiCalls = 0;
+  const handler = createWebhookHandler({
+    configLoader: buildConfig,
+    conversationStoreFactory: async () => ({
+      async beginEventProcessing() {
+        return { inserted: true, tracked: true };
+      },
+      async updateEventProcessing() {},
+      async saveInboundTurn() {
+        return { inserted: true, messageId: 1 };
+      },
+      async getConversationHistory() {
+        return [];
+      },
+      async getConversationSummary() {
+        return "";
+      },
+      async findRelevantMemory() {
+        return [];
+      },
+      async getLatestLocation() {
+        return null;
+      },
+      async createLocationCaptureToken() {
+        return {
+          token: "capture-token-789",
+        };
+      },
+      async saveModelTurn() {},
+    }),
+    geminiReply: async () => {
+      geminiCalls += 1;
+      return "should not run";
+    },
+    sendAction: async () => {},
+    sendTextMessageImpl: async (_senderId, text) => {
+      sentMessages.push(text);
+    },
+    profileRepair: () => null,
+    waitUntilImpl: () => {},
+    logger: {
+      info() {},
+      warn() {},
+      error() {},
+    },
+  });
+
+  await handler(
+    createRequest(createPayload("What is my exact address?")),
+    createResponse(),
+  );
+
+  assert.equal(geminiCalls, 0);
+  assert.equal(sentMessages.length, 1);
+  assert.match(
+    sentMessages[0],
+    /I need your current location before I can look up the nearest address/,
+  );
+  assert.match(
+    sentMessages[0],
+    /https:\/\/example\.test\/api\/location-capture\?token=capture-token-789/,
+  );
+});
+
 test("webhook uses the configured default location when no saved location exists", async () => {
   const sentMessages = [];
   let geminiCalls = 0;
@@ -509,4 +575,67 @@ test("webhook uses the configured default location when no saved location exists
   assert.equal(sentMessages.length, 1);
   assert.match(sentMessages[0], /configured default location context/);
   assert.match(sentMessages[0], /Latitude: 40.758/);
+});
+
+test("webhook appends a saved location map link for self-address prompts", async () => {
+  const sentMessages = [];
+  let geminiCalls = 0;
+  const handler = createWebhookHandler({
+    configLoader: buildConfig,
+    conversationStoreFactory: async () => ({
+      async beginEventProcessing() {
+        return { inserted: true, tracked: true };
+      },
+      async updateEventProcessing() {},
+      async saveInboundTurn() {
+        return { inserted: true, messageId: 1 };
+      },
+      async getConversationHistory() {
+        return [];
+      },
+      async getConversationSummary() {
+        return "";
+      },
+      async findRelevantMemory() {
+        return [];
+      },
+      async getLatestLocation() {
+        return {
+          latitude: 14.0866683,
+          longitude: 121.1628163,
+        };
+      },
+      async getLatestImageContext() {
+        return null;
+      },
+      async saveModelTurn() {},
+    }),
+    geminiReply: async () => {
+      geminiCalls += 1;
+      return "I cannot determine your exact address from the shared location.";
+    },
+    sendAction: async () => {},
+    sendTextMessageImpl: async (_senderId, text) => {
+      sentMessages.push(text);
+    },
+    profileRepair: () => null,
+    waitUntilImpl: () => {},
+    logger: {
+      info() {},
+      warn() {},
+      error() {},
+    },
+  });
+
+  await handler(
+    createRequest(createPayload("What is my exact address?")),
+    createResponse(),
+  );
+
+  assert.equal(geminiCalls, 1);
+  assert.equal(sentMessages.length, 1);
+  assert.match(
+    sentMessages[0],
+    /Saved location map:\nhttps:\/\/www\.google\.com\/maps\/search\/\?api=1&query=14\.0866683%2C121\.1628163/,
+  );
 });
