@@ -66,3 +66,13 @@ test("mixed geo and math prompts prefer google maps to avoid an invalid tool com
     false,
   );
 });
+
+test("self-location prompts attach google maps when a location context is configured", () => {
+  const body = buildRequestBody({
+    prompt: "What city am I in right now?",
+    history: [],
+    config: buildConfig(),
+  });
+
+  assert.deepEqual(body.tools, [{ googleMaps: {} }]);
+});

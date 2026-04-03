@@ -30,11 +30,16 @@ test("buildPromptWithPersistentContext places summary, memory, image context, an
       { content: "You prefer spicy food.", kind: "preference" },
       { content: "You live in Lagos.", kind: "fact" },
     ],
+    sharedLocation: {
+      latitude: 6.5244,
+      longitude: 3.3792,
+    },
     maxContextChars: 1200,
   });
 
   assert.match(prompt, /^Conversation summary:/);
   assert.match(prompt, /Remembered user details:/);
+  assert.match(prompt, /Latest shared location:/);
   assert.match(prompt, /Image context:/);
   assert.match(prompt, /User message:\nWhat should I cook tonight\?/);
 });

@@ -60,3 +60,22 @@ test("handleCommand deletes all memory through /forget all", async () => {
 
   assert.equal(result.reply, "Deleted 2 saved memories.");
 });
+
+test("handleCommand shows the saved location", async () => {
+  const result = await handleCommand({
+    command: parseCommand("/location"),
+    senderId: "user-3",
+    store: {
+      async getLatestLocation() {
+        return {
+          latitude: 6.5244,
+          longitude: 3.3792,
+        };
+      },
+    },
+  });
+
+  assert.match(result.reply, /Saved location:/);
+  assert.match(result.reply, /Latitude: 6.5244/);
+  assert.match(result.reply, /Longitude: 3.3792/);
+});

@@ -24,14 +24,17 @@ import { retryAsync, summarizeError } from "../lib/reliability.js";
 import {
   buildImageContextPrompt,
   buildImageReadyReply,
+  buildLocationReadyReply,
   buildStoredInboundText,
   buildVisionPrompt,
   extractImageAttachments,
+  extractLocationAttachment,
+  extractLocationCoordinates,
   loadInlineImageParts,
 } from "../lib/vision.js";
 
 const ATTACHMENT_FALLBACK =
-  "I can reply to text and supported image messages right now. Send text or a PNG, JPEG, WEBP, HEIC, or HEIF image.";
+  "I can reply to text, supported image messages, and Messenger location pins right now. Send text, a PNG/JPEG/WEBP/HEIC/HEIF image, or a location pin.";
 const UPSTREAM_FAILURE_REPLY =
   "I hit an upstream error while talking to Gemini. Please try again in a moment.";
 const TYPING_REFRESH_INTERVAL_MS = 5000;
@@ -150,13 +153,20 @@ export function extractSourceEventId(event) {
   return event?.message?.mid || event?.postback?.mid || null;
 }
 
-function extractEventType(event, imageAttachments) {
+function extractEventType(event, imageAttachments, sharedLocation) {
   if (event?.postback) {
     return "postback";
   }
 
   if (Array.isArray(imageAttachments) && imageAttachments.length > 0) {
     return "image_message";
+  }
+
+  if (
+    Number.isFinite(sharedLocation?.latitude) &&
+    Number.isFinite(sharedLocation?.longitude)
+  ) {
+    return "location_message";
   }
 
   return "message";
@@ -455,12 +465,20 @@ export function createWebhookHandler({
     }
 
     const imageAttachments = extractImageAttachments(event);
+    const locationAttachment = extractLocationAttachment(event);
+    const sharedLocationFromAttachment =
+      extractLocationCoordinates(locationAttachment);
     const rawPrompt = extractInboundPrompt(event);
     const prompt = buildVisionPrompt(rawPrompt, imageAttachments.length);
     const sourceEventId = extractSourceEventId(event);
     const command = parseCommand(rawPrompt);
-    const eventType = extractEventType(event, imageAttachments);
+    const eventType = extractEventType(
+      event,
+      imageAttachments,
+      sharedLocationFromAttachment,
+    );
     let store;
+    let sharedLocation = null;
     let typingEnabled = false;
     let inboundSaved = false;
     let modelTurnSaved = false;
@@ -494,6 +512,16 @@ export function createWebhookHandler({
         imageCount: imageAttachments.length,
       });
 
+      if (sharedLocationFromAttachment) {
+        currentStage = "db:save_location";
+        sharedLocation = await store.saveLatestLocation({
+          senderId,
+          latitude: sharedLocationFromAttachment.latitude,
+          longitude: sharedLocationFromAttachment.longitude,
+          sourceEventId,
+        });
+      }
+
       await sendActionSafely({
         senderId,
         action: "mark_seen",
@@ -503,7 +531,21 @@ export function createWebhookHandler({
       });
 
       if (!prompt && !command) {
-        if (event?.message?.attachments?.length) {
+        if (sharedLocation) {
+          replyText = buildLocationReadyReply(sharedLocation);
+          replyGenerated = true;
+          currentStage = "messenger:send_location_ready";
+          const sendResult = await sendTextWithRetries({
+            senderId,
+            text: replyText,
+            config,
+            sendTextMessageImpl,
+            logger,
+            retryStage: currentStage,
+          });
+          totalRetryCount += sendResult.retryCount;
+          replySent = true;
+        } else if (event?.message?.attachments?.length) {
           replyText = ATTACHMENT_FALLBACK;
           replyGenerated = true;
           currentStage = "messenger:send_attachment_fallback";
@@ -523,7 +565,7 @@ export function createWebhookHandler({
           senderId,
           sourceEventId,
           status: "completed",
-          stage: prompt ? "completed" : "ignored",
+          stage: replyGenerated ? currentStage : "ignored",
           replyGenerated,
           replySent,
           retryCount: totalRetryCount,
@@ -580,7 +622,11 @@ export function createWebhookHandler({
         currentStage = "db:save_inbound";
         const inboundResult = await store.saveInboundTurn({
           senderId,
-          text: buildStoredInboundText(rawPrompt, imageAttachments.length),
+          text: `${buildStoredInboundText(rawPrompt, imageAttachments.length)}${
+            sharedLocationFromAttachment
+              ? `\n\n[User shared location: ${sharedLocationFromAttachment.latitude}, ${sharedLocationFromAttachment.longitude}]`
+              : ""
+          }`.trim(),
           sourceEventId,
         });
 
@@ -730,15 +776,31 @@ export function createWebhookHandler({
         const memoryEntries = await store.findRelevantMemory(senderId, prompt, {
           limit: config.memoryMaxItems,
         });
+        if (!sharedLocation) {
+          currentStage = "db:load_location";
+          sharedLocation = await store.getLatestLocation(senderId);
+        }
         const imageContext =
           imageAttachments.length === 0
             ? await store.getLatestImageContext(senderId)
             : null;
+        const activeConfig =
+          Number.isFinite(sharedLocation?.latitude) &&
+          Number.isFinite(sharedLocation?.longitude)
+            ? {
+                ...config,
+                geminiGoogleMapsLocation: {
+                  latitude: sharedLocation.latitude,
+                  longitude: sharedLocation.longitude,
+                },
+              }
+            : config;
         const contextualPrompt = buildPromptWithPersistentContext({
           prompt,
           imageContext,
           conversationSummary,
           memoryEntries,
+          sharedLocation,
           maxContextChars: config.promptContextMaxChars,
           maxMemoryItems: config.memoryMaxItems,
           maxMemoryChars: config.memoryMaxChars,
@@ -748,7 +810,7 @@ export function createWebhookHandler({
         const replyResult = await generateReplyWithRetries({
           prompt: contextualPrompt,
           history,
-          config,
+          config: activeConfig,
           inlineParts,
           geminiReply,
           logger,

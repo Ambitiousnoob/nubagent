@@ -57,7 +57,7 @@ function createResponse() {
   };
 }
 
-function createPayload(message) {
+function createPayload(message, attachments = []) {
   return {
     object: "page",
     entry: [
@@ -68,6 +68,7 @@ function createPayload(message) {
             message: {
               mid: "mid.1",
               text: message,
+              attachments,
             },
           },
         ],
@@ -178,6 +179,9 @@ test("webhook does not send a second fallback when model turn persistence fails 
       async findRelevantMemory() {
         return [];
       },
+      async getLatestLocation() {
+        return null;
+      },
       async getLatestImageContext() {
         return null;
       },
@@ -209,4 +213,66 @@ test("webhook does not send a second fallback when model turn persistence fails 
   assert.equal(eventUpdates.at(-1)?.status, "failed");
   assert.equal(eventUpdates.at(-1)?.replySent, true);
   assert.equal(eventUpdates.at(-1)?.modelTurnSaved, false);
+});
+
+test("webhook saves location attachments and replies with location readiness text", async () => {
+  const sentMessages = [];
+  const savedLocations = [];
+  const handler = createWebhookHandler({
+    configLoader: buildConfig,
+    conversationStoreFactory: async () => ({
+      async beginEventProcessing() {
+        return { inserted: true, tracked: true };
+      },
+      async updateEventProcessing() {},
+      async saveLatestLocation(location) {
+        savedLocations.push(location);
+        return {
+          latitude: location.latitude,
+          longitude: location.longitude,
+        };
+      },
+    }),
+    geminiReply: async () => "should not run",
+    sendAction: async () => {},
+    sendTextMessageImpl: async (_senderId, text) => {
+      sentMessages.push(text);
+    },
+    profileRepair: () => null,
+    waitUntilImpl: () => {},
+    logger: {
+      info() {},
+      warn() {},
+      error() {},
+    },
+  });
+
+  await handler(
+    createRequest(
+      createPayload("", [
+        {
+          type: "location",
+          payload: {
+            coordinates: {
+              lat: 6.5244,
+              long: 3.3792,
+            },
+          },
+        },
+      ]),
+    ),
+    createResponse(),
+  );
+
+  assert.deepEqual(savedLocations, [
+    {
+      senderId: "user-123",
+      latitude: 6.5244,
+      longitude: 3.3792,
+      sourceEventId: "mid.1",
+    },
+  ]);
+  assert.equal(sentMessages.length, 1);
+  assert.match(sentMessages[0], /I saved your location/);
+  assert.match(sentMessages[0], /Latitude: 6.5244/);
 });

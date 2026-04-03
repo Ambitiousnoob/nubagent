@@ -70,6 +70,7 @@ If you want a GitHub social preview image, use `assets/social-preview.png` from 
 - Automatically enables Gemini URL Context on supported models and prefers a URL-capable configured model when the prompt includes URLs
 - Automatically enables Gemini code execution on supported models
 - Automatically enables Grounding with Google Maps on supported models and prefers a Maps-capable configured model for Maps-related prompts
+- Saves Messenger location pins per user and uses the latest shared location for Google Maps grounded prompts such as `near me` or `where am I`
 - Supports Gemini context caching through implicit cache hits and optional explicit `cachedContent` resources
 - Can pass supported Messenger image attachments through to Gemini as visual input
 - For image-only messages, first inspects the image, replies with a short visual summary, and then waits for the user's next instruction
@@ -82,7 +83,7 @@ If you want a GitHub social preview image, use `assets/social-preview.png` from 
 
 ## What This Repo Does Not Do
 
-- It does not process audio, video, file, or other non-image attachments as model input
+- It does not process audio, video, file, or other non-image and non-location attachments as model input
 - It does not provide an admin dashboard
 - It does not ship database migrations; it creates its tables automatically on first use
 - It does not persist any state outside Postgres
@@ -314,8 +315,8 @@ SYSTEM_PROMPT=You are NubAgent. Keep replies short, practical, and easy to read 
 | `GEMINI_ENABLE_GOOGLE_MAPS` | `true` | Enable or disable Grounding with Google Maps for geo-specific prompts. |
 | `GEMINI_ENABLE_URL_CONTEXT` | `true` | Enable or disable URL context. |
 | `GEMINI_CACHED_CONTENT` | empty | Optional explicit cached content resource. Use either one `cachedContents/...` value for a single configured model or comma-separated `model=cachedContents/...` mappings for multi-model setups. |
-| `GEMINI_GOOGLE_MAPS_LATITUDE` | empty | Optional latitude used as location context for Google Maps grounded prompts such as `near me`. |
-| `GEMINI_GOOGLE_MAPS_LONGITUDE` | empty | Optional longitude used as location context for Google Maps grounded prompts such as `near me`. |
+| `GEMINI_GOOGLE_MAPS_LATITUDE` | empty | Optional default latitude used as Google Maps location context when a user has not shared a Messenger location pin. |
+| `GEMINI_GOOGLE_MAPS_LONGITUDE` | empty | Optional default longitude used as Google Maps location context when a user has not shared a Messenger location pin. |
 | `GEMINI_CHAT_THINKING_LEVEL` | `low` | Accepts `none`, `off`, `minimal`, `low`, `medium`, or `high` |
 | `OPTIONAL_INSTRUCTION` | empty | Lower-priority guidance injected below the bundled system instruction |
 | `SYSTEM_PROMPT` | bundled default | Replaces the built-in Messenger-focused system instruction |
@@ -334,7 +335,8 @@ Important details:
 - Gemini 1.5 grounding uses the legacy retrieval tool shape automatically; newer supported models use `google_search`
 - URL Context only helps when the user's prompt includes one or more URLs, and the runtime prefers the first configured model that supports it
 - Geo-specific prompts prefer the first configured model that supports Grounding with Google Maps
-- Supported Messenger image attachments are forwarded to Gemini automatically as long as they fit within the Gemini inline request size budget; non-image attachments are not
+- Supported Messenger image attachments are forwarded to Gemini automatically as long as they fit within the Gemini inline request size budget
+- Messenger location pins are stored and reused as Google Maps grounding context
 - When Google Maps grounding is used, Messenger replies append plain text Google Maps source links
 - `OPTIONAL_INSTRUCTION` is injected as a lower-priority user-context turn, so it does not outrank the bundled system instruction
 - The latest real user message is still sent after `OPTIONAL_INSTRUCTION`
@@ -600,7 +602,7 @@ Check all of the following:
 1. The prompt is clearly geo-specific, such as asking for places, routes, or nearby recommendations
 2. Your configured model list includes Gemini 2.5 Pro, Gemini 2.5 Flash, Gemini 2.5 Flash-Lite, or Gemini 2.0 Flash
 3. `GEMINI_ENABLE_GOOGLE_MAPS` is not disabled
-4. For `near me` style prompts, `GEMINI_GOOGLE_MAPS_LATITUDE` and `GEMINI_GOOGLE_MAPS_LONGITUDE` are set when you want a fixed default location context
+4. For `near me` style prompts, either the user has shared a Messenger location pin or `GEMINI_GOOGLE_MAPS_LATITUDE` and `GEMINI_GOOGLE_MAPS_LONGITUDE` are set as a fixed default location context
 
 ### Context Caching Does Not Seem To Work
 
