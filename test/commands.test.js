@@ -10,6 +10,9 @@ test("parseCommand recognizes bang commands and get started payload", () => {
     raw: "!summary",
   });
   assert.equal(parseCommand("/summary"), null);
+  assert.equal(parseCommand("summary"), null);
+  assert.equal(parseCommand("help"), null);
+  assert.equal(parseCommand("location"), null);
 
   assert.deepEqual(parseCommand("Postback payload: NUBAGENT_GET_STARTED"), {
     name: "help",
