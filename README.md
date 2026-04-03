@@ -248,6 +248,11 @@ Example:
 POSTGRES_URL=postgresql://user:password@host:5432/database
 ```
 
+SSL note:
+
+- If your provider includes `sslmode=require`, NubAgent now normalizes it to `sslmode=verify-full` before `pg` parses the URL so current secure behavior is preserved without the deprecation warning.
+- If you explicitly want libpq-compatible `sslmode=require` semantics, add `uselibpqcompat=true` to the connection string yourself.
+
 What the repo does automatically:
 
 - Creates the `messenger_messages` table on first use if it does not exist
