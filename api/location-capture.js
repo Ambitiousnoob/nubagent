@@ -66,7 +66,7 @@ function renderCapturePage({ token, status, introOverride = "", followUpOverride
     followUpOverride ||
     (isReady
       ? "If the prompt does not appear, tap the button below."
-      : "Go back to Messenger and send /location to get a fresh link.");
+      : "Go back to Messenger and send !location to get a fresh link.");
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -308,7 +308,7 @@ function renderCapturePage({ token, status, introOverride = "", followUpOverride
               shareButton.disabled = false;
               shareButton.textContent = "Try again";
               setStatus(error.message || "Could not save your location.", "error");
-              setDetails("If the link expired, go back to Messenger and send /location again.");
+              setDetails("If the link expired, go back to Messenger and send !location again.");
             }
           },
           (error) => {

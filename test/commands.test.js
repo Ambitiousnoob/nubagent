@@ -3,12 +3,13 @@ import assert from "node:assert/strict";
 
 import { handleCommand, parseCommand } from "../lib/commands.js";
 
-test("parseCommand recognizes slash commands and get started payload", () => {
-  assert.deepEqual(parseCommand("/summary"), {
+test("parseCommand recognizes bang commands and get started payload", () => {
+  assert.deepEqual(parseCommand("!summary"), {
     name: "summary",
     args: "",
-    raw: "/summary",
+    raw: "!summary",
   });
+  assert.equal(parseCommand("/summary"), null);
 
   assert.deepEqual(parseCommand("Postback payload: NUBAGENT_GET_STARTED"), {
     name: "help",
@@ -17,10 +18,10 @@ test("parseCommand recognizes slash commands and get started payload", () => {
   });
 });
 
-test("handleCommand saves explicit memory through /memory add", async () => {
+test("handleCommand saves explicit memory through !memory add", async () => {
   const saved = [];
   const result = await handleCommand({
-    command: parseCommand("/memory add I prefer concise replies"),
+    command: parseCommand("!memory add I prefer concise replies"),
     senderId: "user-1",
     store: {
       async saveMemory(memory) {
@@ -44,9 +45,9 @@ test("handleCommand saves explicit memory through /memory add", async () => {
   ]);
 });
 
-test("handleCommand deletes all memory through /forget all", async () => {
+test("handleCommand deletes all memory through !forget all", async () => {
   const result = await handleCommand({
-    command: parseCommand("/forget all"),
+    command: parseCommand("!forget all"),
     senderId: "user-2",
     store: {
       async deleteMemory() {
@@ -63,7 +64,7 @@ test("handleCommand deletes all memory through /forget all", async () => {
 
 test("handleCommand returns a location capture link", async () => {
   const result = await handleCommand({
-    command: parseCommand("/location"),
+    command: parseCommand("!location"),
     senderId: "user-3",
     store: {
       async createLocationCaptureToken() {
@@ -88,7 +89,7 @@ test("handleCommand returns a location capture link", async () => {
 
 test("handleCommand shows the saved location when requested explicitly", async () => {
   const result = await handleCommand({
-    command: parseCommand("/location show"),
+    command: parseCommand("!location show"),
     senderId: "user-3",
     store: {
       async getLatestLocation() {

@@ -82,7 +82,7 @@ function resolveLocationContext(sharedLocation, config) {
 
 function buildDirectLocationReply(locationContext) {
   if (locationContext?.kind === "default") {
-    return `I do not have a saved location from you yet, so I am using the configured default location context:\nLatitude: ${locationContext.latitude}\nLongitude: ${locationContext.longitude}\n\nShare a Messenger location pin or use /location any time if you want me to use your exact location instead.`;
+    return `I do not have a saved location from you yet, so I am using the configured default location context:\nLatitude: ${locationContext.latitude}\nLongitude: ${locationContext.longitude}\n\nShare a Messenger location pin or use !location any time if you want me to use your exact location instead.`;
   }
 
   return `The latest location pin you shared is:\nLatitude: ${locationContext.latitude}\nLongitude: ${locationContext.longitude}\n\nI will use this as your location for Google Maps grounded prompts like "cafes near me".`;

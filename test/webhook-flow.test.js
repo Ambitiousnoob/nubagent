@@ -110,7 +110,7 @@ test("webhook handles commands without calling Gemini", async () => {
       error() {},
     },
   });
-  const req = createRequest(createPayload("/help"));
+  const req = createRequest(createPayload("!help"));
   const res = createResponse();
 
   await handler(req, res);
@@ -119,12 +119,12 @@ test("webhook handles commands without calling Gemini", async () => {
   assert.equal(res.body, "EVENT_RECEIVED");
   assert.equal(geminiCalls, 0);
   assert.equal(sentMessages.length, 1);
-  assert.match(sentMessages[0], /\/help - show commands and capabilities/);
+  assert.match(sentMessages[0], /!help - show commands and capabilities/);
   assert.equal(eventUpdates.at(-1)?.status, "completed");
   assert.equal(eventUpdates.at(-1)?.stage, "command");
 });
 
-test("webhook returns a location capture link for /location", async () => {
+test("webhook returns a location capture link for !location", async () => {
   const sentMessages = [];
   let geminiCalls = 0;
   const handler = createWebhookHandler({
@@ -159,7 +159,7 @@ test("webhook returns a location capture link for /location", async () => {
     },
   });
 
-  await handler(createRequest(createPayload("/location")), createResponse());
+  await handler(createRequest(createPayload("!location")), createResponse());
 
   assert.equal(geminiCalls, 0);
   assert.equal(sentMessages.length, 1);
