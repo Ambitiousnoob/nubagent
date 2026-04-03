@@ -38,6 +38,23 @@ const ATTACHMENT_FALLBACK =
 const UPSTREAM_FAILURE_REPLY =
   "I hit an upstream error while talking to Gemini. Please try again in a moment.";
 const TYPING_REFRESH_INTERVAL_MS = 5000;
+const SELF_LOCATION_PATTERN =
+  /\b(?:what is my location|where am i|where i am|my location|current location)\b/i;
+
+function isDirectLocationPrompt(prompt) {
+  return (
+    typeof prompt === "string" &&
+    SELF_LOCATION_PATTERN.test(prompt.trim())
+  );
+}
+
+function buildDirectLocationReply(sharedLocation) {
+  return `The latest location pin you shared is:\nLatitude: ${sharedLocation.latitude}\nLongitude: ${sharedLocation.longitude}\n\nI will use this as your location for Google Maps grounded prompts like "cafes near me".`;
+}
+
+function buildMissingLocationReply() {
+  return "I do not have a saved location for you yet. Send a Messenger location pin first, then I can use it for Google Maps grounded prompts.";
+}
 
 function isGeminiStage(stage) {
   return typeof stage === "string" && stage.startsWith("gemini");
@@ -779,6 +796,51 @@ export function createWebhookHandler({
         if (!sharedLocation) {
           currentStage = "db:load_location";
           sharedLocation = await store.getLatestLocation(senderId);
+        }
+        if (isDirectLocationPrompt(prompt)) {
+          replyText =
+            Number.isFinite(sharedLocation?.latitude) &&
+            Number.isFinite(sharedLocation?.longitude)
+              ? buildDirectLocationReply(sharedLocation)
+              : buildMissingLocationReply();
+          replyGenerated = true;
+
+          currentStage = "messenger:send_text";
+          const sendResult = await sendTextWithRetries({
+            senderId,
+            text: replyText,
+            config,
+            sendTextMessageImpl,
+            logger,
+            retryStage: currentStage,
+          });
+          totalRetryCount += sendResult.retryCount;
+          replySent = true;
+
+          currentStage = "db:save_model";
+          await store.saveModelTurn({ senderId, text: replyText });
+          modelTurnSaved = true;
+          waitUntil(
+            refreshConversationSummary({
+              senderId,
+              store,
+              summaryMaxChars: config.summaryMaxChars,
+              logger,
+            }),
+          );
+
+          await store.updateEventProcessing({
+            senderId,
+            sourceEventId,
+            status: "completed",
+            stage: "completed",
+            inboundSaved,
+            replyGenerated,
+            replySent,
+            modelTurnSaved,
+            retryCount: totalRetryCount,
+          });
+          return;
         }
         const imageContext =
           imageAttachments.length === 0

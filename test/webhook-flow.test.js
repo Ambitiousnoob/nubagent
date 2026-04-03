@@ -276,3 +276,115 @@ test("webhook saves location attachments and replies with location readiness tex
   assert.match(sentMessages[0], /I saved your location/);
   assert.match(sentMessages[0], /Latitude: 6.5244/);
 });
+
+test("webhook answers direct self-location prompts locally when a location is saved", async () => {
+  const sentMessages = [];
+  let geminiCalls = 0;
+  const handler = createWebhookHandler({
+    configLoader: buildConfig,
+    conversationStoreFactory: async () => ({
+      async beginEventProcessing() {
+        return { inserted: true, tracked: true };
+      },
+      async updateEventProcessing() {},
+      async saveInboundTurn() {
+        return { inserted: true, messageId: 1 };
+      },
+      async getConversationHistory() {
+        return [];
+      },
+      async getConversationSummary() {
+        return "";
+      },
+      async findRelevantMemory() {
+        return [];
+      },
+      async getLatestLocation() {
+        return {
+          latitude: 6.5244,
+          longitude: 3.3792,
+        };
+      },
+      async saveModelTurn() {},
+    }),
+    geminiReply: async () => {
+      geminiCalls += 1;
+      return "should not run";
+    },
+    sendAction: async () => {},
+    sendTextMessageImpl: async (_senderId, text) => {
+      sentMessages.push(text);
+    },
+    profileRepair: () => null,
+    waitUntilImpl: () => {},
+    logger: {
+      info() {},
+      warn() {},
+      error() {},
+    },
+  });
+
+  await handler(
+    createRequest(createPayload("What is my location?")),
+    createResponse(),
+  );
+
+  assert.equal(geminiCalls, 0);
+  assert.equal(sentMessages.length, 1);
+  assert.match(sentMessages[0], /The latest location pin you shared is:/);
+  assert.match(sentMessages[0], /Latitude: 6.5244/);
+});
+
+test("webhook explains when no saved location exists for a direct self-location prompt", async () => {
+  const sentMessages = [];
+  let geminiCalls = 0;
+  const handler = createWebhookHandler({
+    configLoader: buildConfig,
+    conversationStoreFactory: async () => ({
+      async beginEventProcessing() {
+        return { inserted: true, tracked: true };
+      },
+      async updateEventProcessing() {},
+      async saveInboundTurn() {
+        return { inserted: true, messageId: 1 };
+      },
+      async getConversationHistory() {
+        return [];
+      },
+      async getConversationSummary() {
+        return "";
+      },
+      async findRelevantMemory() {
+        return [];
+      },
+      async getLatestLocation() {
+        return null;
+      },
+      async saveModelTurn() {},
+    }),
+    geminiReply: async () => {
+      geminiCalls += 1;
+      return "should not run";
+    },
+    sendAction: async () => {},
+    sendTextMessageImpl: async (_senderId, text) => {
+      sentMessages.push(text);
+    },
+    profileRepair: () => null,
+    waitUntilImpl: () => {},
+    logger: {
+      info() {},
+      warn() {},
+      error() {},
+    },
+  });
+
+  await handler(
+    createRequest(createPayload("What is my location?")),
+    createResponse(),
+  );
+
+  assert.equal(geminiCalls, 0);
+  assert.equal(sentMessages.length, 1);
+  assert.match(sentMessages[0], /I do not have a saved location for you yet/);
+});
