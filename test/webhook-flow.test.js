@@ -25,11 +25,13 @@ function buildConfig(overrides = {}) {
     reliabilityRetryLimit: 0,
     reliabilityRetryBaseMs: 1,
     reliabilityRetentionDays: 14,
+    locationCaptureTtlMinutes: 15,
     healthLookbackHours: 24,
     memoryMaxItems: 6,
     memoryMaxChars: 700,
     summaryMaxChars: 600,
     promptContextMaxChars: 1400,
+    appBaseUrl: "",
     ...overrides,
   };
 }
@@ -120,6 +122,52 @@ test("webhook handles commands without calling Gemini", async () => {
   assert.match(sentMessages[0], /\/help - show commands and capabilities/);
   assert.equal(eventUpdates.at(-1)?.status, "completed");
   assert.equal(eventUpdates.at(-1)?.stage, "command");
+});
+
+test("webhook returns a location capture link for /location", async () => {
+  const sentMessages = [];
+  let geminiCalls = 0;
+  const handler = createWebhookHandler({
+    configLoader: buildConfig,
+    conversationStoreFactory: async () => ({
+      async beginEventProcessing() {
+        return { inserted: true, tracked: true };
+      },
+      async updateEventProcessing() {},
+      async createLocationCaptureToken(senderId, options) {
+        assert.equal(senderId, "user-123");
+        assert.equal(options.ttlMinutes, 15);
+        return {
+          token: "capture-token-123",
+        };
+      },
+    }),
+    geminiReply: async () => {
+      geminiCalls += 1;
+      return "should not run";
+    },
+    sendAction: async () => {},
+    sendTextMessageImpl: async (_senderId, text) => {
+      sentMessages.push(text);
+    },
+    profileRepair: () => null,
+    waitUntilImpl: () => {},
+    logger: {
+      info() {},
+      warn() {},
+      error() {},
+    },
+  });
+
+  await handler(createRequest(createPayload("/location")), createResponse());
+
+  assert.equal(geminiCalls, 0);
+  assert.equal(sentMessages.length, 1);
+  assert.match(sentMessages[0], /Open this secure link and allow location access/);
+  assert.match(
+    sentMessages[0],
+    /https:\/\/example\.test\/api\/location-capture\?token=capture-token-123/,
+  );
 });
 
 test("webhook skips duplicate tracked events", async () => {
@@ -337,7 +385,7 @@ test("webhook answers direct self-location prompts locally when a location is sa
 });
 
 test("webhook explains when no saved location exists for a direct self-location prompt", async () => {
-  const locationRequests = [];
+  const sentMessages = [];
   let geminiCalls = 0;
   const handler = createWebhookHandler({
     configLoader: buildConfig,
@@ -361,6 +409,11 @@ test("webhook explains when no saved location exists for a direct self-location 
       async getLatestLocation() {
         return null;
       },
+      async createLocationCaptureToken() {
+        return {
+          token: "capture-token-456",
+        };
+      },
       async saveModelTurn() {},
     }),
     geminiReply: async () => {
@@ -368,8 +421,8 @@ test("webhook explains when no saved location exists for a direct self-location 
       return "should not run";
     },
     sendAction: async () => {},
-    sendLocationRequestImpl: async (_senderId, text) => {
-      locationRequests.push(text);
+    sendTextMessageImpl: async (_senderId, text) => {
+      sentMessages.push(text);
     },
     profileRepair: () => null,
     waitUntilImpl: () => {},
@@ -386,10 +439,14 @@ test("webhook explains when no saved location exists for a direct self-location 
   );
 
   assert.equal(geminiCalls, 0);
-  assert.equal(locationRequests.length, 1);
+  assert.equal(sentMessages.length, 1);
   assert.match(
-    locationRequests[0],
-    /Tap the Messenger location button below/,
+    sentMessages[0],
+    /I do not have a saved location yet/,
+  );
+  assert.match(
+    sentMessages[0],
+    /https:\/\/example\.test\/api\/location-capture\?token=capture-token-456/,
   );
 });
 

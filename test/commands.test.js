@@ -61,9 +61,34 @@ test("handleCommand deletes all memory through /forget all", async () => {
   assert.equal(result.reply, "Deleted 2 saved memories.");
 });
 
-test("handleCommand shows the saved location", async () => {
+test("handleCommand returns a location capture link", async () => {
   const result = await handleCommand({
     command: parseCommand("/location"),
+    senderId: "user-3",
+    store: {
+      async createLocationCaptureToken() {
+        return {
+          token: "capture-token-123",
+        };
+      },
+    },
+    config: {
+      locationCaptureTtlMinutes: 15,
+    },
+    baseUrl: "https://example.test",
+  });
+
+  assert.match(result.reply, /Open this secure link and allow location access/);
+  assert.match(
+    result.reply,
+    /https:\/\/example\.test\/api\/location-capture\?token=capture-token-123/,
+  );
+  assert.match(result.reply, /The link expires in 15 minutes/);
+});
+
+test("handleCommand shows the saved location when requested explicitly", async () => {
+  const result = await handleCommand({
+    command: parseCommand("/location show"),
     senderId: "user-3",
     store: {
       async getLatestLocation() {

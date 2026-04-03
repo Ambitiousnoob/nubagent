@@ -64,13 +64,13 @@ If you want a GitHub social preview image, use `assets/social-preview.png` from 
 
 - Serves a Messenger webhook from `api/webhook.js`
 - Calls Gemini through the REST `generateContent` endpoint
-- Supports in-chat control commands like `/help`, `/reset`, `/summary`, `/memory`, `/forget`, and `/privacy`
+- Supports in-chat control commands like `/help`, `/reset`, `/summary`, `/memory`, `/location`, `/forget`, and `/privacy`
 - Automatically attaches every enabled Gemini tool that the selected model supports
 - Automatically enables web grounding on supported models
 - Automatically enables Gemini URL Context on supported models and prefers a URL-capable configured model when the prompt includes URLs
 - Automatically enables Gemini code execution on supported models
 - Automatically enables Grounding with Google Maps on supported models and prefers a Maps-capable configured model for Maps-related prompts
-- Saves Messenger location pins per user and uses the latest shared location for Google Maps grounded prompts such as `near me` or `where am I`
+- Saves per-user location from Messenger pins or `/location` capture links and uses the latest shared location for Google Maps grounded prompts such as `near me` or `where am I`
 - Supports Gemini context caching through implicit cache hits and optional explicit `cachedContent` resources
 - Can pass supported Messenger image attachments through to Gemini as visual input
 - For image-only messages, first inspects the image, replies with a short visual summary, and then waits for the user's next instruction
@@ -320,6 +320,8 @@ SYSTEM_PROMPT=You are NubAgent. Keep replies short, practical, and easy to read 
 | `GEMINI_CHAT_THINKING_LEVEL` | `low` | Accepts `none`, `off`, `minimal`, `low`, `medium`, or `high` |
 | `OPTIONAL_INSTRUCTION` | empty | Lower-priority guidance injected below the bundled system instruction |
 | `SYSTEM_PROMPT` | bundled default | Replaces the built-in Messenger-focused system instruction |
+| `APP_BASE_URL` | empty | Optional canonical base URL used when `/location` generates a browser capture link. If empty, NubAgent uses the current webhook request origin. |
+| `LOCATION_CAPTURE_TTL_MINUTES` | `15` | Expiration window for one-time `/location` browser capture links. |
 
 Important details:
 
@@ -336,7 +338,7 @@ Important details:
 - URL Context only helps when the user's prompt includes one or more URLs, and the runtime prefers the first configured model that supports it
 - Geo-specific prompts prefer the first configured model that supports Grounding with Google Maps
 - Supported Messenger image attachments are forwarded to Gemini automatically as long as they fit within the Gemini inline request size budget
-- Messenger location pins are stored and reused as Google Maps grounding context
+- Messenger location pins and `/location` browser captures are stored and reused as Google Maps grounding context
 - When Google Maps grounding is used, Messenger replies append plain text Google Maps source links
 - `OPTIONAL_INSTRUCTION` is injected as a lower-priority user-context turn, so it does not outrank the bundled system instruction
 - The latest real user message is still sent after `OPTIONAL_INSTRUCTION`
@@ -602,7 +604,7 @@ Check all of the following:
 1. The prompt is clearly geo-specific, such as asking for places, routes, or nearby recommendations
 2. Your configured model list includes Gemini 2.5 Pro, Gemini 2.5 Flash, Gemini 2.5 Flash-Lite, or Gemini 2.0 Flash
 3. `GEMINI_ENABLE_GOOGLE_MAPS` is not disabled
-4. For `near me` style prompts, either the user has shared a Messenger location pin or `GEMINI_GOOGLE_MAPS_LATITUDE` and `GEMINI_GOOGLE_MAPS_LONGITUDE` are set as a fixed default location context
+4. For `near me` style prompts, either the user has shared a Messenger location pin, opened a `/location` capture link, or `GEMINI_GOOGLE_MAPS_LATITUDE` and `GEMINI_GOOGLE_MAPS_LONGITUDE` are set as a fixed default location context
 
 ### Context Caching Does Not Seem To Work
 
@@ -621,6 +623,7 @@ The repo now repairs Messenger profile state during normal webhook traffic and s
 
 ```text
 api/
+  location-capture.js
   maintenance.js
   webhook.js
 lib/
@@ -628,6 +631,7 @@ lib/
   duckduckgo.js
   gemini.js
   history.js
+  location-capture.js
   messenger.js
   profile-state.js
   vision.js

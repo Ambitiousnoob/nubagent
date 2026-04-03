@@ -16,10 +16,14 @@ import { generateGeminiReply, isRetryableGeminiError } from "../lib/gemini.js";
 import { getConversationStore } from "../lib/history.js";
 import {
   isRetryableMessengerError,
-  sendLocationQuickReply,
   sendSenderAction,
   sendTextMessage,
 } from "../lib/messenger.js";
+import {
+  buildLocationCaptureReply,
+  buildLocationCaptureUrl,
+  resolveLocationCaptureBaseUrl,
+} from "../lib/location-capture.js";
 import { maybeRepairProfileState } from "../lib/profile-state.js";
 import { retryAsync, summarizeError } from "../lib/reliability.js";
 import {
@@ -78,14 +82,31 @@ function resolveLocationContext(sharedLocation, config) {
 
 function buildDirectLocationReply(locationContext) {
   if (locationContext?.kind === "default") {
-    return `I do not have a saved location pin from you yet, so I am using the configured default location context:\nLatitude: ${locationContext.latitude}\nLongitude: ${locationContext.longitude}\n\nSend a Messenger location pin any time if you want me to use your exact shared location instead.`;
+    return `I do not have a saved location from you yet, so I am using the configured default location context:\nLatitude: ${locationContext.latitude}\nLongitude: ${locationContext.longitude}\n\nShare a Messenger location pin or use /location any time if you want me to use your exact location instead.`;
   }
 
   return `The latest location pin you shared is:\nLatitude: ${locationContext.latitude}\nLongitude: ${locationContext.longitude}\n\nI will use this as your location for Google Maps grounded prompts like "cafes near me".`;
 }
 
-function buildMissingLocationReply() {
-  return "I do not have a saved location yet. Tap the Messenger location button below and I will use it automatically for Google Maps grounded prompts.";
+async function buildLocationCaptureMessage({
+  senderId,
+  store,
+  config,
+  baseUrl,
+  leadIn,
+}) {
+  const captureToken = await store.createLocationCaptureToken(senderId, {
+    ttlMinutes: config.locationCaptureTtlMinutes,
+  });
+
+  return buildLocationCaptureReply({
+    url: buildLocationCaptureUrl({
+      baseUrl: resolveLocationCaptureBaseUrl({ baseUrl, config }),
+      token: captureToken.token,
+    }),
+    expiresInMinutes: config.locationCaptureTtlMinutes,
+    leadIn,
+  });
 }
 
 function isGeminiStage(stage) {
@@ -374,34 +395,6 @@ async function sendTextWithRetries({
   );
 }
 
-async function sendLocationRequestWithRetries({
-  senderId,
-  text,
-  config,
-  sendLocationRequestImpl,
-  logger,
-  retryStage,
-}) {
-  return retryAsync(
-    async () => {
-      await sendLocationRequestImpl(senderId, text, config);
-    },
-    {
-      retries: config.reliabilityRetryLimit,
-      baseDelayMs: config.reliabilityRetryBaseMs,
-      shouldRetry: isRetryableMessengerError,
-      onRetry: (error, attempt) => {
-        logStructured(logger, "warn", "messenger.location_request.retry", {
-          senderId,
-          stage: retryStage,
-          attempt,
-          message: summarizeError(error),
-        });
-      },
-    },
-  );
-}
-
 async function generateReplyWithRetries({
   prompt,
   history,
@@ -529,13 +522,12 @@ export function createWebhookHandler({
   conversationStoreFactory = getConversationStore,
   geminiReply = generateGeminiReply,
   sendAction = sendSenderAction,
-  sendLocationRequestImpl = sendLocationQuickReply,
   sendTextMessageImpl = sendTextMessage,
   profileRepair = maybeRepairProfileState,
   waitUntilImpl = waitUntil,
   logger = console,
 } = {}) {
-  async function processEvent(event, config) {
+  async function processEvent(event, config, requestBaseUrl) {
     const senderId = event?.sender?.id;
 
     if (!senderId || event?.delivery || event?.read) {
@@ -668,6 +660,8 @@ export function createWebhookHandler({
             command,
             senderId,
             store,
+            config,
+            baseUrl: requestBaseUrl,
           });
 
           replyText =
@@ -860,31 +854,29 @@ export function createWebhookHandler({
         }
         if (isDirectLocationPrompt(prompt)) {
           const locationContext = resolveLocationContext(sharedLocation, config);
-          replyText = locationContext
-            ? buildDirectLocationReply(locationContext)
-            : buildMissingLocationReply();
+          if (locationContext) {
+            replyText = buildDirectLocationReply(locationContext);
+          } else {
+            currentStage = "db:create_location_capture_token";
+            replyText = await buildLocationCaptureMessage({
+              senderId,
+              store,
+              config,
+              baseUrl: requestBaseUrl,
+              leadIn: "I do not have a saved location yet.",
+            });
+          }
           replyGenerated = true;
 
-          currentStage = locationContext
-            ? "messenger:send_text"
-            : "messenger:request_location";
-          const sendResult = locationContext
-            ? await sendTextWithRetries({
-                senderId,
-                text: replyText,
-                config,
-                sendTextMessageImpl,
-                logger,
-                retryStage: currentStage,
-              })
-            : await sendLocationRequestWithRetries({
-                senderId,
-                text: replyText,
-                config,
-                sendLocationRequestImpl,
-                logger,
-                retryStage: currentStage,
-              });
+          currentStage = "messenger:send_text";
+          const sendResult = await sendTextWithRetries({
+            senderId,
+            text: replyText,
+            config,
+            sendTextMessageImpl,
+            logger,
+            retryStage: currentStage,
+          });
           totalRetryCount += sendResult.retryCount;
           replySent = true;
 
@@ -1069,6 +1061,7 @@ export function createWebhookHandler({
 
   return async function handler(req, res) {
     const config = configLoader();
+    const requestBaseUrl = buildRequestUrl(req).origin;
     const profileRepairTask = profileRepair(config, logger);
 
     if (profileRepairTask) {
@@ -1118,7 +1111,7 @@ export function createWebhookHandler({
 
     for (const entry of payload.entry ?? []) {
       for (const event of entry.messaging ?? []) {
-        tasks.push(processEvent(event, config));
+        tasks.push(processEvent(event, config, requestBaseUrl));
       }
     }
 
