@@ -16,6 +16,7 @@ import { generateGeminiReply, isRetryableGeminiError } from "../lib/gemini.js";
 import { getConversationStore } from "../lib/history.js";
 import {
   isRetryableMessengerError,
+  sendLocationQuickReply,
   sendSenderAction,
   sendTextMessage,
 } from "../lib/messenger.js";
@@ -48,12 +49,43 @@ function isDirectLocationPrompt(prompt) {
   );
 }
 
-function buildDirectLocationReply(sharedLocation) {
-  return `The latest location pin you shared is:\nLatitude: ${sharedLocation.latitude}\nLongitude: ${sharedLocation.longitude}\n\nI will use this as your location for Google Maps grounded prompts like "cafes near me".`;
+function hasLocationContext(location) {
+  return (
+    Number.isFinite(location?.latitude) &&
+    Number.isFinite(location?.longitude)
+  );
+}
+
+function resolveLocationContext(sharedLocation, config) {
+  if (hasLocationContext(sharedLocation)) {
+    return {
+      kind: "shared",
+      latitude: sharedLocation.latitude,
+      longitude: sharedLocation.longitude,
+    };
+  }
+
+  if (hasLocationContext(config?.geminiGoogleMapsLocation)) {
+    return {
+      kind: "default",
+      latitude: config.geminiGoogleMapsLocation.latitude,
+      longitude: config.geminiGoogleMapsLocation.longitude,
+    };
+  }
+
+  return null;
+}
+
+function buildDirectLocationReply(locationContext) {
+  if (locationContext?.kind === "default") {
+    return `I do not have a saved location pin from you yet, so I am using the configured default location context:\nLatitude: ${locationContext.latitude}\nLongitude: ${locationContext.longitude}\n\nSend a Messenger location pin any time if you want me to use your exact shared location instead.`;
+  }
+
+  return `The latest location pin you shared is:\nLatitude: ${locationContext.latitude}\nLongitude: ${locationContext.longitude}\n\nI will use this as your location for Google Maps grounded prompts like "cafes near me".`;
 }
 
 function buildMissingLocationReply() {
-  return "I do not have a saved location for you yet. Send a Messenger location pin first, then I can use it for Google Maps grounded prompts.";
+  return "I do not have a saved location yet. Tap the Messenger location button below and I will use it automatically for Google Maps grounded prompts.";
 }
 
 function isGeminiStage(stage) {
@@ -342,6 +374,34 @@ async function sendTextWithRetries({
   );
 }
 
+async function sendLocationRequestWithRetries({
+  senderId,
+  text,
+  config,
+  sendLocationRequestImpl,
+  logger,
+  retryStage,
+}) {
+  return retryAsync(
+    async () => {
+      await sendLocationRequestImpl(senderId, text, config);
+    },
+    {
+      retries: config.reliabilityRetryLimit,
+      baseDelayMs: config.reliabilityRetryBaseMs,
+      shouldRetry: isRetryableMessengerError,
+      onRetry: (error, attempt) => {
+        logStructured(logger, "warn", "messenger.location_request.retry", {
+          senderId,
+          stage: retryStage,
+          attempt,
+          message: summarizeError(error),
+        });
+      },
+    },
+  );
+}
+
 async function generateReplyWithRetries({
   prompt,
   history,
@@ -469,6 +529,7 @@ export function createWebhookHandler({
   conversationStoreFactory = getConversationStore,
   geminiReply = generateGeminiReply,
   sendAction = sendSenderAction,
+  sendLocationRequestImpl = sendLocationQuickReply,
   sendTextMessageImpl = sendTextMessage,
   profileRepair = maybeRepairProfileState,
   waitUntilImpl = waitUntil,
@@ -798,22 +859,32 @@ export function createWebhookHandler({
           sharedLocation = await store.getLatestLocation(senderId);
         }
         if (isDirectLocationPrompt(prompt)) {
-          replyText =
-            Number.isFinite(sharedLocation?.latitude) &&
-            Number.isFinite(sharedLocation?.longitude)
-              ? buildDirectLocationReply(sharedLocation)
-              : buildMissingLocationReply();
+          const locationContext = resolveLocationContext(sharedLocation, config);
+          replyText = locationContext
+            ? buildDirectLocationReply(locationContext)
+            : buildMissingLocationReply();
           replyGenerated = true;
 
-          currentStage = "messenger:send_text";
-          const sendResult = await sendTextWithRetries({
-            senderId,
-            text: replyText,
-            config,
-            sendTextMessageImpl,
-            logger,
-            retryStage: currentStage,
-          });
+          currentStage = locationContext
+            ? "messenger:send_text"
+            : "messenger:request_location";
+          const sendResult = locationContext
+            ? await sendTextWithRetries({
+                senderId,
+                text: replyText,
+                config,
+                sendTextMessageImpl,
+                logger,
+                retryStage: currentStage,
+              })
+            : await sendLocationRequestWithRetries({
+                senderId,
+                text: replyText,
+                config,
+                sendLocationRequestImpl,
+                logger,
+                retryStage: currentStage,
+              });
           totalRetryCount += sendResult.retryCount;
           replySent = true;
 

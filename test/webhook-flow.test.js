@@ -4,7 +4,7 @@ import { Readable } from "node:stream";
 
 import { createWebhookHandler } from "../api/webhook.js";
 
-function buildConfig() {
+function buildConfig(overrides = {}) {
   return {
     pageAccessToken: "page-token",
     verifyToken: "verify-token",
@@ -30,6 +30,7 @@ function buildConfig() {
     memoryMaxChars: 700,
     summaryMaxChars: 600,
     promptContextMaxChars: 1400,
+    ...overrides,
   };
 }
 
@@ -336,10 +337,73 @@ test("webhook answers direct self-location prompts locally when a location is sa
 });
 
 test("webhook explains when no saved location exists for a direct self-location prompt", async () => {
-  const sentMessages = [];
+  const locationRequests = [];
   let geminiCalls = 0;
   const handler = createWebhookHandler({
     configLoader: buildConfig,
+    conversationStoreFactory: async () => ({
+      async beginEventProcessing() {
+        return { inserted: true, tracked: true };
+      },
+      async updateEventProcessing() {},
+      async saveInboundTurn() {
+        return { inserted: true, messageId: 1 };
+      },
+      async getConversationHistory() {
+        return [];
+      },
+      async getConversationSummary() {
+        return "";
+      },
+      async findRelevantMemory() {
+        return [];
+      },
+      async getLatestLocation() {
+        return null;
+      },
+      async saveModelTurn() {},
+    }),
+    geminiReply: async () => {
+      geminiCalls += 1;
+      return "should not run";
+    },
+    sendAction: async () => {},
+    sendLocationRequestImpl: async (_senderId, text) => {
+      locationRequests.push(text);
+    },
+    profileRepair: () => null,
+    waitUntilImpl: () => {},
+    logger: {
+      info() {},
+      warn() {},
+      error() {},
+    },
+  });
+
+  await handler(
+    createRequest(createPayload("What is my location?")),
+    createResponse(),
+  );
+
+  assert.equal(geminiCalls, 0);
+  assert.equal(locationRequests.length, 1);
+  assert.match(
+    locationRequests[0],
+    /Tap the Messenger location button below/,
+  );
+});
+
+test("webhook uses the configured default location when no saved location exists", async () => {
+  const sentMessages = [];
+  let geminiCalls = 0;
+  const handler = createWebhookHandler({
+    configLoader: () =>
+      buildConfig({
+        geminiGoogleMapsLocation: {
+          latitude: 40.758,
+          longitude: -73.9855,
+        },
+      }),
     conversationStoreFactory: async () => ({
       async beginEventProcessing() {
         return { inserted: true, tracked: true };
@@ -386,5 +450,6 @@ test("webhook explains when no saved location exists for a direct self-location 
 
   assert.equal(geminiCalls, 0);
   assert.equal(sentMessages.length, 1);
-  assert.match(sentMessages[0], /I do not have a saved location for you yet/);
+  assert.match(sentMessages[0], /configured default location context/);
+  assert.match(sentMessages[0], /Latitude: 40.758/);
 });
