@@ -7,7 +7,6 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test",
     "lint": "./node_modules/.bin/eslint api lib src",
     "format": "prettier --write \"index.html\" \"api/**/*.js\" \"lib/**/*.js\" \"src/**/*.{js,jsx}\"",
     "format:check": "prettier --check \"index.html\" \"api/**/*.js\" \"lib/**/*.js\" \"src/**/*.{js,jsx}\""
